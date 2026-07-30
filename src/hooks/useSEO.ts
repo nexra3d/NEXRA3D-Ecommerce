@@ -71,7 +71,14 @@ export function useSEO({
       name: 'NEXRA 3D',
       legalName: 'VL Technologies Private Limited',
       url: window.location.origin,
-      logo: `${window.location.origin}/logo.jpeg`
+      logo: `${window.location.origin}/logo.png`,
+      contactPoint: {
+        '@type': 'ContactPoint',
+        telephone: '+91-080-4567-8900',
+        contactType: 'customer support',
+        areaServed: 'IN',
+        availableLanguage: ['en', 'hi']
+      }
     };
 
     const schemasToInject = [defaultOrgSchema];

@@ -47,6 +47,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       if (!res.ok) {
         setErrorMsg(data.error || 'Invalid credentials. Please try again.');
       } else {
+        if (data.token) {
+          localStorage.setItem('auth_token', data.token);
+        }
+        if (data.user) {
+          localStorage.setItem('user', JSON.stringify(data.user));
+        }
         onLoginSuccess(data.user);
       }
     } catch (err) {
@@ -88,24 +94,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           <div className="bg-indigo-50/70 border border-indigo-100 p-3.5 rounded-2xl space-y-2">
             <div className="flex items-center space-x-1.5 text-indigo-900 font-extrabold text-xs">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Quick Demo Accounts (1-Click Fill):</span>
+              <span>Quick Demo Account (1-Click Fill):</span>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="text-xs">
               <button
                 type="button"
                 onClick={() => fillDemoAccount('alex@example.com', 'customer123')}
-                className="bg-white hover:bg-indigo-100 text-indigo-900 font-bold py-2 px-3 rounded-xl border border-indigo-200 transition-colors text-left cursor-pointer shadow-2xs"
+                className="w-full bg-white hover:bg-indigo-100 text-indigo-900 font-bold py-2.5 px-3 rounded-xl border border-indigo-200 transition-colors text-left cursor-pointer shadow-2xs flex items-center justify-between"
               >
-                <div className="text-[10px] text-indigo-500 uppercase font-black">CUSTOMER</div>
-                <div className="truncate">alex@example.com</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => fillDemoAccount('admin@store.com', 'admin123')}
-                className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-2 px-3 rounded-xl transition-colors text-left cursor-pointer shadow-2xs"
-              >
-                <div className="text-[10px] text-emerald-400 uppercase font-black">ADMIN</div>
-                <div className="truncate">admin@store.com</div>
+                <div>
+                  <div className="text-[10px] text-indigo-500 uppercase font-black">CUSTOMER ACCOUNT</div>
+                  <div className="truncate font-mono">alex@example.com</div>
+                </div>
+                <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-extrabold">Fill</span>
               </button>
             </div>
           </div>

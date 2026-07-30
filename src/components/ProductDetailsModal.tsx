@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Star,
@@ -10,13 +10,18 @@ import {
   CheckCircle2,
   Sparkles,
   Zap,
+  MessageSquarePlus,
   ChevronLeft,
   ChevronRight,
   ZoomIn,
   Layers,
+  ArrowRight,
   Share2,
   Copy,
-  Check
+  Check,
+  ThumbsUp,
+  Flag,
+  Filter
 } from 'lucide-react';
 import { Product, ProductReview, ProductVariant } from '../types';
 import { useSEO } from '../hooks/useSEO';
@@ -47,18 +52,39 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     : [product.imageUrl || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&q=80&w=800'];
 
   const variantsList: ProductVariant[] = product.variants || product.productVariants || [];
+
   const productName = product.name || product.title || 'Product Item';
   const stockQty = product.stockQuantity ?? product.stock ?? 0;
 
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
   const [quantity, setQuantity] = useState(1);
+  const [activeTab, setActiveTab] = useState<'description' | 'specs' | 'reviews'>('description');
   const [isZoomOpen, setIsZoomOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // Related products state
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [isLoadingRelated, setIsLoadingRelated] = useState(false);
-  const [reviews, setReviews] = useState<ProductReview[]>([]);
 
+  // Reviews state
+  const [reviews, setReviews] = useState<ProductReview[]>([]);
+  const [ratingSummary, setRatingSummary] = useState({
+    averageRating: product.rating || 5.0,
+    totalCount: product.reviewCount || 0,
+    distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } as Record<number, number>
+  });
+  const [starFilter, setStarFilter] = useState<number | 'ALL'>('ALL');
+  const [sortBy, setSortBy] = useState<'newest' | 'highest' | 'lowest' | 'helpful'>('newest');
+  const [verifiedOnly, setVerifiedOnly] = useState(false);
+
+  const [newReviewName, setNewReviewName] = useState('');
+  const [newReviewTitle, setNewReviewTitle] = useState('');
+  const [newReviewComment, setNewReviewComment] = useState('');
+  const [newReviewRating, setNewReviewRating] = useState(5);
+  const [reviewSubmittedMsg, setReviewSubmittedMsg] = useState(false);
+
+  // SEO Hook
   useSEO({
     title: `${productName} | NEXRA 3D`,
     description: product.shortDescription || product.description || `Buy ${productName} at NEXRA 3D.`,
@@ -83,21 +109,28 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     }
   });
 
+  // Track Recently Viewed & Fetch Reviews
   useEffect(() => {
     setSelectedImageIndex(0);
     setQuantity(1);
-    setSelectedVariant(variantsList[0] || null);
+    if (variantsList.length > 0) {
+      setSelectedVariant(variantsList[0]);
+    } else {
+      setSelectedVariant(null);
+    }
 
+    // Save to localStorage recently viewed
     try {
       const stored = localStorage.getItem('nexra_recently_viewed');
       let arr: string[] = stored ? JSON.parse(stored) : [];
       arr = arr.filter((id) => id !== product.id);
       arr.unshift(product.id);
       localStorage.setItem('nexra_recently_viewed', JSON.stringify(arr.slice(0, 10)));
-    } catch {
+    } catch (e) {
       // ignore
     }
 
+    // Fetch related products
     setIsLoadingRelated(true);
     fetch(`/api/products/${product.id}/related?limit=4`)
       .then((res) => (res.ok ? res.json() : []))
@@ -107,28 +140,29 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
       .catch((err) => console.error('Related products fetch error:', err))
       .finally(() => setIsLoadingRelated(false));
 
+    // Fetch Reviews
     fetch(`/api/products/${product.id}/reviews`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && data.reviews) {
           setReviews(data.reviews);
+          if (data.summary) setRatingSummary(data.summary);
         }
       })
       .catch((err) => console.error('Reviews fetch error:', err));
-  }, [product.id, variantsList]);
+  }, [product.id]);
 
   const activePrice = selectedVariant ? selectedVariant.price : Number(product.price || 0);
   const activeMrp = selectedVariant ? selectedVariant.mrp : (product.mrp ? Number(product.mrp) : activePrice);
   const activeSku = selectedVariant ? selectedVariant.sku : product.sku;
-  const discountPercent = activeMrp > activePrice
-    ? Math.round(((activeMrp - activePrice) / activeMrp) * 100)
-    : 0;
 
-  const formatINR = (value: number) => new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0
-  }).format(value);
+  const formatINR = (val: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0
+    }).format(val);
+  };
 
   const handlePrevImage = () => {
     setSelectedImageIndex((prev) => (prev === 0 ? imagesList.length - 1 : prev - 1));
@@ -144,9 +178,77 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
+  const handleAddReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newReviewComment.trim()) return;
+
+    try {
+      const res = await fetch(`/api/products/${product.id}/reviews`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rating: newReviewRating,
+          title: newReviewTitle,
+          comment: newReviewComment,
+          userName: newReviewName
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.review) {
+        setReviews([data.review, ...reviews]);
+        setNewReviewName('');
+        setNewReviewTitle('');
+        setNewReviewComment('');
+        setReviewSubmittedMsg(true);
+        setTimeout(() => setReviewSubmittedMsg(false), 3500);
+      }
+    } catch (err) {
+      console.error('Submit review error:', err);
+    }
+  };
+
+  const handleHelpfulVote = async (reviewId: string) => {
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}/helpful`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.helpfulCount !== undefined) {
+        setReviews(reviews.map((r) => r.id === reviewId ? { ...r, helpfulCount: data.helpfulCount } : r));
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const handleReportReview = async (reviewId: string) => {
+    try {
+      await fetch(`/api/reviews/${reviewId}/report`, { method: 'POST' });
+      setReviews(reviews.filter((r) => r.id !== reviewId));
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  // Filter & Sort reviews
+  const filteredReviews = reviews.filter((r) => {
+    if (starFilter !== 'ALL' && r.rating !== starFilter) return false;
+    if (verifiedOnly && !r.verifiedPurchase) return false;
+    return true;
+  }).sort((a, b) => {
+    if (sortBy === 'highest') return b.rating - a.rating;
+    if (sortBy === 'lowest') return a.rating - b.rating;
+    if (sortBy === 'helpful') return (b.helpfulCount || 0) - (a.helpfulCount || 0);
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+
+  const discountPercent = activeMrp > activePrice
+    ? Math.round(((activeMrp - activePrice) / activeMrp) * 100)
+    : 0;
+
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in">
       <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden relative max-h-[92vh] flex flex-col">
+        {/* Modal Close Button */}
         <button
           onClick={onClose}
           className="absolute top-4 right-4 z-20 p-2 text-slate-400 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors cursor-pointer"
@@ -155,7 +257,9 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
         </button>
 
         <div className="overflow-y-auto p-6 sm:p-8 space-y-8">
+          {/* Main Top Grid: Gallery + Purchasing Column */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* Left Column: Image Gallery with Controls & Zoom */}
             <div className="space-y-4">
               <div className="relative aspect-4/3 bg-slate-50 rounded-2xl overflow-hidden border border-slate-200/80 group">
                 <img
@@ -164,20 +268,23 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                   className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                 />
 
+                {/* Discount Badge */}
                 {discountPercent > 0 && (
                   <span className="absolute top-3 left-3 bg-rose-500 text-white font-extrabold text-xs px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-xs z-10">
                     {discountPercent}% OFF
                   </span>
                 )}
 
+                {/* Zoom Trigger Button */}
                 <button
                   onClick={() => setIsZoomOpen(true)}
-                  className="absolute top-3 right-3 p-2 bg-white/80 hover:bg-white text-slate-700 rounded-xl border border-slate-200 shadow-sm backdrop-blur-md transition-opacity z-10 cursor-pointer"
+                  className="absolute top-3 right-3 p-2 bg-white/80 hover:bg-white text-slate-700 rounded-xl border border-slate-200 shadow-sm backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity z-10 cursor-pointer"
                   title="Expand & Zoom Image"
                 >
                   <ZoomIn className="w-4 h-4" />
                 </button>
 
+                {/* Next / Previous Gallery Nav */}
                 {imagesList.length > 1 && (
                   <>
                     <button
@@ -196,6 +303,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                 )}
               </div>
 
+              {/* Thumbnail Gallery Bar */}
               {imagesList.length > 1 && (
                 <div className="flex space-x-2 overflow-x-auto pb-1">
                   {imagesList.map((imgUrl, idx) => (
@@ -213,25 +321,30 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
               )}
             </div>
 
+            {/* Right Column: Title, Rating, Price, Variants, Stock & Actions */}
             <div className="space-y-6">
               <div>
                 <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest block mb-1">
                   {product.brand || product.category?.name || 'Store Item'} • SKU: {activeSku}
                 </span>
-                <h1 className="text-2xl font-black text-slate-900 leading-snug">{productName}</h1>
+                <h1 className="text-2xl font-black text-slate-900 leading-snug">
+                  {productName}
+                </h1>
                 {product.shortDescription && (
                   <p className="text-xs text-slate-600 mt-1">{product.shortDescription}</p>
                 )}
               </div>
 
+              {/* Rating & Reviews summary */}
               <div className="flex items-center space-x-3 text-sm">
                 <div className="flex items-center text-amber-400 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200/60">
                   <Star className="w-4 h-4 fill-amber-400 mr-1" />
                   <span className="font-extrabold text-slate-900">{product.rating || 4.8}</span>
                 </div>
-                <span className="text-xs text-slate-500 font-medium">{reviews.length} verified reviews</span>
+                <span className="text-xs text-slate-500 font-medium">({reviews.length} Verified Customer Reviews)</span>
               </div>
 
+              {/* Variant Selector (if available) */}
               {variantsList.length > 0 && (
                 <div className="space-y-2">
                   <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
@@ -239,30 +352,35 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                     <span>Select Variant:</span>
                   </span>
                   <div className="flex flex-wrap gap-2">
-                    {variantsList.map((variant) => (
+                    {variantsList.map((v) => (
                       <button
-                        key={variant.id}
-                        onClick={() => setSelectedVariant(variant)}
+                        key={v.id}
+                        onClick={() => setSelectedVariant(v)}
                         className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                          selectedVariant?.id === variant.id
+                          selectedVariant?.id === v.id
                             ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
                             : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                         }`}
                       >
-                        {variant.name} ({formatINR(variant.price)})
+                        {v.name} ({formatINR(v.price)})
                       </button>
                     ))}
                   </div>
                 </div>
               )}
 
+              {/* Price Display */}
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-baseline justify-between">
                 <div>
                   <span className="text-xs text-slate-500 block uppercase font-bold tracking-wider">Price</span>
                   <div className="flex items-baseline space-x-2">
-                    <span className="text-2xl font-black text-slate-900">{formatINR(activePrice)}</span>
+                    <span className="text-2xl font-black text-slate-900">
+                      {formatINR(activePrice)}
+                    </span>
                     {activeMrp > activePrice && (
-                      <span className="text-sm text-slate-400 line-through">{formatINR(activeMrp)}</span>
+                      <span className="text-sm text-slate-400 line-through">
+                        {formatINR(activeMrp)}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -281,6 +399,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                 </div>
               </div>
 
+              {/* Quantity Selector */}
               {stockQty > 0 && (
                 <div className="flex items-center space-x-4">
                   <span className="text-xs font-bold text-slate-700 uppercase">Quantity:</span>
@@ -302,10 +421,13 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                 </div>
               )}
 
+              {/* Main CTA Buttons */}
               <div className="space-y-3 pt-2">
                 <div className="grid grid-cols-2 gap-3">
                   <button
-                    onClick={() => onAddToCart(product, selectedVariant?.id, quantity)}
+                    onClick={() => {
+                      onAddToCart(product, selectedVariant?.id, quantity);
+                    }}
                     disabled={stockQty <= 0}
                     className="w-full py-3.5 bg-slate-900 hover:bg-indigo-600 text-white font-bold text-sm rounded-2xl flex items-center justify-center space-x-2 transition-all shadow-md cursor-pointer disabled:opacity-50"
                   >
@@ -357,6 +479,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                 </div>
               </div>
 
+              {/* Key Highlights */}
               <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 border-t border-slate-100 pt-4">
                 <div className="flex items-center space-x-1.5">
                   <Truck className="w-4 h-4 text-indigo-600" />
@@ -378,47 +501,295 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
             </div>
           </div>
 
+          {/* Bottom Tabs: Overview, Specifications, Reviews */}
           <div className="border-t border-slate-200 pt-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-black text-slate-900 tracking-tight">Product Details</h3>
+            <div className="flex space-x-4 border-b border-slate-200">
+              <button
+                onClick={() => setActiveTab('description')}
+                className={`pb-3 text-xs font-extrabold uppercase tracking-wider cursor-pointer border-b-2 transition-colors ${
+                  activeTab === 'description' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Description
+              </button>
+              <button
+                onClick={() => setActiveTab('specs')}
+                className={`pb-3 text-xs font-extrabold uppercase tracking-wider cursor-pointer border-b-2 transition-colors ${
+                  activeTab === 'specs' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Specifications
+              </button>
+              <button
+                onClick={() => setActiveTab('reviews')}
+                className={`pb-3 text-xs font-extrabold uppercase tracking-wider cursor-pointer border-b-2 transition-colors ${
+                  activeTab === 'reviews' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Reviews ({reviews.length})
+              </button>
             </div>
-            <div className="text-sm text-slate-700 leading-relaxed space-y-3">
-              <p>{product.description}</p>
-              {product.tags && product.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-2">
-                  {product.tags.map((tag, index) => (
-                    <span key={index} className="bg-slate-100 text-slate-600 text-[11px] font-semibold px-2.5 py-1 rounded-md">
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-            {product.specifications && Object.keys(product.specifications).length > 0 && (
+
+            {/* Tab Content */}
+            {activeTab === 'description' && (
+              <div className="text-sm text-slate-700 leading-relaxed space-y-3">
+                <p>{product.description}</p>
+                {product.tags && product.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-2">
+                    {product.tags.map((tag, i) => (
+                      <span key={i} className="bg-slate-100 text-slate-600 text-[11px] font-semibold px-2.5 py-1 rounded-md">
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'specs' && (
               <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80">
                 <table className="w-full text-xs text-left">
                   <tbody>
-                    {Object.entries(product.specifications).map(([key, value], index) => (
-                      <tr key={index} className="border-b border-slate-200/60 last:border-none">
+                    {Object.entries(product.specifications || {}).map(([key, val], i) => (
+                      <tr key={i} className="border-b border-slate-200/60 last:border-none">
                         <td className="py-2.5 font-bold text-slate-600 w-1/3">{key}</td>
-                        <td className="py-2.5 text-slate-900 font-semibold">{String(value)}</td>
+                        <td className="py-2.5 text-slate-900 font-semibold">{String(val)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
+
+            {activeTab === 'reviews' && (
+              <div className="space-y-6">
+                {/* Rating Summary Header */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                  <div className="text-center md:border-r md:border-slate-200 pr-2">
+                    <span className="text-4xl font-black text-slate-900 block tracking-tight">
+                      {ratingSummary.averageRating}
+                    </span>
+                    <div className="flex justify-center text-amber-400 my-1">
+                      {Array.from({ length: 5 }).map((_, idx) => (
+                        <Star
+                          key={idx}
+                          className={`w-4 h-4 ${idx < Math.round(ratingSummary.averageRating) ? 'fill-amber-400' : 'text-slate-300'}`}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-xs font-semibold text-slate-500">
+                      Based on {ratingSummary.totalCount} verified reviews
+                    </span>
+                  </div>
+
+                  {/* Rating Bars Breakdown */}
+                  <div className="space-y-1.5 md:col-span-2">
+                    {[5, 4, 3, 2, 1].map((star) => {
+                      const count = ratingSummary.distribution[star] || 0;
+                      const percent = ratingSummary.totalCount > 0 ? Math.round((count / ratingSummary.totalCount) * 100) : (star === 5 ? 80 : 5);
+                      return (
+                        <div key={star} className="flex items-center text-xs space-x-2">
+                          <span className="w-12 font-bold text-slate-600">{star} Stars</span>
+                          <div className="flex-1 bg-slate-200 rounded-full h-2 overflow-hidden">
+                            <div
+                              className="bg-amber-400 h-full rounded-full transition-all duration-300"
+                              style={{ width: `${percent}%` }}
+                            />
+                          </div>
+                          <span className="w-8 text-right text-slate-500 text-[10px]">{percent}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Filters & Sorting Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 border border-slate-200 rounded-2xl">
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                    <span className="font-bold text-slate-500 mr-1 flex items-center gap-1">
+                      <Filter className="w-3.5 h-3.5" />
+                      Filter:
+                    </span>
+                    {(['ALL', 5, 4, 3, 2, 1] as const).map((star) => (
+                      <button
+                        key={star}
+                        onClick={() => setStarFilter(star)}
+                        className={`px-2.5 py-1 rounded-xl font-bold text-[11px] transition-colors cursor-pointer ${
+                          starFilter === star
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {star === 'ALL' ? 'All' : `${star} ★`}
+                      </button>
+                    ))}
+                    <label className="flex items-center gap-1.5 ml-2 cursor-pointer text-slate-700 text-[11px] font-bold">
+                      <input
+                        type="checkbox"
+                        checked={verifiedOnly}
+                        onChange={(e) => setVerifiedOnly(e.target.checked)}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span>Verified Buyers Only</span>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs font-bold text-slate-500">Sort:</span>
+                    <select
+                      value={sortBy}
+                      onChange={(e: any) => setSortBy(e.target.value)}
+                      className="bg-slate-50 border border-slate-200 text-slate-800 text-xs font-semibold rounded-xl px-2.5 py-1 focus:outline-hidden"
+                    >
+                      <option value="newest">Newest First</option>
+                      <option value="highest">Highest Rating</option>
+                      <option value="lowest">Lowest Rating</option>
+                      <option value="helpful">Most Helpful</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* List Reviews */}
+                <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                  {filteredReviews.length === 0 ? (
+                    <div className="p-6 text-center text-slate-400 text-xs italic bg-slate-50 rounded-2xl">
+                      No reviews match your selected filter criteria.
+                    </div>
+                  ) : (
+                    filteredReviews.map((rev) => (
+                      <div key={rev.id} className="bg-slate-50 rounded-2xl p-4 border border-slate-200/70 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-bold text-xs text-slate-900">{rev.userName}</span>
+                            {rev.verifiedPurchase && (
+                              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                Verified Buyer
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-400">
+                            {new Date(rev.createdAt).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          <div className="flex items-center text-amber-400">
+                            {Array.from({ length: 5 }).map((_, idx) => (
+                              <Star
+                                key={idx}
+                                className={`w-3.5 h-3.5 ${idx < rev.rating ? 'fill-amber-400' : 'text-slate-300'}`}
+                              />
+                            ))}
+                          </div>
+                          {rev.title && (
+                            <span className="text-xs font-bold text-slate-900">{rev.title}</span>
+                          )}
+                        </div>
+
+                        <p className="text-xs text-slate-700 leading-relaxed">{rev.comment}</p>
+
+                        {/* Review Helpful & Report Action Row */}
+                        <div className="flex items-center justify-between pt-1 text-[11px] text-slate-400 border-t border-slate-200/50">
+                          <button
+                            onClick={() => handleHelpfulVote(rev.id)}
+                            className="flex items-center space-x-1 text-slate-500 hover:text-indigo-600 font-semibold cursor-pointer transition-colors"
+                          >
+                            <ThumbsUp className="w-3 h-3" />
+                            <span>Helpful ({rev.helpfulCount || 0})</span>
+                          </button>
+                          <button
+                            onClick={() => handleReportReview(rev.id)}
+                            className="flex items-center space-x-1 text-slate-400 hover:text-rose-600 font-semibold cursor-pointer transition-colors"
+                          >
+                            <Flag className="w-3 h-3" />
+                            <span>Report</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Write Review Form */}
+                <form onSubmit={handleAddReview} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+                  <h4 className="text-xs font-bold text-slate-900 uppercase flex items-center gap-1.5">
+                    <MessageSquarePlus className="w-4 h-4 text-indigo-600" />
+                    <span>Write a Verified Customer Review</span>
+                  </h4>
+
+                  {reviewSubmittedMsg && (
+                    <div className="bg-emerald-50 text-emerald-800 text-xs font-bold p-2.5 rounded-xl border border-emerald-200 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>Thank you! Your review has been published with verified status.</span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <input
+                      type="text"
+                      placeholder="Your Name"
+                      value={newReviewName}
+                      onChange={(e) => setNewReviewName(e.target.value)}
+                      className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-hidden focus:border-indigo-500"
+                    />
+
+                    <input
+                      type="text"
+                      placeholder="Headline / Review Title"
+                      value={newReviewTitle}
+                      onChange={(e) => setNewReviewTitle(e.target.value)}
+                      className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-hidden focus:border-indigo-500"
+                    />
+
+                    <select
+                      value={newReviewRating}
+                      onChange={(e) => setNewReviewRating(Number(e.target.value))}
+                      className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-hidden focus:border-indigo-500"
+                    >
+                      <option value={5}>5 Stars (Excellent)</option>
+                      <option value={4}>4 Stars (Good)</option>
+                      <option value={3}>3 Stars (Average)</option>
+                      <option value={2}>2 Stars (Poor)</option>
+                      <option value={1}>1 Star (Bad)</option>
+                    </select>
+                  </div>
+
+                  <textarea
+                    rows={2}
+                    placeholder="Share your technical experience with build quality, printing speed, material compatibility..."
+                    value={newReviewComment}
+                    onChange={(e) => setNewReviewComment(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 focus:outline-hidden focus:border-indigo-500"
+                  />
+
+                  <button
+                    type="submit"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-colors cursor-pointer"
+                  >
+                    Submit Customer Review
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
 
-          {relatedProducts.length > 0 && (
-            <div className="border-t border-slate-200 pt-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-amber-500" />
-                  <span>Related Products</span>
-                </h3>
-              </div>
+          {/* Section 11: Related Products */}
+          <div className="border-t border-slate-200 pt-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-500" />
+                <span>Related Products</span>
+              </h3>
+            </div>
 
+            {isLoadingRelated ? (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 animate-pulse">
+                {[1, 2, 3, 4].map((n) => (
+                  <div key={n} className="bg-slate-100 rounded-2xl h-44"></div>
+                ))}
+              </div>
+            ) : relatedProducts.length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {relatedProducts.map((relProd) => {
                   const relImg = relProd.imageUrl || (relProd.images && relProd.images[0]) || '';
@@ -451,11 +822,14 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                   );
                 })}
               </div>
-            </div>
-          )}
+            ) : (
+              <p className="text-xs text-slate-400 italic">No other related products in this category.</p>
+            )}
+          </div>
         </div>
       </div>
 
+      {/* Image Zoom Modal Overlay */}
       {isZoomOpen && (
         <div className="fixed inset-0 z-60 bg-black/90 flex items-center justify-center p-4 animate-in fade-in">
           <button

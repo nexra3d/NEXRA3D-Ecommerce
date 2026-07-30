@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NexraLogo } from './NexraLogo';
 import { INITIAL_CATEGORIES } from '../data/mockData';
 import {
@@ -386,7 +386,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="px-2.5 py-2 rounded-lg hover:bg-cyan-50 text-cyan-700 hover:text-cyan-900 transition-colors cursor-pointer flex items-center gap-1.5 font-extrabold"
                 title="Aerospace & Drone Additive Solutions"
               >
-                <Plane className="w-5 h-5 text-cyan-600 shrink-0" />
+                <Plane className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
                 <span>AEROSPACE / DRONES</span>
               </button>
 
@@ -412,7 +412,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() => setIsSearchExpanded(true)}
               className="w-full bg-slate-100 hover:bg-slate-200/80 border border-slate-200 rounded-2xl px-3.5 py-2 text-left flex items-center gap-2 text-xs text-slate-400 font-medium transition-all cursor-pointer"
             >
-              <Search className="w-5 h-5 text-slate-400 shrink-0" />
+              <Search className="w-4 h-4 text-slate-400 shrink-0" />
               <span className="truncate">Search products & services...</span>
             </button>
           </div>
@@ -425,7 +425,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="md:hidden p-1.5 text-slate-600 hover:text-cyan-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer shrink-0"
               title="Search"
             >
-              <Search className="w-5 h-5 sm:w-6 sm:h-6" />
+              <Search className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
 
             {/* Request Quote Button */}
@@ -433,16 +433,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={onRequestQuoteClick}
               className="hidden lg:flex items-center space-x-1.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs px-3 py-2 rounded-xl transition-all shadow-xs cursor-pointer shrink-0"
             >
-              <Send className="w-5 h-5" />
-              <span>Request Quote</span>
+              <Send className="w-3.5 h-3.5" />
+              <span>Get Quote</span>
             </button>
 
+            {/* Wishlist Icon */}
             <button
               onClick={onOpenWishlist}
               className="relative p-1.5 sm:p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer shrink-0"
               title="Wishlist"
             >
-              <Heart className="w-5 h-5 sm:w-6 sm:h-6" />
+              <Heart className="w-4 h-4 sm:w-5 sm:h-5" />
               {wishlistCount > 0 && (
                 <span className="absolute top-0.5 right-0.5 bg-rose-500 text-white text-[9px] font-bold w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full flex items-center justify-center">
                   {wishlistCount}
@@ -456,22 +457,21 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="relative flex items-center space-x-1 bg-slate-900 hover:bg-slate-800 text-white px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl transition-all shadow-xs cursor-pointer border border-slate-800 shrink-0"
               title="Shopping Cart"
             >
-              <ShoppingBag className="w-5 h-5 text-cyan-400" />
+              <ShoppingBag className="w-4 h-4 text-cyan-400" />
               <span className="text-xs font-bold">{cartCount}</span>
             </button>
 
-            {/* Admin Dashboard button */}
-            <button
-              onClick={onOpenAdmin}
-              className={`p-1.5 sm:px-2.5 sm:py-2 rounded-xl transition-all cursor-pointer shadow-xs shrink-0 ${
-                currentUser?.role === 'ADMIN'
-                  ? 'bg-slate-900 hover:bg-slate-800 text-white border border-slate-700'
-                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
-              }`}
-              title={currentUser?.role === 'ADMIN' ? 'Admin Portal' : 'Admin Portal (Requires Admin Role)'}
-            >
-              <ShieldCheck className={`w-4 h-4 ${currentUser?.role === 'ADMIN' ? 'text-emerald-400' : 'text-slate-400'}`} />
-            </button>
+            {/* Admin Dashboard button - Only visible when Admin is logged in */}
+            {currentUser?.role === 'ADMIN' && (
+              <button
+                onClick={onOpenAdmin}
+                className="p-1.5 sm:px-2.5 sm:py-2 bg-slate-900 hover:bg-slate-800 text-white border border-slate-700 rounded-xl transition-all cursor-pointer shadow-xs shrink-0 flex items-center gap-1.5"
+                title="Admin Dashboard"
+              >
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span className="hidden xl:inline text-xs font-extrabold text-emerald-400">ADMIN</span>
+              </button>
+            )}
 
             {/* Logged In Account Controls */}
             {currentUser ? (
@@ -490,7 +490,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="p-1.5 sm:px-2.5 sm:py-2 text-slate-700 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
                 title="Log In / Register"
               >
-                <UserIcon className="w-5 h-5 text-slate-600" />
+                <UserIcon className="w-4 h-4 text-slate-600" />
               </button>
             )}
 
@@ -500,7 +500,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="lg:hidden p-1.5 sm:p-2 text-slate-700 hover:bg-slate-100 rounded-xl cursor-pointer shrink-0"
               title="Toggle Menu"
             >
-              {isMobileMenuOpen ? <X className="w-6 h-6 sm:w-7 sm:h-7" /> : <Menu className="w-6 h-6 sm:w-7 sm:h-7" />}
+              {isMobileMenuOpen ? <X className="w-5 h-5 sm:w-6 sm:h-6" /> : <Menu className="w-5 h-5 sm:w-6 sm:h-6" />}
             </button>
           </div>
         </div>
@@ -511,7 +511,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="lg:hidden border-t border-slate-200 py-4 space-y-4 animate-in fade-in duration-200">
             {/* Mobile Search */}
             <div className="relative px-2">
-              <Search className="w-5 h-5 text-slate-400 absolute left-5 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-slate-400 absolute left-5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={searchQuery}

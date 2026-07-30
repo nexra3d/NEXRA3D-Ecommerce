@@ -60,6 +60,12 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
       if (!res.ok) {
         setErrorMsg(data.error || 'Registration failed. Please check your inputs.');
       } else {
+        if (data.token) {
+          localStorage.setItem('auth_token', data.token);
+        }
+        if (data.user) {
+          localStorage.setItem('user', JSON.stringify(data.user));
+        }
         onRegisterSuccess(data.user);
       }
     } catch (err) {

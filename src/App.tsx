@@ -25,6 +25,8 @@ import { AerospacePage } from './components/AerospacePage';
 import { QuoteRequestModal } from './components/QuoteRequestModal';
 import { Footer } from './components/Footer';
 
+import { AdminLoginPage } from './components/AdminLoginPage';
+import { ShieldCheck } from 'lucide-react';
 import {
   Product,
   Category,
@@ -41,7 +43,7 @@ import {
 export default function App() {
   // Navigation / View Router State
   const [currentView, setCurrentView] = useState<
-    'home' | 'shop' | 'aerospace' | 'services' | 'service-detail' | 'about' | 'contact' | 'login' | 'register' | 'account' | 'unauthorized' | 'cart' | 'wishlist'
+    'home' | 'shop' | 'aerospace' | 'services' | 'service-detail' | 'about' | 'contact' | 'login' | 'register' | 'account' | 'unauthorized' | 'cart' | 'wishlist' | 'admin'
   >('home');
   const [accountSubSection, setAccountSubSection] = useState<'overview' | 'profile' | 'password' | 'orders' | 'wishlist' | 'addresses'>('overview');
 
@@ -49,6 +51,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
 
@@ -86,26 +89,6 @@ export default function App() {
   // Selected Item Details Modals
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
-  const launchDate = React.useMemo(() => {
-    const target = new Date();
-    target.setHours(10, 0, 0, 0);
-    return target;
-  }, []);
-  const [launchCompleted, setLaunchCompleted] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    const storedLaunch = window.localStorage.getItem('nexra_launch_completed');
-    const now = new Date();
-    return storedLaunch === 'true' || now.getTime() >= launchDate.getTime();
-  });
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const now = new Date();
-    if (launchCompleted || now.getTime() >= launchDate.getTime()) {
-      setLaunchCompleted(true);
-      window.localStorage.setItem('nexra_launch_completed', 'true');
-    }
-  }, [launchCompleted, launchDate]);
 
   // Coupon state
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
@@ -122,13 +105,32 @@ export default function App() {
   // Check current session from cookie/JWT
   const checkSession = async () => {
     try {
-      const res = await fetch('/api/auth/me');
+      const storedToken = localStorage.getItem('auth_token');
+      const storedUserStr = localStorage.getItem('user');
+      let storedUser: User | null = null;
+      if (storedUserStr) {
+        try { storedUser = JSON.parse(storedUserStr); } catch (e) {}
+      }
+
+      const res = await fetch('/api/auth/me', {
+        headers: {
+          ...(storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {}),
+          ...(storedUser ? { 'X-User-Id': storedUser.id, 'X-User-Email': storedUser.email } : {})
+        }
+      });
       const data = await res.json();
       if (data?.user) {
         setUser(data.user);
+        localStorage.setItem('user', JSON.stringify(data.user));
+      } else if (storedUser) {
+        setUser(storedUser);
       }
     } catch (err) {
       console.error('Session check failed:', err);
+      const storedUserStr = localStorage.getItem('user');
+      if (storedUserStr) {
+        try { setUser(JSON.parse(storedUserStr)); } catch (e) {}
+      }
     }
   };
 
@@ -198,6 +200,21 @@ export default function App() {
     }
   };
 
+  // Fetch all products for admin catalog and global store counts
+  const fetchAllProducts = async () => {
+    try {
+      const res = await fetch('/api/products?limit=500&includeInactive=true');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setAllProducts(data);
+      } else if (data && Array.isArray(data.products)) {
+        setAllProducts(data.products);
+      }
+    } catch (err) {
+      console.error('Error fetching all products:', err);
+    }
+  };
+
   // Fetch initial data on boot
   const fetchData = async () => {
     try {
@@ -207,6 +224,9 @@ export default function App() {
       const catRes = await fetch('/api/categories');
       const catData = await catRes.json();
       setCategories(Array.isArray(catData) ? catData : []);
+
+      // 1a. Fetch All Products
+      await fetchAllProducts();
 
       // 1b. Fetch Services
       try {
@@ -251,25 +271,26 @@ export default function App() {
   const handleLogout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user');
       setUser(null);
       setIsAdminOpen(false);
       setCurrentView('login');
       showToast('Logged out of account');
     } catch (err) {
       console.error('Logout error:', err);
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user');
+      setUser(null);
     }
   };
 
-  // Handle Open Admin Dashboard with RBAC protection
+  // Handle Open Admin Dashboard
   const handleOpenAdmin = () => {
-    if (!user) {
-      setCurrentView('unauthorized');
-      return;
+    if (window.location.pathname !== '/admin') {
+      window.history.pushState(null, '', '/admin');
     }
-    if (user.role !== 'ADMIN') {
-      setCurrentView('unauthorized');
-      return;
-    }
+    setCurrentView('admin');
     setIsAdminOpen(true);
   };
 
@@ -277,6 +298,7 @@ export default function App() {
   const fetchFilteredProducts = async () => {
     try {
       const queryParams = new URLSearchParams();
+      queryParams.append('limit', '500');
       if (filters.categoryId) queryParams.append('category', filters.categoryId);
       if (filters.subcategoryId) queryParams.append('subcategory', filters.subcategoryId);
       if (filters.searchQuery) queryParams.append('search', filters.searchQuery);
@@ -306,6 +328,21 @@ export default function App() {
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  // Listen for /admin URL route
+  useEffect(() => {
+    const handleUrlRoute = () => {
+      const path = window.location.pathname.toLowerCase();
+      if (path === '/admin' || path === '/admin/' || path.startsWith('/admin')) {
+        setCurrentView('admin');
+        setIsAdminOpen(true);
+      }
+    };
+
+    handleUrlRoute();
+    window.addEventListener('popstate', handleUrlRoute);
+    return () => window.removeEventListener('popstate', handleUrlRoute);
   }, []);
 
   useEffect(() => {
@@ -600,425 +637,470 @@ export default function App() {
   const wishlistProducts = safeProducts.filter((p) => safeWishlistIds.includes(p.id));
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 font-sans antialiased">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased flex flex-col selection:bg-indigo-500 selection:text-white">
       {/* Success Notification Toast */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white text-xs font-extrabold px-4 py-3 rounded-2xl shadow-2xl border border-indigo-500 flex items-center space-x-2">
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white text-xs font-extrabold px-4 py-3 rounded-2xl shadow-2xl border border-indigo-500 flex items-center space-x-2 animate-in slide-in-from-bottom">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {!launchCompleted ? (
-        <div className="flex items-center justify-center px-4 py-16 min-h-screen">
-          <main className="w-full max-w-4xl">
-            <HeroBanner
-              categories={categories}
-              mode="launch"
-              launchDate={launchDate}
-              onExploreProducts={() => {
-                setFilters({ ...filters, categoryId: undefined });
-                setCurrentView('shop');
-              }}
-              onRequestQuoteClick={() => {
-                setQuoteService(null);
-                setIsQuoteModalOpen(true);
-              }}
-              onLaunchComplete={() => {
-                setLaunchCompleted(true);
-                window.localStorage.setItem('nexra_launch_completed', 'true');
-                setFilters({ ...filters, categoryId: undefined });
-                setCurrentView('home');
-              }}
-            />
-          </main>
-        </div>
-      ) : (
-        <>
-          <Navbar
-            currentUser={user}
-            categories={categories}
-            cartCount={cartItems.reduce((acc, item) => acc + item.quantity, 0)}
-            wishlistCount={wishlistProductIds.length}
-            unreadEmailCount={emails.filter((e) => e.status === 'DELIVERED').length}
-            searchQuery={filters.searchQuery || ''}
-            onSearchChange={(q) => {
-              setFilters({ ...filters, searchQuery: q });
-              if (currentView !== 'home' && currentView !== 'shop') setCurrentView('shop');
-            }}
-            selectedCategoryId={filters.categoryId}
-            onCategorySelect={(catId) => {
-              setFilters({ ...filters, categoryId: catId, subcategoryId: undefined });
-              setCurrentView('shop');
-            }}
-            onOpenCart={() => setCurrentView('cart')}
-            onOpenWishlist={() => setCurrentView('wishlist')}
-            onOpenAuth={() => setCurrentView('login')}
-            onOpenProfile={() => {
-              if (user) {
-                setAccountSubSection('overview');
-                setCurrentView('account');
-              } else {
-                setCurrentView('login');
-              }
-            }}
-            onOpenEmails={() => setIsEmailInboxOpen(true)}
-            onOpenAdmin={handleOpenAdmin}
-            onOpenArchDoc={() => {}}
-            onQuickUserSwitch={async (role) => {
-              const targetEmail = role === 'ADMIN' ? 'admin@store.com' : 'alex@example.com';
-              const targetPass = role === 'ADMIN' ? 'admin123' : 'customer123';
-              try {
-                const res = await fetch('/api/auth/login', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ email: targetEmail, password: targetPass })
-                });
-                const data = await res.json();
-                if (data.user) {
-                  setUser(data.user);
-                  await fetchCart();
-                  await fetchWishlist();
-                  showToast(`Switched account to ${role} (${data.user.name})`);
-                }
-              } catch (err) {
-                console.error(err);
-              }
-            }}
-            onNavigateHome={() => setCurrentView('home')}
-            onNavigateShop={() => setCurrentView('shop')}
-            onNavigateServices={() => setCurrentView('services')}
-            onNavigateAerospace={() => {
-              setFilters({ ...filters, categoryId: 'cat-aerospace-drones', subcategoryId: undefined });
-              setCurrentView('aerospace');
-            }}
-            onNavigateAbout={() => setCurrentView('about')}
-            onNavigateContact={() => setCurrentView('contact')}
-            onRequestQuoteClick={() => {
-              setQuoteService(null);
-              setIsQuoteModalOpen(true);
-            }}
-            onNavigateLogin={() => setCurrentView('login')}
-            onNavigateRegister={() => setCurrentView('register')}
-            onNavigateAccount={() => {
-              if (user) {
-                setAccountSubSection('overview');
-                setCurrentView('account');
-              } else {
-                setCurrentView('login');
-              }
-            }}
-          />
+      {/* Global Navbar */}
+      <Navbar
+        currentUser={user}
+        categories={categories}
+        cartCount={cartItems.reduce((acc, item) => acc + item.quantity, 0)}
+        wishlistCount={wishlistProductIds.length}
+        unreadEmailCount={emails.filter((e) => e.status === 'DELIVERED').length}
+        searchQuery={filters.searchQuery || ''}
+        onSearchChange={(q) => {
+          setFilters({ ...filters, searchQuery: q });
+          if (currentView !== 'home' && currentView !== 'shop') setCurrentView('shop');
+        }}
+        selectedCategoryId={filters.categoryId}
+        onCategorySelect={(catId) => {
+          setFilters({ ...filters, categoryId: catId, subcategoryId: undefined });
+          setCurrentView('shop');
+        }}
+        onOpenCart={() => setCurrentView('cart')}
+        onOpenWishlist={() => setCurrentView('wishlist')}
+        onOpenAuth={() => setCurrentView('login')}
+        onOpenProfile={() => {
+          if (user) {
+            setAccountSubSection('overview');
+            setCurrentView('account');
+          } else {
+            setCurrentView('login');
+          }
+        }}
+        onOpenEmails={() => setIsEmailInboxOpen(true)}
+        onOpenAdmin={handleOpenAdmin}
+        onOpenArchDoc={() => {}}
+        onQuickUserSwitch={async (role) => {
+          const targetEmail = role === 'ADMIN' ? 'admin@store.com' : 'alex@example.com';
+          const targetPass = role === 'ADMIN' ? 'admin123' : 'customer123';
+          try {
+            const res = await fetch('/api/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: targetEmail, password: targetPass })
+            });
+            const data = await res.json();
+            if (data.user) {
+              setUser(data.user);
+              await fetchCart();
+              await fetchWishlist();
+              showToast(`Switched account to ${role} (${data.user.name})`);
+            }
+          } catch (err) {
+            console.error(err);
+          }
+        }}
+        onNavigateHome={() => setCurrentView('home')}
+        onNavigateShop={() => setCurrentView('shop')}
+        onNavigateServices={() => setCurrentView('services')}
+        onNavigateAerospace={() => {
+          setFilters({ ...filters, categoryId: 'cat-aerospace-drones', subcategoryId: undefined });
+          setCurrentView('aerospace');
+        }}
+        onNavigateAbout={() => setCurrentView('about')}
+        onNavigateContact={() => setCurrentView('contact')}
+        onRequestQuoteClick={() => {
+          setQuoteService(null);
+          setIsQuoteModalOpen(true);
+        }}
+        onNavigateLogin={() => setCurrentView('login')}
+        onNavigateRegister={() => setCurrentView('register')}
+        onNavigateAccount={() => {
+          if (user) {
+            setAccountSubSection('overview');
+            setCurrentView('account');
+          } else {
+            setCurrentView('login');
+          }
+        }}
+      />
 
-          {currentView === 'login' && (
-            <LoginPage
-              onLoginSuccess={(loggedUser) => {
-                setUser(loggedUser);
-                fetchCart();
-                fetchWishlist();
-                setCurrentView('home');
-                showToast(`Welcome back, ${loggedUser.name}!`);
-              }}
-              onNavigateRegister={() => setCurrentView('register')}
-              onNavigateHome={() => setCurrentView('home')}
-            />
-          )}
+      {/* VIEW ROUTER BODY */}
+      {currentView === 'login' && (
+        <LoginPage
+          onLoginSuccess={(loggedUser) => {
+            setUser(loggedUser);
+            fetchCart();
+            fetchWishlist();
+            setCurrentView('home');
+            showToast(`Welcome back, ${loggedUser.name}!`);
+          }}
+          onNavigateRegister={() => setCurrentView('register')}
+          onNavigateHome={() => setCurrentView('home')}
+        />
+      )}
 
-          {currentView === 'register' && (
-            <RegisterPage
-              onRegisterSuccess={(newUser) => {
-                setUser(newUser);
-                fetchCart();
-                fetchWishlist();
-                setCurrentView('home');
-                showToast(`Account created successfully! Welcome, ${newUser.name}`);
-              }}
-              onNavigateLogin={() => setCurrentView('login')}
-              onNavigateHome={() => setCurrentView('home')}
-            />
-          )}
+      {currentView === 'register' && (
+        <RegisterPage
+          onRegisterSuccess={(newUser) => {
+            setUser(newUser);
+            fetchCart();
+            fetchWishlist();
+            setCurrentView('home');
+            showToast(`Account created successfully! Welcome, ${newUser.name}`);
+          }}
+          onNavigateLogin={() => setCurrentView('login')}
+          onNavigateHome={() => setCurrentView('home')}
+        />
+      )}
 
-          {currentView === 'account' && (
-            <AccountDashboard
-              user={user}
-              currentSubSection={accountSubSection}
-              onNavigateSubSection={(sec) => setAccountSubSection(sec)}
-              onUpdateUserSuccess={(updatedUser) => {
-                setUser(updatedUser);
-                showToast('Account details updated');
-              }}
-              onLogout={handleLogout}
-              onNavigateHome={() => setCurrentView('home')}
-              onNavigateLogin={() => setCurrentView('login')}
-              onSelectOrderToTrack={(orderToTrack) => setTrackingOrder(orderToTrack)}
-            />
-          )}
+      {currentView === 'account' && (
+        <AccountDashboard
+          user={user}
+          currentSubSection={accountSubSection}
+          onNavigateSubSection={(sec) => setAccountSubSection(sec)}
+          onUpdateUserSuccess={(updatedUser) => {
+            setUser(updatedUser);
+            showToast('Account details updated');
+          }}
+          onLogout={handleLogout}
+          onNavigateHome={() => setCurrentView('home')}
+          onNavigateLogin={() => setCurrentView('login')}
+          onSelectOrderToTrack={(orderToTrack) => setTrackingOrder(orderToTrack)}
+        />
+      )}
 
-          {currentView === 'unauthorized' && (
-            <UnauthorizedPage
-              onNavigateHome={() => setCurrentView('home')}
-              onNavigateAccount={() => {
-                setAccountSubSection('overview');
-                setCurrentView('account');
-              }}
-              onNavigateLogin={() => setCurrentView('login')}
-            />
-          )}
+      {currentView === 'unauthorized' && (
+        <UnauthorizedPage
+          onNavigateHome={() => setCurrentView('home')}
+          onNavigateAccount={() => {
+            setAccountSubSection('overview');
+            setCurrentView('account');
+          }}
+          onNavigateLogin={() => setCurrentView('login')}
+        />
+      )}
 
-          {currentView === 'cart' && (
-            <CartPage
-              currentUser={user}
-              cartData={cartData}
-              isLoading={isCartLoading}
-              onUpdateQuantity={handleUpdateCartQuantity}
-              onRemoveItem={handleRemoveCartItem}
-              onClearCart={handleClearCart}
-              onProceedToCheckout={() => setIsCheckoutOpen(true)}
-              onNavigateHome={() => setCurrentView('home')}
-              onNavigateLogin={() => setCurrentView('login')}
-            />
-          )}
+      {currentView === 'cart' && (
+        <CartPage
+          currentUser={user}
+          cartData={cartData}
+          isLoading={isCartLoading}
+          onUpdateQuantity={handleUpdateCartQuantity}
+          onRemoveItem={handleRemoveCartItem}
+          onClearCart={handleClearCart}
+          onProceedToCheckout={() => setIsCheckoutOpen(true)}
+          onNavigateHome={() => setCurrentView('home')}
+          onNavigateLogin={() => setCurrentView('login')}
+        />
+      )}
 
-          {currentView === 'wishlist' && (
-            <WishlistPage
-              currentUser={user}
-              wishlistData={wishlistData}
-              isLoading={isWishlistLoading}
-              onRemoveFromWishlist={handleRemoveFromWishlist}
-              onAddToCart={async (productId, variantId, quantity) => {
-                const product = products.find((p) => p.id === productId);
-                if (product) {
-                  await handleAddToCart(product, variantId, quantity || 1);
-                }
-              }}
-              onClearWishlist={handleClearWishlist}
-              onNavigateHome={() => setCurrentView('home')}
-              onNavigateLogin={() => setCurrentView('login')}
-            />
-          )}
+      {currentView === 'wishlist' && (
+        <WishlistPage
+          currentUser={user}
+          wishlistData={wishlistData}
+          isLoading={isWishlistLoading}
+          onRemoveFromWishlist={handleRemoveFromWishlist}
+          onAddToCart={async (productId, variantId, quantity) => {
+            const product = products.find((p) => p.id === productId);
+            if (product) {
+              await handleAddToCart(product, variantId, quantity || 1);
+            }
+          }}
+          onClearWishlist={handleClearWishlist}
+          onNavigateHome={() => setCurrentView('home')}
+          onNavigateLogin={() => setCurrentView('login')}
+        />
+      )}
 
-          {currentView === 'about' && (
-            <AboutPage
-              onRequestQuoteClick={() => {
-                setQuoteService(null);
-                setIsQuoteModalOpen(true);
-              }}
-              onExploreServices={() => setCurrentView('services')}
-            />
-          )}
-
-          {currentView === 'contact' && (
-            <ContactPage
-              onRequestQuoteClick={() => {
-                setQuoteService(null);
-                setIsQuoteModalOpen(true);
-              }}
-            />
-          )}
-
-          {currentView === 'services' && (
-            <ServicesPage
-              services={services}
-              onSelectServiceForQuote={(srv) => {
-                setQuoteService(srv);
-                setIsQuoteModalOpen(true);
-              }}
-              onRequestQuoteClick={() => {
-                setQuoteService(null);
-                setIsQuoteModalOpen(true);
-              }}
-              onViewServiceDetail={(srv) => {
-                setSelectedService(srv);
-                setCurrentView('service-detail');
-              }}
-            />
-          )}
-
-          {currentView === 'service-detail' && selectedService && (
-            <ServiceDetailPage
-              service={selectedService}
-              allServices={services}
-              onRequestQuote={(srv) => {
-                setQuoteService(srv);
-                setIsQuoteModalOpen(true);
-              }}
-              onBackToServices={() => setCurrentView('services')}
-              onSelectService={(srv) => setSelectedService(srv)}
-            />
-          )}
-
-          {(currentView === 'aerospace' || (currentView === 'shop' && filters.categoryId === 'cat-aerospace-drones')) && (
-            <main className="flex-1 w-full">
-              <AerospacePage
-                onRequestQuote={() => {
-                  setQuoteService(null);
-                  setIsQuoteModalOpen(true);
-                }}
-                onNavigateShop={() => {
-                  setFilters({ ...filters, categoryId: undefined });
-                  setCurrentView('shop');
-                }}
-                onNavigateContact={() => setCurrentView('contact')}
-              />
-            </main>
-          )}
-
-          {currentView === 'shop' && filters.categoryId !== 'cat-aerospace-drones' && (
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex-1 w-full">
-              <ProductGrid
-                products={products}
-                categories={categories}
-                filters={filters}
-                onFilterChange={(newFilters) => setFilters(newFilters)}
-                wishlistProductIds={wishlistProductIds}
-                onToggleWishlist={handleToggleWishlist}
-                onAddToCart={handleAddToCart}
-                onQuickView={(p) => setQuickViewProduct(p)}
-              />
-            </main>
-          )}
-
-          {currentView === 'home' && (
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
-              <HeroBanner
-                categories={categories}
-                mode="home"
-                onSelectCategory={(catId) => {
-                  setFilters({ ...filters, categoryId: catId });
-                  setCurrentView('shop');
-                }}
-                onExploreProducts={() => {
-                  setFilters({ ...filters, categoryId: undefined });
-                  setCurrentView('shop');
-                }}
-                onRequestQuoteClick={() => {
-                  setQuoteService(null);
-                  setIsQuoteModalOpen(true);
-                }}
-                onExploreServices={() => setCurrentView('services')}
-              />
-            </main>
-          )}
-
-          <Footer
-            onNavigateHome={() => setCurrentView('home')}
-            onNavigateShop={() => setCurrentView('shop')}
-            onNavigateServices={() => setCurrentView('services')}
-            onNavigateAbout={() => setCurrentView('about')}
-            onNavigateContact={() => setCurrentView('contact')}
-            onRequestQuoteClick={() => {
-              setQuoteService(null);
-              setIsQuoteModalOpen(true);
-            }}
-          />
-
-          <QuoteRequestModal
-            isOpen={isQuoteModalOpen}
-            onClose={() => setIsQuoteModalOpen(false)}
-            selectedService={quoteService}
-            services={services}
-            onQuoteSubmitted={(req) => {
-              showToast(`Quote request #${req.id.slice(-6).toUpperCase()} submitted successfully!`);
-            }}
-          />
-
-          <ProductDetailsModal
-            product={quickViewProduct}
-            onClose={() => setQuickViewProduct(null)}
-            isWishlisted={quickViewProduct ? wishlistProductIds.includes(quickViewProduct.id) : false}
-            onToggleWishlist={handleToggleWishlist}
-            onAddToCart={(p, qty) => handleAddToCart(p, qty)}
-            onBuyNow={(p) => {
-              handleAddToCart(p, 1);
-              setIsCheckoutOpen(true);
-            }}
-            onSelectRelatedProduct={(p) => setQuickViewProduct(p)}
-          />
-
-          <CartDrawer
-            isOpen={isCartOpen}
-            onClose={() => setIsCartOpen(false)}
-            cartItems={cartItems}
-            onUpdateQuantity={handleUpdateCartQuantity}
-            onRemoveItem={handleRemoveCartItem}
-            appliedCoupon={appliedCoupon}
-            discountAmount={discountAmount}
-            onApplyCoupon={handleApplyCoupon}
-            onRemoveCoupon={handleRemoveCoupon}
-            onProceedToCheckout={() => setIsCheckoutOpen(true)}
-          />
-
-          <CheckoutModal
-            isOpen={isCheckoutOpen}
-            onClose={() => setIsCheckoutOpen(false)}
-            cartItems={cartItems}
-            savedAddresses={savedAddresses}
-            appliedCoupon={appliedCoupon}
-            discountAmount={discountAmount}
-            onAddNewAddress={handleAddNewAddress}
-            onOrderCompleted={handleOrderCompleted}
-          />
-
-          <OrderTrackingModal
-            order={trackingOrder}
-            onClose={() => setTrackingOrder(null)}
-          />
-
-          <WishlistModal
-            isOpen={isWishlistOpen}
-            onClose={() => setIsWishlistOpen(false)}
-            wishlistProducts={wishlistProducts}
-            onRemoveFromWishlist={handleToggleWishlist}
-            onAddToCart={handleAddToCart}
-          />
-
-          <UserProfileModal
-            isOpen={isProfileOpen}
-            user={user}
-            onClose={() => setIsProfileOpen(false)}
-            addresses={savedAddresses}
-            orders={userOrders}
-            onAddNewAddress={handleAddNewAddress}
-            onTrackOrder={(ord) => setTrackingOrder(ord)}
-            onLogout={() => {
-              handleLogout();
-              setIsProfileOpen(false);
-            }}
-          />
-
-          <AuthModal
-            isOpen={isAuthOpen}
-            onClose={() => setIsAuthOpen(false)}
-            onLoginSuccess={(u) => {
-              setUser(u);
+      {currentView === 'admin' && (
+        user?.role === 'ADMIN' ? (
+          <div className="min-h-[75vh] bg-slate-950 flex flex-col items-center justify-center p-8 text-center text-white font-sans">
+            <div className="max-w-md space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-indigo-600/30 text-indigo-400 border border-indigo-500/30 flex items-center justify-center mx-auto shadow-lg shadow-indigo-900/20">
+                <ShieldCheck className="w-10 h-10" />
+              </div>
+              <h2 className="text-2xl font-black tracking-tight">NEXRA Admin Portal</h2>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                You are currently logged in as Administrator (<span className="text-emerald-400 font-mono font-bold">{user.email}</span>).
+              </p>
+              <div className="flex flex-wrap gap-3 justify-center pt-3">
+                <button
+                  onClick={() => setIsAdminOpen(true)}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs px-5 py-3 rounded-xl transition-all cursor-pointer shadow-lg shadow-indigo-900/30 flex items-center gap-2"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Launch Admin Dashboard</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setCurrentView('home');
+                    if (window.location.pathname === '/admin') {
+                      window.history.pushState(null, '', '/');
+                    }
+                  }}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs px-5 py-3 rounded-xl transition-all cursor-pointer border border-slate-700"
+                >
+                  Back to Main Store
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <AdminLoginPage
+            onLoginSuccess={(loggedUser) => {
+              setUser(loggedUser);
+              setIsAdminOpen(true);
+              setCurrentView('admin');
               fetchCart();
               fetchWishlist();
-              setIsAuthOpen(false);
-              setIsProfileOpen(false);
-              showToast(`Welcome back, ${u.name}!`);
+              showToast(`Welcome Admin, ${loggedUser.name}!`);
+            }}
+            onNavigateHome={() => {
+              setCurrentView('home');
+              if (window.location.pathname === '/admin') {
+                window.history.pushState(null, '', '/');
+              }
             }}
           />
+        )
+      )}
 
-          <EmailInboxModal
-            isOpen={isEmailInboxOpen}
-            onClose={() => setIsEmailInboxOpen(false)}
-            emails={emails}
+      {currentView === 'about' && (
+        <AboutPage
+          onRequestQuoteClick={() => {
+            setQuoteService(null);
+            setIsQuoteModalOpen(true);
+          }}
+          onExploreServices={() => setCurrentView('services')}
+        />
+      )}
+
+      {currentView === 'contact' && (
+        <ContactPage
+          onRequestQuoteClick={() => {
+            setQuoteService(null);
+            setIsQuoteModalOpen(true);
+          }}
+        />
+      )}
+
+      {currentView === 'services' && (
+        <ServicesPage
+          services={services}
+          onSelectServiceForQuote={(srv) => {
+            setQuoteService(srv);
+            setIsQuoteModalOpen(true);
+          }}
+          onRequestQuoteClick={() => {
+            setQuoteService(null);
+            setIsQuoteModalOpen(true);
+          }}
+          onViewServiceDetail={(srv) => {
+            setSelectedService(srv);
+            setCurrentView('service-detail');
+          }}
+        />
+      )}
+
+      {currentView === 'service-detail' && selectedService && (
+        <ServiceDetailPage
+          service={selectedService}
+          allServices={services}
+          onRequestQuote={(srv) => {
+            setQuoteService(srv);
+            setIsQuoteModalOpen(true);
+          }}
+          onBackToServices={() => setCurrentView('services')}
+          onSelectService={(srv) => setSelectedService(srv)}
+        />
+      )}
+
+      {/* Home View */}
+      {currentView === 'home' && (
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
+          <HeroBanner
+            categories={categories}
+            onSelectCategory={(catId) => {
+              setFilters({ ...filters, categoryId: catId });
+              setCurrentView('shop');
+            }}
+            onExploreProducts={() => {
+              setFilters({ ...filters, categoryId: undefined });
+              setCurrentView('shop');
+            }}
+            onRequestQuoteClick={() => {
+              setQuoteService(null);
+              setIsQuoteModalOpen(true);
+            }}
+            onExploreServices={() => setCurrentView('services')}
           />
+        </main>
+      )}
 
-          <AdminDashboard
-            isOpen={isAdminOpen}
-            onClose={() => setIsAdminOpen(false)}
+      {/* Aerospace / Drones View */}
+      {(currentView === 'aerospace' || (currentView === 'shop' && filters.categoryId === 'cat-aerospace-drones')) && (
+        <main className="flex-1 w-full">
+          <AerospacePage
+            onRequestQuote={() => {
+              setQuoteService(null);
+              setIsQuoteModalOpen(true);
+            }}
+            onNavigateShop={() => {
+              setFilters({ ...filters, categoryId: undefined });
+              setCurrentView('shop');
+            }}
+            onNavigateContact={() => setCurrentView('contact')}
+          />
+        </main>
+      )}
+
+      {/* Shop View */}
+      {currentView === 'shop' && filters.categoryId !== 'cat-aerospace-drones' && (
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex-1 w-full">
+          <ProductGrid
             products={products}
             categories={categories}
-            orders={userOrders}
-            coupons={coupons}
-            onRefreshData={() => {
-              fetchData();
-              fetchFilteredProducts();
-            }}
+            filters={filters}
+            onFilterChange={(newFilters) => setFilters(newFilters)}
+            wishlistProductIds={wishlistProductIds}
+            onToggleWishlist={handleToggleWishlist}
+            onAddToCart={handleAddToCart}
+            onQuickView={(p) => setQuickViewProduct(p)}
           />
-        </>
+        </main>
       )}
+
+      {/* Global Footer */}
+      <Footer
+        onNavigateHome={() => setCurrentView('home')}
+        onNavigateShop={() => setCurrentView('shop')}
+        onNavigateServices={() => setCurrentView('services')}
+        onNavigateAbout={() => setCurrentView('about')}
+        onNavigateContact={() => setCurrentView('contact')}
+        onRequestQuoteClick={() => {
+          setQuoteService(null);
+          setIsQuoteModalOpen(true);
+        }}
+      />
+
+      {/* MODALS & DRAWERS */}
+
+      {/* Quote Request Modal */}
+      <QuoteRequestModal
+        isOpen={isQuoteModalOpen}
+        onClose={() => setIsQuoteModalOpen(false)}
+        selectedService={quoteService}
+        services={services}
+        onQuoteSubmitted={(req) => {
+          showToast(`Quote request #${req.id.slice(-6).toUpperCase()} submitted successfully!`);
+        }}
+      />
+
+      {/* MODALS & DRAWERS */}
+
+      {/* 1. Product Quick View Details Modal */}
+      <ProductDetailsModal
+        product={quickViewProduct}
+        onClose={() => setQuickViewProduct(null)}
+        isWishlisted={quickViewProduct ? wishlistProductIds.includes(quickViewProduct.id) : false}
+        onToggleWishlist={handleToggleWishlist}
+        onAddToCart={(p, qty) => handleAddToCart(p, qty)}
+        onBuyNow={(p) => {
+          handleAddToCart(p, 1);
+          setIsCheckoutOpen(true);
+        }}
+        onSelectRelatedProduct={(p) => setQuickViewProduct(p)}
+      />
+
+      {/* 2. Cart Drawer */}
+      <CartDrawer
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        cartItems={cartItems}
+        onUpdateQuantity={handleUpdateCartQuantity}
+        onRemoveItem={handleRemoveCartItem}
+        appliedCoupon={appliedCoupon}
+        discountAmount={discountAmount}
+        onApplyCoupon={handleApplyCoupon}
+        onRemoveCoupon={handleRemoveCoupon}
+        onProceedToCheckout={() => setIsCheckoutOpen(true)}
+      />
+
+      {/* 3. Checkout Modal (Razorpay + COD) */}
+      <CheckoutModal
+        isOpen={isCheckoutOpen}
+        onClose={() => setIsCheckoutOpen(false)}
+        cartItems={cartItems}
+        savedAddresses={savedAddresses}
+        appliedCoupon={appliedCoupon}
+        discountAmount={discountAmount}
+        onAddNewAddress={handleAddNewAddress}
+        onOrderCompleted={handleOrderCompleted}
+      />
+
+      {/* 4. Order Tracking Modal */}
+      <OrderTrackingModal
+        order={trackingOrder}
+        onClose={() => setTrackingOrder(null)}
+      />
+
+      {/* 5. Wishlist Modal */}
+      <WishlistModal
+        isOpen={isWishlistOpen}
+        onClose={() => setIsWishlistOpen(false)}
+        wishlistProducts={wishlistProducts}
+        onRemoveFromWishlist={handleToggleWishlist}
+        onAddToCart={handleAddToCart}
+      />
+
+      {/* 6. User Profile & Order History Modal */}
+      <UserProfileModal
+        isOpen={isProfileOpen}
+        user={user}
+        onClose={() => setIsProfileOpen(false)}
+        addresses={savedAddresses}
+        orders={userOrders}
+        onAddNewAddress={handleAddNewAddress}
+        onTrackOrder={(ord) => setTrackingOrder(ord)}
+        onLogout={() => {
+          handleLogout();
+          setIsProfileOpen(false);
+        }}
+      />
+
+      {/* 7. Auth Login / Register Modal */}
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        onLoginSuccess={(u) => {
+          setUser(u);
+          fetchCart();
+          fetchWishlist();
+          setIsAuthOpen(false);
+          setIsProfileOpen(false);
+          showToast(`Welcome back, ${u.name}!`);
+        }}
+      />
+
+      {/* 8. Resend Email Logs Inspector Modal */}
+      <EmailInboxModal
+        isOpen={isEmailInboxOpen}
+        onClose={() => setIsEmailInboxOpen(false)}
+        emails={emails}
+      />
+
+      {/* 9. Admin Dashboard */}
+      <AdminDashboard
+        isOpen={isAdminOpen}
+        onClose={() => setIsAdminOpen(false)}
+        products={allProducts.length > 0 ? allProducts : products}
+        categories={categories}
+        orders={userOrders}
+        coupons={coupons}
+        onRefreshData={() => {
+          fetchData();
+          fetchAllProducts();
+          fetchFilteredProducts();
+        }}
+      />
     </div>
   );
 }

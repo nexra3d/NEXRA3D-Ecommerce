@@ -39,6 +39,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
       if (!res.ok) {
         setErrorMsg(data.error || 'Authentication failed');
       } else {
+        if (data.token) {
+          localStorage.setItem('auth_token', data.token);
+        }
+        if (data.user) {
+          localStorage.setItem('user', JSON.stringify(data.user));
+        }
         onLoginSuccess(data.user);
         onClose();
       }
@@ -60,6 +66,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
       });
       const data = await res.json();
       if (res.ok && data.user) {
+        if (data.token) {
+          localStorage.setItem('auth_token', data.token);
+        }
+        localStorage.setItem('user', JSON.stringify(data.user));
         onLoginSuccess(data.user);
         onClose();
       } else {
@@ -95,20 +105,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
               <span>Instant 1-Click Demo Login</span>
             </span>
-            <div className="grid grid-cols-2 gap-2">
+            <div>
               <button
                 type="button"
                 onClick={() => handleQuickDemoLogin('CUSTOMER')}
-                className="bg-white hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-xs font-bold py-2 px-3 rounded-xl transition-all cursor-pointer shadow-2xs"
+                className="w-full bg-white hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-xs font-bold py-2 px-3 rounded-xl transition-all cursor-pointer shadow-2xs text-center"
               >
-                Customer Login
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemoLogin('ADMIN')}
-                className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold py-2 px-3 rounded-xl transition-all cursor-pointer shadow-2xs"
-              >
-                Admin Login
+                Customer Login (1-Click)
               </button>
             </div>
           </div>
