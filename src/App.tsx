@@ -88,7 +88,7 @@ export default function App() {
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
   const launchDate = React.useMemo(() => {
     const target = new Date();
-    target.setHours(14, 0, 0, 0);
+    target.setHours(17, 0, 0, 0);
     return target;
   }, []);
   const [launchCompleted, setLaunchCompleted] = useState(() => {

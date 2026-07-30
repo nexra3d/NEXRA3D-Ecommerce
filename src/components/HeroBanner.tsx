@@ -187,7 +187,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
       <div className="overflow-hidden rounded-[36px] bg-white border border-slate-200 p-8 sm:p-10 shadow-xl shadow-slate-200/80">
         <div className="space-y-6">
           <div>
-            <p className="text-sm uppercase tracking-[0.4em] text-cyan-600/90">Launching at 2:00 PM today</p>
+            <p className="text-sm uppercase tracking-[0.4em] text-cyan-600/90">Launching at 5:00 PM today</p>
             <h1 className="mt-3 text-4xl sm:text-5xl font-black text-slate-950 leading-tight">
               NEXRA 3D is going live soon.
             </h1>
