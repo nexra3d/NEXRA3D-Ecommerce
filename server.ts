@@ -799,12 +799,16 @@ async function requireAdminMiddleware(req: Request, res: Response, next: any) {
   next();
 }
 
-async function startServer() {
-  await seedInitialUsersInPrisma();
-  await seedInitialCatalogInPrisma();
-  await seedInitialServicesAndCMSInPrisma();
+export const app = express();
 
-  const app = express();
+async function startServer() {
+  // Trigger database seeds asynchronously without blocking Express initialization
+  Promise.all([
+    seedInitialUsersInPrisma(),
+    seedInitialCatalogInPrisma(),
+    seedInitialServicesAndCMSInPrisma()
+  ]).catch((err) => console.warn('Background Prisma seed warning:', err));
+
   const PORT = 3000;
 
   app.use(express.json());
@@ -5223,3 +5227,5 @@ async function startServer() {
 startServer().catch((err) => {
   console.error('Failed to start server:', err);
 });
+
+export default app;

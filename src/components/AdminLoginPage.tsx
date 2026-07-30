@@ -38,11 +38,18 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({
         body: JSON.stringify({ email: loginEmail, password: loginPass })
       });
 
-      const data = await res.json();
+      let data: any = {};
+      try {
+        const text = await res.text();
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { error: `Server error (${res.status} ${res.statusText})` };
+      }
+
       setLoading(false);
 
       if (!res.ok) {
-        setErrorMsg(data.error || 'Invalid admin credentials.');
+        setErrorMsg(data.error || data.message || 'Invalid admin credentials.');
       } else {
         if (data.user?.role !== 'ADMIN') {
           setErrorMsg('Access denied. This user does not have Administrator privileges.');

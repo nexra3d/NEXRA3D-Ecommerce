@@ -41,11 +41,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         body: JSON.stringify({ email, password })
       });
 
-      const data = await res.json();
+      let data: any = {};
+      try {
+        const text = await res.text();
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { error: `Server error (${res.status} ${res.statusText})` };
+      }
+
       setLoading(false);
 
       if (!res.ok) {
-        setErrorMsg(data.error || 'Invalid credentials. Please try again.');
+        setErrorMsg(data.error || data.message || 'Invalid credentials. Please try again.');
       } else {
         if (data.token) {
           localStorage.setItem('auth_token', data.token);

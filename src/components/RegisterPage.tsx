@@ -54,11 +54,18 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
         })
       });
 
-      const data = await res.json();
+      let data: any = {};
+      try {
+        const text = await res.text();
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { error: `Server error (${res.status} ${res.statusText})` };
+      }
+
       setLoading(false);
 
       if (!res.ok) {
-        setErrorMsg(data.error || 'Registration failed. Please check your inputs.');
+        setErrorMsg(data.error || data.message || 'Registration failed. Please check your inputs.');
       } else {
         if (data.token) {
           localStorage.setItem('auth_token', data.token);

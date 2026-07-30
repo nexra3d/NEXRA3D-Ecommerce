@@ -118,7 +118,11 @@ export default function App() {
           ...(storedUser ? { 'X-User-Id': storedUser.id, 'X-User-Email': storedUser.email } : {})
         }
       });
-      const data = await res.json();
+      let data: any = {};
+      try {
+        const text = await res.text();
+        data = text ? JSON.parse(text) : {};
+      } catch {}
       if (data?.user) {
         setUser(data.user);
         localStorage.setItem('user', JSON.stringify(data.user));
@@ -344,6 +348,13 @@ export default function App() {
     window.addEventListener('popstate', handleUrlRoute);
     return () => window.removeEventListener('popstate', handleUrlRoute);
   }, []);
+
+  // Ensure Admin Dashboard opens when user becomes authenticated as admin on /admin view
+  useEffect(() => {
+    if (currentView === 'admin' && user?.role === 'ADMIN') {
+      setIsAdminOpen(true);
+    }
+  }, [currentView, user]);
 
   useEffect(() => {
     fetchFilteredProducts();
