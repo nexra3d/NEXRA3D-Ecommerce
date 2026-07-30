@@ -1,0 +1,6 @@
+{
+  "name": "NEXRA 3D E-Commerce Platform",
+  "description": "NEXRA 3D industrial 3D printing, rapid prototyping, precision custom manufacturing, and dynamic e-commerce platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

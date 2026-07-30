@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+@layer base {
+  * {
+    font-family: 'Cambria', Georgia, serif !important;
+  }
+  html, body {
+    font-family: 'Cambria', Georgia, serif !important;
+  }
+}
+
+body, header, footer, input, button, select, textarea, .font-header, .font-footer {
+  font-family: 'Cambria', Georgia, serif !important;
+}
+
