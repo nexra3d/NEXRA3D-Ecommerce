@@ -59,7 +59,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
         const text = await res.text();
         data = text ? JSON.parse(text) : {};
       } catch {
-        data = { error: `Server error (${res.status} ${res.statusText})` };
+        data = {};
       }
 
       setLoading(false);

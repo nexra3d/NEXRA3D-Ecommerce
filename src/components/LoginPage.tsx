@@ -46,13 +46,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         const text = await res.text();
         data = text ? JSON.parse(text) : {};
       } catch {
-        data = { error: `Server error (${res.status} ${res.statusText})` };
+        data = {};
       }
 
       setLoading(false);
 
       if (!res.ok) {
-        setErrorMsg(data.error || data.message || 'Invalid credentials. Please try again.');
+        setErrorMsg(data.error || data.message || 'Invalid email or password. Please try again.');
       } else {
         if (data.token) {
           localStorage.setItem('auth_token', data.token);
