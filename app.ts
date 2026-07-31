@@ -1031,15 +1031,16 @@ app.use(express.json());
 
       const createdAtIso = safeToISOString(newUser.createdAt);
 
-      // Keep in-memory store in sync
+      // Keep in-memory store in sync with hashed password
       usersStore.push({
         id: newUser.id,
         name: newUser.name,
         email: newUser.email,
         phone: newUser.phone || '',
+        password: hashedPassword,
         role: newUser.role,
         createdAt: createdAtIso
-      });
+      } as any);
 
       // Sign JWT token
       const token = jwt.sign(
