@@ -1,7 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
-import fs from 'fs';
-import { execSync } from 'child_process';
 import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -313,28 +311,8 @@ async function getFormattedWishlist(userId: string) {
   };
 }
 
-function ensureDatabaseTables() {
-  try {
-    execSync('npx prisma db push --skip-generate', { stdio: 'pipe' });
-  } catch (e: any) {
-    console.warn('Prisma db push warning, recreating SQLite database file:', e?.message || e);
-    try {
-      if (fs.existsSync('./prisma/dev.db')) {
-        fs.unlinkSync('./prisma/dev.db');
-      }
-      if (fs.existsSync('./prisma/dev.db-journal')) {
-        fs.unlinkSync('./prisma/dev.db-journal');
-      }
-      execSync('npx prisma db push --skip-generate', { stdio: 'pipe' });
-    } catch (err) {
-      console.error('Failed to reset sqlite database:', err);
-    }
-  }
-}
-
 // Seed initial database records if empty
 async function seedInitialDatabase() {
-  ensureDatabaseTables();
   try {
     const adminHash = await bcrypt.hash('admin123', 10);
     const varunHash = await bcrypt.hash('Varun123', 10);
@@ -601,7 +579,7 @@ app.get('/api/health', async (req: Request, res: Response) => {
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
-      database: 'PostgreSQL/SQLite via Prisma ORM',
+      database: 'PostgreSQL via Prisma ORM',
       userCount,
       productCount
     });
@@ -1182,6 +1160,26 @@ app.get('/api/products', async (req: Request, res: Response) => {
     return res.json(formattedProducts);
   } catch (err: any) {
     console.error('GET /api/products error:', err);
+    if (INITIAL_PRODUCTS && INITIAL_PRODUCTS.length > 0) {
+      let fallback = [...INITIAL_PRODUCTS];
+      if (category) {
+        fallback = fallback.filter((p: any) => p.categoryId === category || p.category?.slug === category || p.category?.name === category);
+      }
+      if (featured === 'true') {
+        fallback = fallback.filter((p: any) => p.isFeatured);
+      }
+      if (bestSeller === 'true') {
+        fallback = fallback.filter((p: any) => p.isBestSeller);
+      }
+      if (newArrival === 'true') {
+        fallback = fallback.filter((p: any) => p.isNewArrival);
+      }
+      if (search) {
+        const q = String(search).toLowerCase();
+        fallback = fallback.filter((p: any) => p.name?.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q));
+      }
+      return res.json(fallback);
+    }
     return res.status(500).json({ error: 'Failed to fetch products' });
   }
 });
@@ -1207,11 +1205,15 @@ app.get('/api/products/:id', async (req: Request, res: Response) => {
     });
 
     if (!product) {
+      const fallback = INITIAL_PRODUCTS.find((p: any) => p.id === id || p.slug === id || p.sku === id);
+      if (fallback) return res.json(fallback);
       return res.status(404).json({ error: 'Product not found' });
     }
 
     return res.json(formatPrismaProductResponse(product));
   } catch (err: any) {
+    const fallback = INITIAL_PRODUCTS.find((p: any) => p.id === id || p.slug === id || p.sku === id);
+    if (fallback) return res.json(fallback);
     return res.status(500).json({ error: 'Failed to fetch product' });
   }
 });
@@ -1504,6 +1506,9 @@ app.get('/api/categories', async (req: Request, res: Response) => {
     });
     return res.json(categories);
   } catch (err) {
+    if (INITIAL_CATEGORIES && INITIAL_CATEGORIES.length > 0) {
+      return res.json(INITIAL_CATEGORIES);
+    }
     return res.status(500).json({ error: 'Failed to fetch categories' });
   }
 });
