@@ -1,5 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
+import fs from 'fs';
+import { execSync } from 'child_process';
 import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -311,8 +313,28 @@ async function getFormattedWishlist(userId: string) {
   };
 }
 
+function ensureDatabaseTables() {
+  try {
+    execSync('npx prisma db push --skip-generate', { stdio: 'pipe' });
+  } catch (e: any) {
+    console.warn('Prisma db push warning, recreating SQLite database file:', e?.message || e);
+    try {
+      if (fs.existsSync('./prisma/dev.db')) {
+        fs.unlinkSync('./prisma/dev.db');
+      }
+      if (fs.existsSync('./prisma/dev.db-journal')) {
+        fs.unlinkSync('./prisma/dev.db-journal');
+      }
+      execSync('npx prisma db push --skip-generate', { stdio: 'pipe' });
+    } catch (err) {
+      console.error('Failed to reset sqlite database:', err);
+    }
+  }
+}
+
 // Seed initial database records if empty
 async function seedInitialDatabase() {
+  ensureDatabaseTables();
   try {
     const adminHash = await bcrypt.hash('admin123', 10);
     const varunHash = await bcrypt.hash('Varun123', 10);
