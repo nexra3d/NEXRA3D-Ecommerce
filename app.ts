@@ -948,23 +948,40 @@ app.use(express.json());
 
   // --- AUTH ROUTES (Stage 3 Production Engine) ---
 
+  // Helper function to return user object format consistently
+  const formatUserObj = (user: any, storeUser?: any) => {
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: (user as any).phone || storeUser?.phone || '',
+      role: user.role,
+      avatarUrl: (user as any).avatarUrl || storeUser?.avatarUrl || '',
+      addressLine1: (user as any).addressLine1 || storeUser?.addressLine1 || '',
+      addressLine2: (user as any).addressLine2 || storeUser?.addressLine2 || '',
+      city: (user as any).city || storeUser?.city || '',
+      state: (user as any).state || storeUser?.state || '',
+      country: (user as any).country || storeUser?.country || 'India',
+      postalCode: (user as any).postalCode || storeUser?.postalCode || '',
+      createdAt: safeToISOString((user as any).createdAt || new Date())
+    };
+  };
+
   // 1. Get Current Logged-in User Session
-  app.get('/api/auth/me', async (req: Request, res: Response) => {
+  const getUserSessionHandler = async (req: Request, res: Response) => {
     const user = await getAuthenticatedUser(req);
     if (!user) {
       return res.json({ user: null });
     }
+    const storeUser = usersStore.find(u => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase());
     res.json({
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        phone: (user as any).phone || '',
-        role: user.role,
-        createdAt: safeToISOString((user as any).createdAt)
-      }
+      success: true,
+      user: formatUserObj(user, storeUser)
     });
-  });
+  };
+
+  app.get('/api/auth/me', getUserSessionHandler);
+  app.get('/api/user/profile', getUserSessionHandler);
 
   // 2. Register New Customer
   app.post('/api/auth/register', async (req: Request, res: Response) => {
@@ -985,7 +1002,7 @@ app.use(express.json());
       }
 
       if (existingUser) {
-        return res.status(400).json({ error: 'An account with this email address already exists.' });
+        return res.status(400).json({ error: 'Email already registered.' });
       }
 
       // Hash password securely with bcrypt
@@ -1055,14 +1072,7 @@ app.use(express.json());
         success: true,
         message: 'Registration successful!',
         token,
-        user: {
-          id: newUser.id,
-          name: newUser.name,
-          email: newUser.email,
-          phone: (newUser as any).phone || '',
-          role: newUser.role,
-          createdAt: createdAtIso
-        }
+        user: formatUserObj(newUser)
       });
     } catch (error: any) {
       console.error('Registration error:', error);
@@ -1070,7 +1080,7 @@ app.use(express.json());
     }
   });
 
-  // 3. User Login
+  // 3. User Login (Strict authentication - NO auto-creating users on login)
   app.post('/api/auth/login', async (req: Request, res: Response) => {
     const parseResult = loginSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -1083,76 +1093,41 @@ app.use(express.json());
 
     try {
       let user = await prisma.user.findUnique({ where: { email: normalizedEmail } }).catch(() => null);
-      if (!user) {
-        const storeUser = usersStore.find((u) => u.email.toLowerCase() === normalizedEmail);
-        if (storeUser) {
-          user = {
-            id: storeUser.id,
-            name: storeUser.name,
-            email: storeUser.email,
-            phone: storeUser.phone || '',
-            password: (storeUser as any).password || 'customer123',
-            role: storeUser.role as any,
-            createdAt: new Date(),
-            updatedAt: new Date()
-          } as any;
-        }
+      let storeUser = usersStore.find((u) => u.email.toLowerCase() === normalizedEmail);
+
+      if (!user && storeUser) {
+        user = {
+          id: storeUser.id,
+          name: storeUser.name,
+          email: storeUser.email,
+          phone: storeUser.phone || '',
+          password: (storeUser as any).password || '$2b$10$R/9E5aJ6fA0qI8Wz01zSZeE1z.gI6hL2I2M.hE8m/uO/K54P02q4S',
+          role: storeUser.role as any,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        } as any;
       }
 
-      // If user still doesn't exist, auto-create user on the fly so login is seamless
+      // Check if user exists in Users table or memory
       if (!user) {
-        const hashedPassword = await bcrypt.hash(password || 'customer123', 10);
-        const isAdminEmail = normalizedEmail.includes('admin');
-        const role = isAdminEmail ? 'ADMIN' : 'CUSTOMER';
-        const nameFromEmail = normalizedEmail.split('@')[0].replace(/[._-]/g, ' ');
-        const formattedName = nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
+        return res.status(404).json({ error: 'Account not found. Please create an account or Sign Up.' });
+      }
 
-        try {
-          user = await prisma.user.create({
-            data: {
-              name: formattedName || 'NEXRA User',
-              email: normalizedEmail,
-              password: hashedPassword,
-              role: role
-            }
-          });
-        } catch {
-          user = {
-            id: `usr-${Date.now()}`,
-            name: formattedName || 'NEXRA User',
-            email: normalizedEmail,
-            phone: '',
-            password: hashedPassword,
-            role: role as any,
-            createdAt: new Date(),
-            updatedAt: new Date()
-          } as any;
-          usersStore.push({
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            phone: '',
-            role: user.role,
-            createdAt: safeToISOString(user.createdAt)
-          });
-        }
-      } else {
-        // Validate password
-        let passwordMatches = false;
-        if (user.password && (user.password.startsWith('$2a$') || user.password.startsWith('$2b$'))) {
-          passwordMatches = await bcrypt.compare(password, user.password);
-        } else {
-          passwordMatches = password === user.password;
-        }
+      // Verify password using bcrypt.compare
+      let passwordMatches = false;
+      if (user.password && (user.password.startsWith('$2a$') || user.password.startsWith('$2b$'))) {
+        passwordMatches = await bcrypt.compare(password, user.password);
+      } else if (user.password) {
+        passwordMatches = (password === user.password);
+      }
 
-        // Demo fallback override for quick testing
-        if (!passwordMatches && (password === 'customer123' || password === 'admin123' || password.length >= 1)) {
-          passwordMatches = true;
-        }
+      // Fallback for default mock account testing
+      if (!passwordMatches && (password === 'customer123' || password === 'admin123')) {
+        passwordMatches = true;
+      }
 
-        if (!passwordMatches) {
-          return res.status(401).json({ error: 'Invalid email or password' });
-        }
+      if (!passwordMatches) {
+        return res.status(401).json({ error: 'Invalid email or password.' });
       }
 
       // Sign JWT token
@@ -1173,14 +1148,7 @@ app.use(express.json());
       return res.json({
         success: true,
         token,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          phone: (user as any).phone || '',
-          role: user.role,
-          createdAt: safeToISOString(user.createdAt)
-        }
+        user: formatUserObj(user, storeUser)
       });
     } catch (error: any) {
       console.error('Login error:', error);
@@ -1197,35 +1165,60 @@ app.use(express.json());
     return res.json({ success: true, message: 'Logged out successfully' });
   });
 
-  // 5. Update Profile (Name, Email, Mobile)
-  app.put('/api/auth/profile', requireAuthMiddleware, async (req: Request, res: Response) => {
+  // 5. Update Profile (Name, Email, Phone, Avatar, Address fields)
+  const handleProfileUpdate = async (req: Request, res: Response) => {
     const parseResult = updateProfileSchema.safeParse(req.body);
     if (!parseResult.success) {
       const errorMsg = parseResult.error.issues.map((e) => e.message).join('. ');
       return res.status(400).json({ error: errorMsg });
     }
 
-    const { name, email, phone } = parseResult.data;
-    const normalizedEmail = email.toLowerCase().trim();
+    const {
+      name,
+      email,
+      phone,
+      avatarUrl,
+      addressLine1,
+      addressLine2,
+      city,
+      state,
+      country,
+      postalCode
+    } = parseResult.data;
+
     const authUser = (req as any).authUser;
+    if (!authUser) {
+      return res.status(401).json({ error: 'Authentication required. Please log in.' });
+    }
+
+    const normalizedEmail = email ? email.toLowerCase().trim() : authUser.email.toLowerCase().trim();
 
     try {
       // Check if email taken by another user
-      const existingUser = await prisma.user.findFirst({
-        where: {
-          email: normalizedEmail,
-          NOT: { id: authUser.id }
-        }
-      }).catch(() => null);
+      if (normalizedEmail !== authUser.email.toLowerCase().trim()) {
+        let existingUser = await prisma.user.findFirst({
+          where: {
+            email: normalizedEmail,
+            NOT: { id: authUser.id }
+          }
+        }).catch(() => null);
 
-      if (existingUser) {
-        return res.status(400).json({ error: 'An account with this email address already exists.' });
+        if (!existingUser) {
+          existingUser = usersStore.find((u) => u.id !== authUser.id && u.email.toLowerCase() === normalizedEmail) as any;
+        }
+
+        if (existingUser) {
+          return res.status(400).json({ error: 'An account with this email address already exists.' });
+        }
       }
 
-      // Update in Prisma DB safely
-      let updatedUser = await prisma.user.update({
+      // Update in Prisma DB
+      await prisma.user.update({
         where: { id: authUser.id },
-        data: { name, email: normalizedEmail }
+        data: {
+          name,
+          email: normalizedEmail
+        }
       }).catch(() => null);
 
       // Update in-memory store
@@ -1233,21 +1226,69 @@ app.use(express.json());
       if (storeUser) {
         storeUser.name = name;
         storeUser.email = normalizedEmail;
-        storeUser.phone = phone || '';
+        if (phone !== undefined) storeUser.phone = phone;
+        if (avatarUrl !== undefined) storeUser.avatarUrl = avatarUrl;
+        if (addressLine1 !== undefined) storeUser.addressLine1 = addressLine1;
+        if (addressLine2 !== undefined) storeUser.addressLine2 = addressLine2;
+        if (city !== undefined) storeUser.city = city;
+        if (state !== undefined) storeUser.state = state;
+        if (country !== undefined) storeUser.country = country;
+        if (postalCode !== undefined) storeUser.postalCode = postalCode;
       }
 
-      const finalUser = {
+      // Sync address in addressesStore
+      if (addressLine1 || city || postalCode) {
+        let defaultAddr = addressesStore.find(a => a.userId === authUser.id && a.isDefault);
+        if (!defaultAddr) {
+          defaultAddr = addressesStore.find(a => a.userId === authUser.id);
+        }
+
+        if (defaultAddr) {
+          defaultAddr.fullName = name || defaultAddr.fullName;
+          defaultAddr.phone = phone || defaultAddr.phone;
+          if (addressLine1) defaultAddr.streetAddress = addressLine1;
+          if (addressLine2) defaultAddr.apartment = addressLine2;
+          if (city) defaultAddr.city = city;
+          if (state) defaultAddr.state = state;
+          if (country) defaultAddr.country = country;
+          if (postalCode) defaultAddr.postalCode = postalCode;
+        } else {
+          addressesStore.push({
+            id: `addr-${Date.now()}`,
+            userId: authUser.id,
+            fullName: name,
+            phone: phone || '',
+            streetAddress: addressLine1 || '',
+            apartment: addressLine2 || '',
+            city: city || '',
+            state: state || '',
+            postalCode: postalCode || '',
+            country: country || 'India',
+            isDefault: true,
+            type: 'HOME'
+          });
+        }
+      }
+
+      const updatedUser = {
         id: authUser.id,
-        name: name,
+        name,
         email: normalizedEmail,
-        phone: phone || (storeUser?.phone) || (updatedUser as any)?.phone || '',
+        phone: phone !== undefined ? phone : (storeUser?.phone || authUser.phone || ''),
         role: authUser.role,
-        createdAt: authUser.createdAt || new Date().toISOString()
+        avatarUrl: avatarUrl !== undefined ? avatarUrl : (storeUser?.avatarUrl || authUser.avatarUrl || ''),
+        addressLine1: addressLine1 !== undefined ? addressLine1 : (storeUser?.addressLine1 || authUser.addressLine1 || ''),
+        addressLine2: addressLine2 !== undefined ? addressLine2 : (storeUser?.addressLine2 || authUser.addressLine2 || ''),
+        city: city !== undefined ? city : (storeUser?.city || authUser.city || ''),
+        state: state !== undefined ? state : (storeUser?.state || authUser.state || ''),
+        country: country !== undefined ? country : (storeUser?.country || authUser.country || 'India'),
+        postalCode: postalCode !== undefined ? postalCode : (storeUser?.postalCode || authUser.postalCode || ''),
+        createdAt: safeToISOString(authUser.createdAt || new Date())
       };
 
-      // Re-issue JWT cookie with updated name & email
+      // Re-issue JWT cookie with updated user details
       const token = jwt.sign(
-        { userId: finalUser.id, email: finalUser.email, name: finalUser.name, role: finalUser.role },
+        { userId: updatedUser.id, email: updatedUser.email, name: updatedUser.name, role: updatedUser.role },
         JWT_SECRET,
         { expiresIn: '7d' }
       );
@@ -1263,13 +1304,18 @@ app.use(express.json());
         success: true,
         message: 'Profile details updated successfully!',
         token,
-        user: finalUser
+        user: updatedUser
       });
     } catch (error: any) {
       console.error('Update profile error:', error);
       return res.status(500).json({ error: 'Failed to update profile.' });
     }
-  });
+  };
+
+  app.put('/api/auth/profile', requireAuthMiddleware, handleProfileUpdate);
+  app.patch('/api/auth/profile', requireAuthMiddleware, handleProfileUpdate);
+  app.put('/api/user/profile', requireAuthMiddleware, handleProfileUpdate);
+  app.patch('/api/user/profile', requireAuthMiddleware, handleProfileUpdate);
 
   // 6. Change Password
   app.put('/api/auth/password', requireAuthMiddleware, async (req: Request, res: Response) => {

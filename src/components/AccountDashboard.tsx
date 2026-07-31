@@ -83,6 +83,13 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
   const [profileName, setProfileName] = useState(user.name);
   const [profileEmail, setProfileEmail] = useState(user.email);
   const [profilePhone, setProfilePhone] = useState(user.phone || '');
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState(user.avatarUrl || '');
+  const [profileAddressLine1, setProfileAddressLine1] = useState(user.addressLine1 || '');
+  const [profileAddressLine2, setProfileAddressLine2] = useState(user.addressLine2 || '');
+  const [profileCity, setProfileCity] = useState(user.city || '');
+  const [profileState, setProfileState] = useState(user.state || '');
+  const [profileCountry, setProfileCountry] = useState(user.country || 'India');
+  const [profilePostalCode, setProfilePostalCode] = useState(user.postalCode || '');
   const [profileSuccessMsg, setProfileSuccessMsg] = useState('');
   const [profileErrorMsg, setProfileErrorMsg] = useState('');
   const [profileLoading, setProfileLoading] = useState(false);
@@ -92,6 +99,13 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
       setProfileName(user.name || '');
       setProfileEmail(user.email || '');
       setProfilePhone(user.phone || '');
+      setProfileAvatarUrl(user.avatarUrl || '');
+      setProfileAddressLine1(user.addressLine1 || '');
+      setProfileAddressLine2(user.addressLine2 || '');
+      setProfileCity(user.city || '');
+      setProfileState(user.state || '');
+      setProfileCountry(user.country || 'India');
+      setProfilePostalCode(user.postalCode || '');
     }
   }, [user]);
 
@@ -335,7 +349,14 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
     const validation = updateProfileSchema.safeParse({
       name: profileName,
       email: profileEmail,
-      phone: profilePhone
+      phone: profilePhone,
+      avatarUrl: profileAvatarUrl,
+      addressLine1: profileAddressLine1,
+      addressLine2: profileAddressLine2,
+      city: profileCity,
+      state: profileState,
+      country: profileCountry,
+      postalCode: profilePostalCode
     });
 
     if (!validation.success) {
@@ -347,7 +368,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
 
     try {
       const storedToken = localStorage.getItem('auth_token');
-      const res = await fetch('/api/auth/profile', {
+      const res = await fetch('/api/user/profile', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -358,6 +379,13 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
           name: profileName,
           email: profileEmail,
           phone: profilePhone,
+          avatarUrl: profileAvatarUrl,
+          addressLine1: profileAddressLine1,
+          addressLine2: profileAddressLine2,
+          city: profileCity,
+          state: profileState,
+          country: profileCountry,
+          postalCode: profilePostalCode,
           userId: user?.id,
           userEmail: user?.email
         })
@@ -376,7 +404,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
           localStorage.setItem('user', JSON.stringify(data.user));
           onUpdateUserSuccess(data.user);
         }
-        setProfileSuccessMsg('Profile updated successfully!');
+        setProfileSuccessMsg('Profile details updated successfully!');
       }
     } catch (err) {
       setProfileLoading(false);
@@ -701,6 +729,109 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                       onChange={(e) => setProfilePhone(e.target.value)}
                       className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl pl-10 pr-4 py-3 text-xs text-slate-900 font-medium transition-all focus:outline-hidden"
                     />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-700 mb-1.5">
+                    Profile Picture URL
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://example.com/avatar.jpg"
+                    value={profileAvatarUrl}
+                    onChange={(e) => setProfileAvatarUrl(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl px-4 py-3 text-xs text-slate-900 font-medium transition-all focus:outline-hidden"
+                  />
+                </div>
+
+                <div className="pt-2 border-t border-slate-100">
+                  <h3 className="text-xs font-black text-slate-900 mb-3 flex items-center space-x-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Primary Address Information</span>
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                        Address Line 1 (Street Address)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Flat / Building No / Street"
+                        value={profileAddressLine1}
+                        onChange={(e) => setProfileAddressLine1(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl px-4 py-2.5 text-xs text-slate-900 font-medium transition-all focus:outline-hidden"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                        Address Line 2 (Apartment, Suite, Landmark)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Apartment, Suite, Landmark (Optional)"
+                        value={profileAddressLine2}
+                        onChange={(e) => setProfileAddressLine2(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl px-4 py-2.5 text-xs text-slate-900 font-medium transition-all focus:outline-hidden"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                          City
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Bengaluru"
+                          value={profileCity}
+                          onChange={(e) => setProfileCity(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl px-4 py-2.5 text-xs text-slate-900 font-medium transition-all focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                          State
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Karnataka"
+                          value={profileState}
+                          onChange={(e) => setProfileState(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl px-4 py-2.5 text-xs text-slate-900 font-medium transition-all focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                          Postal / Pin Code
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="560001"
+                          value={profilePostalCode}
+                          onChange={(e) => setProfilePostalCode(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl px-4 py-2.5 text-xs text-slate-900 font-medium transition-all focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                          Country
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="India"
+                          value={profileCountry}
+                          onChange={(e) => setProfileCountry(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl px-4 py-2.5 text-xs text-slate-900 font-medium transition-all focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 

@@ -23,7 +23,16 @@ export const loginSchema = z.object({
 export const updateProfileSchema = z.object({
   name: z.string().trim().min(2, 'Full name must be at least 2 characters'),
   email: z.string().trim().toLowerCase().email('Please enter a valid email address'),
-  phone: z.string().trim().optional().or(z.literal(''))
+  phone: z.string().trim().optional().or(z.literal('')),
+  avatarUrl: z.string().trim().optional().or(z.literal('')),
+  addressLine1: z.string().trim().optional().or(z.literal('')),
+  addressLine2: z.string().trim().optional().or(z.literal('')),
+  city: z.string().trim().optional().or(z.literal('')),
+  state: z.string().trim().optional().or(z.literal('')),
+  country: z.string().trim().optional().or(z.literal('')),
+  postalCode: z.string().trim().optional().or(z.literal('')),
+  userId: z.string().optional(),
+  userEmail: z.string().optional()
 });
 
 export const changePasswordSchema = z
