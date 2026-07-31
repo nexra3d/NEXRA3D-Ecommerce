@@ -304,15 +304,15 @@ export const CartPage: React.FC<CartPageProps> = ({
                       {/* Pricing */}
                       <div className="flex items-baseline space-x-2 pt-1">
                         <span className="text-base font-black text-slate-900">
-                          ₹{item.unitPrice.toLocaleString('en-IN')}
+                          ₹{Number(item.unitPrice || 0).toLocaleString('en-IN')}
                         </span>
                         {item.unitMrp > item.unitPrice && (
                           <span className="text-xs text-slate-400 line-through">
-                            ₹{item.unitMrp.toLocaleString('en-IN')}
+                            ₹{Number(item.unitMrp || 0).toLocaleString('en-IN')}
                           </span>
                         )}
                         <span className="text-[11px] font-semibold text-slate-500">
-                          × {item.quantity} = <strong className="text-indigo-600 font-extrabold">₹{item.lineTotal.toLocaleString('en-IN')}</strong>
+                          × {item.quantity} = <strong className="text-indigo-600 font-extrabold">₹{Number(item.lineTotal || 0).toLocaleString('en-IN')}</strong>
                         </span>
                       </div>
                     </div>
@@ -365,12 +365,12 @@ export const CartPage: React.FC<CartPageProps> = ({
             <div className="space-y-3 text-xs text-slate-600">
               <div className="flex justify-between">
                 <span>Subtotal ({cartData?.totalItems || 0} items)</span>
-                <span className="font-bold text-slate-900">₹{subtotal.toLocaleString('en-IN')}</span>
+                <span className="font-bold text-slate-900">₹{Number(subtotal || 0).toLocaleString('en-IN')}</span>
               </div>
 
               <div className="flex justify-between">
                 <span>Estimated GST Tax (18%)</span>
-                <span className="font-bold text-slate-900">₹{tax.toLocaleString('en-IN')}</span>
+                <span className="font-bold text-slate-900">₹{Number(tax || 0).toLocaleString('en-IN')}</span>
               </div>
 
               <div className="flex justify-between">
@@ -387,14 +387,14 @@ export const CartPage: React.FC<CartPageProps> = ({
               {shippingFee > 0 && (
                 <div className="bg-indigo-50 text-indigo-800 p-2.5 rounded-xl text-[11px] font-semibold flex items-center gap-1.5">
                   <Info className="w-3.5 h-3.5 shrink-0 text-indigo-600" />
-                  <span>Add ₹{(1000 - subtotal).toLocaleString('en-IN')} more for FREE shipping!</span>
+                  <span>Add ₹{Number(1000 - subtotal || 0).toLocaleString('en-IN')} more for FREE shipping!</span>
                 </div>
               )}
 
               <div className="pt-3 border-t border-slate-200 flex justify-between items-baseline">
                 <span className="text-sm font-black text-slate-900">Total Amount</span>
                 <span className="text-xl font-black text-indigo-600">
-                  ₹{grandTotal.toLocaleString('en-IN')}
+                  ₹{Number(grandTotal || 0).toLocaleString('en-IN')}
                 </span>
               </div>
             </div>

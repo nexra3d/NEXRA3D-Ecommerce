@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { updateProfileSchema, changePasswordSchema } from '../lib/validation';
 import { User, Order, Address } from '../types';
+import { apiFetch, setStoredAuth } from '../lib/api';
 
 interface AccountDashboardProps {
   user: User | null;
@@ -118,7 +119,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
     if (!user) return;
     setOrdersLoading(true);
     try {
-      const res = await fetch(`/api/orders?userId=${user.id}`);
+      const res = await apiFetch(`/api/orders?userId=${user.id}`);
       if (res.ok) {
         const data = await res.json();
         setUserOrders(data);
@@ -160,7 +161,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
     if (!user) return;
     setAddressesLoading(true);
     try {
-      const res = await fetch(`/api/addresses?userId=${user.id}`);
+      const res = await apiFetch(`/api/addresses?userId=${user.id}`);
       if (res.ok) {
         const data = await res.json();
         setUserAddresses(data);
@@ -296,9 +297,8 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
   const handleRetryPayment = async (order: Order) => {
     setRetryingOrderId(order.id);
     try {
-      const res = await fetch(`/api/orders/${order.id}/retry-payment`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+      const res = await apiFetch(`/api/orders/${order.id}/retry-payment`, {
+        method: 'POST'
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -307,9 +307,8 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
       }
 
       // Automatically verify simulated retry payment
-      const verifyRes = await fetch('/api/payments/razorpay/verify', {
+      const verifyRes = await apiFetch('/api/payments/razorpay/verify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orderId: order.id,
           razorpay_order_id: data.razorpayOrderId,
@@ -367,17 +366,11 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
     setProfileLoading(true);
 
     try {
-      const storedToken = localStorage.getItem('auth_token');
-      const res = await fetch('/api/user/profile', {
+      const res = await apiFetch('/api/user/profile', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {}),
-          ...(user ? { 'X-User-Id': user.id, 'X-User-Email': user.email } : {})
-        },
         body: JSON.stringify({
           name: profileName,
-          email: profileEmail,
+          email: user?.email,
           phone: profilePhone,
           avatarUrl: profileAvatarUrl,
           addressLine1: profileAddressLine1,
@@ -385,9 +378,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
           city: profileCity,
           state: profileState,
           country: profileCountry,
-          postalCode: profilePostalCode,
-          userId: user?.id,
-          userEmail: user?.email
+          postalCode: profilePostalCode
         })
       });
 
@@ -397,11 +388,8 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
       if (!res.ok) {
         setProfileErrorMsg(data.error || 'Failed to update profile.');
       } else {
-        if (data.token) {
-          localStorage.setItem('auth_token', data.token);
-        }
+        setStoredAuth(data.token, data.user);
         if (data.user) {
-          localStorage.setItem('user', JSON.stringify(data.user));
           onUpdateUserSuccess(data.user);
         }
         setProfileSuccessMsg('Profile details updated successfully!');
@@ -432,20 +420,12 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
     setPasswordLoading(true);
 
     try {
-      const storedToken = localStorage.getItem('auth_token');
-      const res = await fetch('/api/auth/password', {
+      const res = await apiFetch('/api/auth/password', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {}),
-          ...(user ? { 'X-User-Id': user.id, 'X-User-Email': user.email } : {})
-        },
         body: JSON.stringify({
           currentPassword,
           newPassword,
-          confirmNewPassword,
-          userId: user?.id,
-          userEmail: user?.email
+          confirmNewPassword
         })
       });
 
@@ -455,9 +435,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
       if (!res.ok) {
         setPasswordErrorMsg(data.error || 'Failed to update password.');
       } else {
-        if (data.token) {
-          localStorage.setItem('auth_token', data.token);
-        }
+        setStoredAuth(data.token, user);
         setPasswordSuccessMsg('Your password has been changed successfully!');
         setCurrentPassword('');
         setNewPassword('');
@@ -702,18 +680,20 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
 
                 <div>
                   <label className="block text-xs font-extrabold text-slate-700 mb-1.5">
-                    Email Address
+                    Email Address (Account Credential)
                   </label>
                   <div className="relative">
                     <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                     <input
                       type="email"
-                      required
-                      value={profileEmail}
-                      onChange={(e) => setProfileEmail(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl pl-10 pr-4 py-3 text-xs text-slate-900 font-medium transition-all focus:outline-hidden"
+                      disabled
+                      value={user.email}
+                      className="w-full bg-slate-100 border border-slate-200 text-slate-500 rounded-xl pl-10 pr-4 py-3 text-xs font-medium cursor-not-allowed"
                     />
                   </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Your account email address is locked to maintain secure authentication and login access.
+                  </p>
                 </div>
 
                 <div>
@@ -1027,7 +1007,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
 
                         <div>
                           <span className="text-slate-400 text-[10px] uppercase tracking-wider block font-bold">Total Amount</span>
-                          <span className="font-black text-indigo-600 text-sm">₹{order.totalAmount.toLocaleString('en-IN')}</span>
+                          <span className="font-black text-indigo-600 text-sm">₹{Number(order.totalAmount || 0).toLocaleString('en-IN')}</span>
                         </div>
                       </div>
 

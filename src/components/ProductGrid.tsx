@@ -155,9 +155,9 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
                 >
                   All Categories
                 </button>
-                {displayCategories.map((c) => (
+                {displayCategories.map((c, idx) => (
                   <button
-                    key={c.id}
+                    key={c.id ? `cat-${c.id}-${idx}` : `cat-${idx}`}
                     onClick={() => onFilterChange({ ...filters, categoryId: c.id, subcategoryId: undefined })}
                     className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                       filters.categoryId === c.id ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-600 hover:bg-slate-50'
@@ -184,9 +184,9 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
                   >
                     All Subcategories
                   </button>
-                  {selectedCategoryObj.subcategories.map((sub) => (
+                  {selectedCategoryObj.subcategories.map((sub, idx) => (
                     <button
-                      key={sub.id}
+                      key={sub.id ? `sub-${sub.id}-${idx}` : `sub-${idx}`}
                       onClick={() => onFilterChange({ ...filters, subcategoryId: sub.id })}
                       className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                         filters.subcategoryId === sub.id ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-600 hover:bg-slate-50'
@@ -234,10 +234,10 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
                   Brands
                 </label>
                 <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                  {availableBrands.map((brandName) => {
+                  {availableBrands.map((brandName, idx) => {
                     const isChecked = (filters.brands || []).includes(brandName);
                     return (
-                      <label key={brandName} className="flex items-center space-x-2 cursor-pointer text-xs text-slate-700 hover:text-slate-900">
+                      <label key={brandName ? `brand-${brandName}-${idx}` : `brand-${idx}`} className="flex items-center space-x-2 cursor-pointer text-xs text-slate-700 hover:text-slate-900">
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -281,9 +281,9 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
         <div className="lg:col-span-3">
           {safeProducts.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-              {safeProducts.map((p) => (
+              {safeProducts.map((p, idx) => (
                 <ProductCard
-                  key={p.id}
+                  key={p.id ? `prod-${p.id}-${idx}` : `prod-${idx}`}
                   product={p}
                   isWishlisted={safeWishlistIds.includes(p.id)}
                   onToggleWishlist={onToggleWishlist}

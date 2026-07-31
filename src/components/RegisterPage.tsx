@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { User as UserIcon, Mail, Lock, Eye, EyeOff, UserPlus, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react';
 import { registerSchema } from '../lib/validation';
 import { User } from '../types';
+import { setStoredAuth } from '../lib/api';
 
 interface RegisterPageProps {
   onRegisterSuccess: (user: User) => void;
@@ -67,12 +68,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
       if (!res.ok) {
         setErrorMsg(data.error || data.message || 'Registration failed. Please check your inputs.');
       } else {
-        if (data.token) {
-          localStorage.setItem('auth_token', data.token);
-        }
-        if (data.user) {
-          localStorage.setItem('user', JSON.stringify(data.user));
-        }
+        setStoredAuth(data.token, data.user);
         onRegisterSuccess(data.user);
       }
     } catch (err) {

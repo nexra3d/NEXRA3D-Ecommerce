@@ -103,7 +103,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                     <span className="text-[10px] font-bold text-indigo-600 uppercase">{item.product.brand}</span>
                     <h4 className="text-xs font-bold text-slate-900 truncate">{item.product.title}</h4>
                     <span className="text-xs font-black text-slate-900 block">
-                      ₹{itemPrice.toLocaleString('en-IN')}
+                      ₹{Number(itemPrice || 0).toLocaleString('en-IN')}
                     </span>
 
                     <div className="flex items-center justify-between pt-1">
@@ -207,11 +207,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             <div className="space-y-1.5 text-xs text-slate-600 border-t border-slate-200/80 pt-3">
               <div className="flex justify-between">
                 <span>Items Subtotal</span>
-                <span className="font-bold text-slate-800">₹{subtotal.toLocaleString('en-IN')}</span>
+                <span className="font-bold text-slate-800">₹{Number(subtotal || 0).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between">
                 <span>Estimated GST Tax (18%)</span>
-                <span className="font-bold text-slate-800">₹{tax.toLocaleString('en-IN')}</span>
+                <span className="font-bold text-slate-800">₹{Number(tax || 0).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between">
                 <span>Shipping Fee</span>
@@ -222,13 +222,13 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               {discountAmount > 0 && (
                 <div className="flex justify-between text-emerald-600 font-bold">
                   <span>Coupon Discount</span>
-                  <span>-₹{discountAmount.toLocaleString('en-IN')}</span>
+                  <span>-₹{Number(discountAmount || 0).toLocaleString('en-IN')}</span>
                 </div>
               )}
 
               <div className="flex justify-between text-base font-black text-slate-900 pt-2 border-t border-slate-200">
                 <span>Grand Total</span>
-                <span className="text-indigo-600">₹{grandTotal.toLocaleString('en-IN')}</span>
+                <span className="text-indigo-600">₹{Number(grandTotal || 0).toLocaleString('en-IN')}</span>
               </div>
             </div>
 

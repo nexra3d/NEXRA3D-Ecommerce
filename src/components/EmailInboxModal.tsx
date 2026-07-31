@@ -47,7 +47,7 @@ export const EmailInboxModal: React.FC<EmailInboxModalProps> = ({ isOpen, onClos
                 <div className="text-[11px] text-slate-500 flex items-center space-x-3">
                   <span>To: <strong>{eml.toEmail}</strong></span>
                   <span>•</span>
-                  <span>Sent: {new Date(eml.sentAt).toLocaleString()}</span>
+                  <span>Sent: {new Date(eml.sentAt || Date.now()).toLocaleString()}</span>
                 </div>
 
                 <div className="bg-white border border-slate-200 rounded-xl p-3 text-slate-700 whitespace-pre-wrap leading-relaxed font-sans">

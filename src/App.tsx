@@ -27,6 +27,7 @@ import { Footer } from './components/Footer';
 
 import { AdminLoginPage } from './components/AdminLoginPage';
 import { ShieldCheck } from 'lucide-react';
+import { apiFetch, getStoredToken, getStoredUser, clearStoredAuth, setStoredAuth } from './lib/api';
 import {
   Product,
   Category,
@@ -105,19 +106,9 @@ export default function App() {
   // Check current session from cookie/JWT
   const checkSession = async () => {
     try {
-      const storedToken = localStorage.getItem('auth_token');
-      const storedUserStr = localStorage.getItem('user');
-      let storedUser: User | null = null;
-      if (storedUserStr) {
-        try { storedUser = JSON.parse(storedUserStr); } catch (e) {}
-      }
+      const storedUser = getStoredUser();
 
-      const res = await fetch('/api/auth/me', {
-        headers: {
-          ...(storedToken ? { 'Authorization': `Bearer ${storedToken}` } : {}),
-          ...(storedUser ? { 'X-User-Id': storedUser.id, 'X-User-Email': storedUser.email } : {})
-        }
-      });
+      const res = await apiFetch('/api/auth/me');
       let data: any = {};
       try {
         const text = await res.text();
@@ -125,15 +116,15 @@ export default function App() {
       } catch {}
       if (data?.user) {
         setUser(data.user);
-        localStorage.setItem('user', JSON.stringify(data.user));
+        setStoredAuth(data.token, data.user);
       } else if (storedUser) {
         setUser(storedUser);
       }
     } catch (err) {
       console.error('Session check failed:', err);
-      const storedUserStr = localStorage.getItem('user');
-      if (storedUserStr) {
-        try { setUser(JSON.parse(storedUserStr)); } catch (e) {}
+      const storedUser = getStoredUser();
+      if (storedUser) {
+        setUser(storedUser);
       }
     }
   };
@@ -141,30 +132,37 @@ export default function App() {
   const fetchCart = async () => {
     setIsCartLoading(true);
     try {
-      const res = await fetch('/api/cart');
+      const res = await apiFetch('/api/cart');
       if (res.ok) {
         const data = await res.json();
         setCartData(data);
         if (data && Array.isArray(data.items)) {
-          const legacyItems = data.items.map((i: any) => ({
-            id: i.id,
-            productId: i.productId,
-            product: {
-              id: i.product.id,
-              title: i.product.name,
-              brand: i.product.category?.name || 'Brand',
-              price: i.unitPrice,
-              salePrice: i.unitPrice,
-              mrp: i.unitMrp,
-              stock: i.availableStock,
-              stockQuantity: i.availableStock,
-              images: [i.product.imageUrl],
-              imageUrl: i.product.imageUrl
-            },
-            quantity: i.quantity,
-            variantId: i.variantId,
-            variant: i.variant
-          }));
+          const legacyItems = data.items.map((i: any) => {
+            const p = i.product || {};
+            const unitPrice = i.unitPrice ?? i.price ?? p.price ?? 0;
+            const unitMrp = i.unitMrp ?? i.mrp ?? p.mrp ?? unitPrice;
+            const availableStock = i.availableStock ?? p.stockQuantity ?? p.stock ?? 100;
+
+            return {
+              id: i.id,
+              productId: i.productId,
+              product: {
+                id: p.id || i.productId,
+                title: p.name || p.title || i.title || 'Product',
+                brand: p.category?.name || p.brand || 'Brand',
+                price: unitPrice,
+                salePrice: unitPrice,
+                mrp: unitMrp,
+                stock: availableStock,
+                stockQuantity: availableStock,
+                images: p.images && p.images.length > 0 ? p.images : [p.imageUrl || i.imageUrl || ''],
+                imageUrl: p.imageUrl || i.imageUrl || ''
+              },
+              quantity: i.quantity,
+              variantId: i.variantId,
+              variant: i.variant
+            };
+          });
           setCartItems(legacyItems);
         } else {
           setCartItems([]);
@@ -183,7 +181,7 @@ export default function App() {
   const fetchWishlist = async () => {
     setIsWishlistLoading(true);
     try {
-      const res = await fetch('/api/wishlist');
+      const res = await apiFetch('/api/wishlist');
       if (res.ok) {
         const data = await res.json();
         setWishlistData(data);
@@ -204,11 +202,26 @@ export default function App() {
     }
   };
 
+  // Helper for safe JSON fetching
+  const safeFetchJson = async (url: string, options?: RequestInit) => {
+    try {
+      const res = await apiFetch(url, options);
+      if (!res.ok) return null;
+      const contentType = res.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        return null;
+      }
+      return await res.json();
+    } catch (e) {
+      console.error(`Fetch error for ${url}:`, e);
+      return null;
+    }
+  };
+
   // Fetch all products for admin catalog and global store counts
   const fetchAllProducts = async () => {
     try {
-      const res = await fetch('/api/products?limit=500&includeInactive=true');
-      const data = await res.json();
+      const data = await safeFetchJson('/api/products?limit=500&includeInactive=true');
       if (Array.isArray(data)) {
         setAllProducts(data);
       } else if (data && Array.isArray(data.products)) {
@@ -225,30 +238,22 @@ export default function App() {
       await checkSession();
 
       // 1. Fetch Categories
-      const catRes = await fetch('/api/categories');
-      const catData = await catRes.json();
+      const catData = await safeFetchJson('/api/categories');
       setCategories(Array.isArray(catData) ? catData : []);
 
       // 1a. Fetch All Products
       await fetchAllProducts();
 
       // 1b. Fetch Services
-      try {
-        const srvRes = await fetch('/api/services');
-        const srvData = await srvRes.json();
-        setServices(Array.isArray(srvData) ? srvData : []);
-      } catch (e) {
-        console.error('Error fetching services:', e);
-      }
+      const srvData = await safeFetchJson('/api/services');
+      setServices(Array.isArray(srvData) ? srvData : []);
 
       // 2. Fetch Coupons
-      const coupRes = await fetch('/api/coupons');
-      const coupData = await coupRes.json();
+      const coupData = await safeFetchJson('/api/coupons');
       setCoupons(Array.isArray(coupData) ? coupData : []);
 
       // 3. Fetch Emails
-      const emlRes = await fetch('/api/emails');
-      const emlData = await emlRes.json();
+      const emlData = await safeFetchJson('/api/emails');
       setEmails(Array.isArray(emlData) ? emlData : []);
 
       // 4. Fetch Cart
@@ -258,13 +263,11 @@ export default function App() {
       await fetchWishlist();
 
       // 6. Fetch User Addresses
-      const addrRes = await fetch('/api/addresses');
-      const addrData = await addrRes.json();
+      const addrData = await safeFetchJson('/api/addresses');
       setSavedAddresses(Array.isArray(addrData) ? addrData : []);
 
       // 7. Fetch Orders
-      const ordRes = await fetch('/api/orders');
-      const ordData = await ordRes.json();
+      const ordData = await safeFetchJson('/api/orders');
       setUserOrders(Array.isArray(ordData) ? ordData : []);
     } catch (err) {
       console.error('Error initializing app state:', err);
@@ -274,17 +277,15 @@ export default function App() {
   // Handle Logout
   const handleLogout = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('user');
+      await apiFetch('/api/auth/logout', { method: 'POST' });
+      clearStoredAuth();
       setUser(null);
       setIsAdminOpen(false);
       setCurrentView('login');
       showToast('Logged out of account');
     } catch (err) {
       console.error('Logout error:', err);
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('user');
+      clearStoredAuth();
       setUser(null);
     }
   };
@@ -378,9 +379,8 @@ export default function App() {
   const handleToggleWishlist = async (productOrId: Product | string) => {
     const prodId = typeof productOrId === 'string' ? productOrId : productOrId.id;
     try {
-      const res = await fetch('/api/wishlist/toggle', {
+      const res = await apiFetch('/api/wishlist/toggle', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productId: prodId })
       });
       const data = await res.json();
@@ -401,7 +401,7 @@ export default function App() {
 
   const handleRemoveFromWishlist = async (productId: string) => {
     try {
-      const res = await fetch(`/api/wishlist/items/${productId}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/wishlist/items/${productId}`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) {
         showToast(data.error || 'Failed to remove from wishlist');
@@ -421,7 +421,7 @@ export default function App() {
 
   const handleClearWishlist = async () => {
     try {
-      const res = await fetch('/api/wishlist', { method: 'DELETE' });
+      const res = await apiFetch('/api/wishlist', { method: 'DELETE' });
       const data = await res.json();
       setWishlistData(data);
       setWishlistProductIds([]);
@@ -446,9 +446,8 @@ export default function App() {
     }
 
     try {
-      const res = await fetch('/api/cart/items', {
+      const res = await apiFetch('/api/cart/items', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productId: prodId, variantId: actualVariantId, quantity: actualQty })
       });
       const data = await res.json();
@@ -494,9 +493,8 @@ export default function App() {
     }
 
     try {
-      const res = await fetch(`/api/cart/items/${targetItemId}`, {
+      const res = await apiFetch(`/api/cart/items/${targetItemId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ quantity })
       });
       const data = await res.json();
@@ -541,7 +539,7 @@ export default function App() {
     }
 
     try {
-      const res = await fetch(`/api/cart/items/${targetItemId}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/cart/items/${targetItemId}`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) {
         showToast(data.error || 'Failed to remove item');
@@ -579,7 +577,7 @@ export default function App() {
 
   const handleClearCart = async () => {
     try {
-      const res = await fetch('/api/cart', { method: 'DELETE' });
+      const res = await apiFetch('/api/cart', { method: 'DELETE' });
       const data = await res.json();
       setCartData(data);
       setCartItems([]);
@@ -598,9 +596,8 @@ export default function App() {
     );
 
     try {
-      const res = await fetch('/api/coupons/apply', {
+      const res = await apiFetch('/api/coupons/apply', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, cartTotal: subtotal })
       });
       const data = await res.json();
@@ -621,12 +618,19 @@ export default function App() {
     setDiscountAmount(0);
   };
 
+  const handleProceedToCheckout = () => {
+    if (!user && !getStoredToken()) {
+      setIsAuthOpen(true);
+      return;
+    }
+    setIsCheckoutOpen(true);
+  };
+
   // Address Actions
   const handleAddNewAddress = async (addr: Partial<Address>) => {
     try {
-      const res = await fetch('/api/addresses', {
+      const res = await apiFetch('/api/addresses', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(addr)
       });
       const created = await res.json();
@@ -806,7 +810,7 @@ export default function App() {
           onUpdateQuantity={handleUpdateCartQuantity}
           onRemoveItem={handleRemoveCartItem}
           onClearCart={handleClearCart}
-          onProceedToCheckout={() => setIsCheckoutOpen(true)}
+          onProceedToCheckout={handleProceedToCheckout}
           onNavigateHome={() => setCurrentView('home')}
           onNavigateLogin={() => setCurrentView('login')}
         />
@@ -1025,7 +1029,7 @@ export default function App() {
         onAddToCart={(p, qty) => handleAddToCart(p, qty)}
         onBuyNow={(p) => {
           handleAddToCart(p, 1);
-          setIsCheckoutOpen(true);
+          handleProceedToCheckout();
         }}
         onSelectRelatedProduct={(p) => setQuickViewProduct(p)}
       />
@@ -1041,7 +1045,7 @@ export default function App() {
         discountAmount={discountAmount}
         onApplyCoupon={handleApplyCoupon}
         onRemoveCoupon={handleRemoveCoupon}
-        onProceedToCheckout={() => setIsCheckoutOpen(true)}
+        onProceedToCheckout={handleProceedToCheckout}
       />
 
       {/* 3. Checkout Modal (Razorpay + COD) */}
@@ -1054,6 +1058,11 @@ export default function App() {
         discountAmount={discountAmount}
         onAddNewAddress={handleAddNewAddress}
         onOrderCompleted={handleOrderCompleted}
+        currentUser={user}
+        onOpenAuth={() => {
+          setIsCheckoutOpen(false);
+          setIsAuthOpen(true);
+        }}
       />
 
       {/* 4. Order Tracking Modal */}

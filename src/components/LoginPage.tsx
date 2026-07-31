@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff, LogIn, Sparkles, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
 import { loginSchema } from '../lib/validation';
 import { User } from '../types';
+import { setStoredAuth } from '../lib/api';
 
 interface LoginPageProps {
   onLoginSuccess: (user: User) => void;
@@ -54,24 +55,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       if (!res.ok) {
         setErrorMsg(data.error || data.message || 'Invalid email or password. Please try again.');
       } else {
-        if (data.token) {
-          localStorage.setItem('auth_token', data.token);
-        }
-        if (data.user) {
-          localStorage.setItem('user', JSON.stringify(data.user));
-        }
+        setStoredAuth(data.token, data.user);
         onLoginSuccess(data.user);
       }
     } catch (err) {
       setLoading(false);
       setErrorMsg('Network error. Unable to connect to authentication server.');
     }
-  };
-
-  const fillDemoAccount = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setErrorMsg('');
   };
 
   return (
@@ -97,38 +87,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         </div>
 
         <div className="p-8 space-y-6">
-          {/* Quick Demo Credentials Panel */}
-          <div className="bg-indigo-50/70 border border-indigo-100 p-3.5 rounded-2xl space-y-2">
-            <div className="flex items-center space-x-1.5 text-indigo-900 font-extrabold text-xs">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Quick Demo Account (1-Click Fill):</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => fillDemoAccount('nexra3d@gmail.com', 'admin123')}
-                className="bg-white hover:bg-indigo-100 text-indigo-900 font-bold py-2 px-2.5 rounded-xl border border-indigo-200 transition-colors text-left cursor-pointer shadow-2xs flex items-center justify-between"
-              >
-                <div>
-                  <div className="text-[9px] text-indigo-500 uppercase font-black">NEXRA OWNER</div>
-                  <div className="truncate font-mono text-[11px]">nexra3d@gmail.com</div>
-                </div>
-                <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-extrabold">Fill</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => fillDemoAccount('alex@example.com', 'customer123')}
-                className="bg-white hover:bg-indigo-100 text-indigo-900 font-bold py-2 px-2.5 rounded-xl border border-indigo-200 transition-colors text-left cursor-pointer shadow-2xs flex items-center justify-between"
-              >
-                <div>
-                  <div className="text-[9px] text-indigo-500 uppercase font-black">CUSTOMER</div>
-                  <div className="truncate font-mono text-[11px]">alex@example.com</div>
-                </div>
-                <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-extrabold">Fill</span>
-              </button>
-            </div>
-          </div>
-
           {/* Error Message Alert */}
           {errorMsg && (
             <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold p-4 rounded-2xl flex items-start space-x-2 animate-in fade-in">

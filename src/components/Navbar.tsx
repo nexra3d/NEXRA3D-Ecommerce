@@ -209,7 +209,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       )}
                       <div className="overflow-hidden">
                         <span className="text-xs font-bold text-slate-900 group-hover:text-indigo-600 line-clamp-1 block">{s.title}</span>
-                        <span className="text-[10px] text-slate-400 block font-mono">SKU: {s.sku} • ₹{s.price.toLocaleString('en-IN')}</span>
+                        <span className="text-[10px] text-slate-400 block font-mono">SKU: {s.sku} • ₹{Number(s.price || 0).toLocaleString('en-IN')}</span>
                       </div>
                     </div>
                   ))}

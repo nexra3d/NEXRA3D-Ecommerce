@@ -316,11 +316,11 @@ export const WishlistPage: React.FC<WishlistPageProps> = ({
                     {/* Price */}
                     <div className="flex items-baseline space-x-2 pt-1">
                       <span className="text-base font-black text-slate-900">
-                        ₹{product.price.toLocaleString('en-IN')}
+                        ₹{Number(product.price || 0).toLocaleString('en-IN')}
                       </span>
                       {product.mrp > product.price && (
                         <span className="text-xs text-slate-400 line-through">
-                          ₹{product.mrp.toLocaleString('en-IN')}
+                          ₹{Number(product.mrp || 0).toLocaleString('en-IN')}
                         </span>
                       )}
                     </div>

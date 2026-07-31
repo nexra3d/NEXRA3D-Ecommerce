@@ -149,7 +149,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
                       <div className="flex items-center space-x-3">
                         <span className="text-sm font-black text-slate-900">
-                          ₹{ord.totalAmount.toLocaleString('en-IN')}
+                          ₹{Number(ord.totalAmount || 0).toLocaleString('en-IN')}
                         </span>
                         <button
                           onClick={() => {

@@ -54,7 +54,7 @@ export const WishlistModal: React.FC<WishlistModalProps> = ({
                     <span className="text-[10px] font-bold text-indigo-600 uppercase block">{p.brand}</span>
                     <h4 className="text-xs font-bold text-slate-900 truncate">{p.title}</h4>
                     <span className="text-xs font-black text-slate-900 block mt-0.5">
-                      ₹{(p.salePrice || p.price).toLocaleString('en-IN')}
+                      ₹{Number(p.salePrice || p.price || 0).toLocaleString('en-IN')}
                     </span>
                   </div>
                 </div>

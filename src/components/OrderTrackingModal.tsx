@@ -182,7 +182,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
                     </div>
                     <div>
                       <span className="text-slate-400 block">Shipping Cost</span>
-                      <span className="font-semibold text-slate-800">₹{shp.shippingCost?.toLocaleString('en-IN') || 0}</span>
+                      <span className="font-semibold text-slate-800">₹{Number(shp.shippingCost || 0).toLocaleString('en-IN')}</span>
                     </div>
                   </div>
 
@@ -240,10 +240,10 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
                     <img src={item.productImage} alt={item.productTitle} className="w-10 h-10 rounded-lg object-cover bg-slate-100" />
                     <div>
                       <span className="font-bold text-slate-900 block">{item.productTitle}</span>
-                      <span className="text-[11px] text-slate-500">Qty: {item.quantity} × ₹{item.price.toLocaleString('en-IN')}</span>
+                      <span className="text-[11px] text-slate-500">Qty: {item.quantity} × ₹{Number(item.price || 0).toLocaleString('en-IN')}</span>
                     </div>
                   </div>
-                  <span className="font-bold text-slate-900">₹{item.totalPrice.toLocaleString('en-IN')}</span>
+                  <span className="font-bold text-slate-900">₹{Number(item.totalPrice || 0).toLocaleString('en-IN')}</span>
                 </div>
               ))}
             </div>
@@ -251,21 +251,21 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
             <div className="bg-slate-50 p-3 rounded-xl text-xs space-y-1 pt-2">
               <div className="flex justify-between text-slate-600">
                 <span>Subtotal</span>
-                <span>₹{order.subtotal.toLocaleString('en-IN')}</span>
+                <span>₹{Number(order.subtotal || 0).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>Tax (GST)</span>
-                <span>₹{order.tax.toLocaleString('en-IN')}</span>
+                <span>₹{Number(order.tax || 0).toLocaleString('en-IN')}</span>
               </div>
               {order.discountAmount > 0 && (
                 <div className="flex justify-between text-emerald-600 font-semibold">
                   <span>Discount</span>
-                  <span>-₹{order.discountAmount.toLocaleString('en-IN')}</span>
+                  <span>-₹{Number(order.discountAmount || 0).toLocaleString('en-IN')}</span>
                 </div>
               )}
               <div className="flex justify-between font-black text-sm text-slate-900 pt-1 border-t border-slate-200">
                 <span>Total Paid</span>
-                <span className="text-indigo-600">₹{order.totalAmount.toLocaleString('en-IN')}</span>
+                <span className="text-indigo-600">₹{Number(order.totalAmount || 0).toLocaleString('en-IN')}</span>
               </div>
             </div>
           </div>

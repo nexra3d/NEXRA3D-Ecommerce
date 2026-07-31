@@ -70,12 +70,6 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({
     }
   };
 
-  const handleQuickAdminLogin = () => {
-    setEmail('admin@store.com');
-    setPassword('admin123');
-    handleAdminLogin(undefined, 'admin@store.com', 'admin123');
-  };
-
   return (
     <div className="min-h-[85vh] bg-slate-950 flex items-center justify-center px-4 py-12 text-slate-100 font-sans">
       <div className="w-full max-w-md bg-slate-900 rounded-3xl shadow-2xl border border-slate-800 overflow-hidden relative">
@@ -108,47 +102,6 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({
         </div>
 
         <div className="p-8 space-y-6">
-          {/* Quick 1-Click Admin Access */}
-          <div className="bg-slate-800/80 border border-slate-700/80 p-3.5 rounded-2xl space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-extrabold text-indigo-400 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                <span>Instant Admin Access</span>
-              </span>
-              <span className="text-[10px] text-slate-400 font-mono">nexra3d@gmail.com</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('nexra3d@gmail.com');
-                  setPassword('admin123');
-                  handleAdminLogin(undefined, 'nexra3d@gmail.com', 'admin123');
-                }}
-                disabled={loading}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-[11px] py-2 px-3 rounded-xl transition-all cursor-pointer shadow-md shadow-indigo-900/30 flex items-center justify-center gap-1.5"
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>nexra3d@gmail.com</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleQuickAdminLogin}
-                disabled={loading}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-[11px] py-2 px-3 rounded-xl transition-all cursor-pointer shadow-md shadow-emerald-900/30 flex items-center justify-center gap-1.5"
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>admin@store.com</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-2 my-2">
-            <div className="h-px bg-slate-800 flex-1" />
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Or Enter Credentials</span>
-            <div className="h-px bg-slate-800 flex-1" />
-          </div>
-
           {/* Error Alert */}
           {errorMsg && (
             <div className="bg-rose-950/80 border border-rose-800 text-rose-300 text-xs font-semibold p-4 rounded-2xl flex items-start space-x-2.5 animate-in fade-in">

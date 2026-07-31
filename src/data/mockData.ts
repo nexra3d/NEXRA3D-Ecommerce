@@ -916,6 +916,15 @@ export const INITIAL_USERS: User[] = [
     createdAt: '2026-01-01T00:00:00Z'
   },
   {
+    id: 'usr-admin-4b',
+    name: 'Varun Manurani',
+    email: 'varunmanu@gmail.com',
+    phone: '+91 98765 43210',
+    role: 'ADMIN',
+    avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=200',
+    createdAt: '2026-01-01T00:00:00Z'
+  },
+  {
     id: 'usr-admin-5',
     name: 'NEXRA Support Admin',
     email: 'admin@nexra3d.com',

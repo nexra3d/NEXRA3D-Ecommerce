@@ -1007,7 +1007,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="bg-slate-800/80 border border-slate-700/80 p-4 rounded-2xl space-y-1">
                   <span className="text-[11px] font-bold text-slate-400 uppercase">Total Sales Revenue</span>
                   <div className="text-2xl font-black text-emerald-400">
-                    ₹{analytics.totalRevenue.toLocaleString('en-IN')}
+                    ₹{Number(analytics.totalRevenue || 0).toLocaleString('en-IN')}
                   </div>
                   <span className="text-[10px] text-slate-500">+18% vs last month</span>
                 </div>
@@ -1021,7 +1021,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="bg-slate-800/80 border border-slate-700/80 p-4 rounded-2xl space-y-1">
                   <span className="text-[11px] font-bold text-slate-400 uppercase">Average Order Value</span>
                   <div className="text-2xl font-black text-indigo-400">
-                    ₹{analytics.averageOrderValue.toLocaleString('en-IN')}
+                    ₹{Number(analytics.averageOrderValue || 0).toLocaleString('en-IN')}
                   </div>
                   <span className="text-[10px] text-slate-500">Per basket</span>
                 </div>
@@ -1047,9 +1047,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
 
                   <div className="h-44 flex items-end justify-between gap-2 pt-4 px-2 border-b border-slate-700">
-                    {analytics.revenueByDay.map((day) => {
-                      const maxR = Math.max(...analytics.revenueByDay.map((d) => d.revenue), 20000);
-                      const heightPct = Math.max(15, Math.round((day.revenue / maxR) * 100));
+                    {(analytics.revenueByDay || []).map((day) => {
+                      const maxR = Math.max(...(analytics.revenueByDay || []).map((d) => Number(d.revenue || 0)), 20000);
+                      const heightPct = Math.max(15, Math.round((Number(day.revenue || 0) / maxR) * 100));
 
                       return (
                         <div key={day.date} className="flex-1 flex flex-col items-center gap-1 group relative">
@@ -1061,7 +1061,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                           {/* Hover Tooltip */}
                           <div className="absolute -top-10 opacity-0 group-hover:opacity-100 bg-slate-950 text-white text-[10px] font-bold p-1 rounded border border-slate-700 pointer-events-none transition-opacity z-10 whitespace-nowrap">
-                            ₹{day.revenue.toLocaleString('en-IN')}
+                            ₹{Number(day.revenue || 0).toLocaleString('en-IN')}
                           </div>
                         </div>
                       );
@@ -1073,7 +1073,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-5 space-y-4">
                   <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider">Category Revenue</h3>
                   <div className="space-y-3">
-                    {analytics.categoryBreakdown.map((cat) => (
+                    {(analytics.categoryBreakdown || []).map((cat) => (
                       <div key={cat.categoryName} className="space-y-1">
                         <div className="flex justify-between text-xs font-semibold text-slate-300">
                           <span>{cat.categoryName}</span>
@@ -1940,7 +1940,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
 
                       <div className="flex items-center space-x-3">
-                        <span className="text-slate-200 font-bold">₹{ord.totalAmount.toLocaleString('en-IN')}</span>
+                        <span className="text-slate-200 font-bold">₹{Number(ord.totalAmount || 0).toLocaleString('en-IN')}</span>
 
                         {/* Order Status Select */}
                         <select
@@ -2310,7 +2310,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <td className="p-3 font-semibold text-slate-300">{o.paymentMethod}</td>
                         <td className="p-3 font-mono text-[11px] text-slate-300">{o.razorpayOrderId || 'N/A'}</td>
                         <td className="p-3 font-mono text-[11px] text-slate-300">{o.paymentId || 'N/A'}</td>
-                        <td className="p-3 font-extrabold text-slate-100">₹{o.totalAmount.toLocaleString('en-IN')}</td>
+                        <td className="p-3 font-extrabold text-slate-100">₹{Number(o.totalAmount || 0).toLocaleString('en-IN')}</td>
                         <td className="p-3">
                           <span className={`inline-block font-extrabold text-[10px] px-2 py-0.5 rounded ${
                             o.paymentStatus === 'CAPTURED' || o.paymentStatus === 'SUCCESS'
@@ -2372,10 +2372,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="bg-slate-800/80 border border-slate-700/80 p-5 rounded-2xl space-y-2">
                 <h4 className="font-bold text-indigo-400 text-sm">Summary Metrics</h4>
                 <p className="text-slate-300">
-                  Total Completed Revenue: <strong>₹{analytics?.totalRevenue.toLocaleString('en-IN')}</strong>
+                  Total Completed Revenue: <strong>₹{Number(analytics?.totalRevenue || 0).toLocaleString('en-IN')}</strong>
                 </p>
                 <p className="text-slate-300">
-                  Average Order Value (AOV): <strong>₹{analytics?.averageOrderValue.toLocaleString('en-IN')}</strong>
+                  Average Order Value (AOV): <strong>₹{Number(analytics?.averageOrderValue || 0).toLocaleString('en-IN')}</strong>
                 </p>
                 <p className="text-slate-300">
                   Total Orders Processed: <strong>{analytics?.totalOrders}</strong>
@@ -2465,7 +2465,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   >
                     {orders.map((o) => (
                       <option key={o.id} value={o.id}>
-                        {o.orderNumber} - {o.customerName} (₹{o.totalAmount.toLocaleString('en-IN')})
+                        {o.orderNumber} - {o.customerName} (₹{Number(o.totalAmount || 0).toLocaleString('en-IN')})
                       </option>
                     ))}
                   </select>

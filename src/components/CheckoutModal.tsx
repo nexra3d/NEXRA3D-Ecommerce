@@ -12,7 +12,8 @@ import {
   Sparkles,
   Smartphone
 } from 'lucide-react';
-import { Address, CartItem, Coupon, Order, PaymentMethod } from '../types';
+import { Address, CartItem, Coupon, Order, PaymentMethod, User } from '../types';
+import { apiFetch, getStoredToken } from '../lib/api';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -23,6 +24,8 @@ interface CheckoutModalProps {
   discountAmount: number;
   onAddNewAddress: (address: Partial<Address>) => Promise<Address>;
   onOrderCompleted: (order: Order) => void;
+  currentUser?: User | null;
+  onOpenAuth?: () => void;
 }
 
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({
@@ -33,7 +36,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   appliedCoupon,
   discountAmount,
   onAddNewAddress,
-  onOrderCompleted
+  onOrderCompleted,
+  currentUser,
+  onOpenAuth
 }) => {
   if (!isOpen) return null;
 
@@ -43,8 +48,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   );
 
   const [showAddAddressForm, setShowAddAddressForm] = useState(savedAddresses.length === 0);
-  const [newFullName, setNewFullName] = useState('');
-  const [newPhone, setNewPhone] = useState('');
+  const [newFullName, setNewFullName] = useState(currentUser?.name || '');
+  const [newPhone, setNewPhone] = useState(currentUser?.phone || '');
   const [newStreet, setNewStreet] = useState('');
   const [newCity, setNewCity] = useState('');
   const [newState, setNewState] = useState('');
@@ -85,8 +90,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
   const handleExecuteCheckout = async () => {
     setCheckoutError(null);
+
+    if (!currentUser && !getStoredToken()) {
+      setCheckoutError('Authentication required. Please log in.');
+      return;
+    }
+
     const chosenAddress = savedAddresses.find((a) => a.id === selectedAddressId) || savedAddresses[0];
-    if (!chosenAddress) {
+    if (!chosenAddress && savedAddresses.length > 0) {
       setCheckoutError('Please select or add a shipping address.');
       return;
     }
@@ -94,40 +105,53 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setIsProcessingOrder(true);
 
     try {
-      const payload = {
-        userId: chosenAddress.userId,
-        customerName: chosenAddress.fullName,
-        customerEmail: 'customer@example.com',
-        customerPhone: chosenAddress.phone,
-        items: cartItems.map((item) => ({
-          productId: item.productId,
-          variantId: item.selectedVariant,
-          quantity: item.quantity
-        })),
-        shippingAddress: chosenAddress,
-        couponCode: appliedCoupon?.code,
-        paymentMethod
-      };
-
-      const res = await fetch('/api/payments/razorpay/create-order', {
+      const checkoutRes = await apiFetch('/api/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          addressId: chosenAddress?.id,
+          shippingAddress: chosenAddress || {
+            fullName: newFullName || currentUser?.name || 'Customer',
+            phone: newPhone || currentUser?.phone || '+91 98765 43210',
+            streetAddress: newStreet || 'Standard Address',
+            city: newCity || 'City',
+            state: newState || 'State',
+            postalCode: newPostalCode || '560001',
+            country: 'India'
+          },
+          paymentMethod,
+          couponCode: appliedCoupon?.code
+        })
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to initiate order checkout');
+      const checkoutData = await checkoutRes.json();
+      if (!checkoutRes.ok || !checkoutData.success) {
+        throw new Error(checkoutData.error || 'Failed to initiate order checkout');
       }
 
+      const orderObj = checkoutData.order;
       setIsProcessingOrder(false);
 
       if (paymentMethod === 'COD') {
-        setCreatedOrder(data.order);
-        onOrderCompleted(data.order);
+        setCreatedOrder(orderObj);
+        onOrderCompleted(orderObj);
         setStep('success');
       } else {
-        setRazorpayOrderDetails(data);
+        const rzpRes = await apiFetch('/api/payments/razorpay/create-order', {
+          method: 'POST',
+          body: JSON.stringify({
+            orderId: orderObj.id,
+            amount: orderObj.totalAmount,
+            currency: 'INR'
+          })
+        });
+
+        const rzpData = await rzpRes.json();
+        setRazorpayOrderDetails({
+          ...rzpData,
+          orderId: orderObj.id,
+          order: orderObj
+        });
+        setCreatedOrder(orderObj);
         setStep('razorpay_modal');
       }
     } catch (err: any) {
@@ -143,13 +167,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setCheckoutError(null);
 
     const rzpPayId = `pay_${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
-    const rzpOrderId = razorpayOrderDetails.razorpayOrderId;
+    const rzpOrderId = razorpayOrderDetails.razorpayOrderId || razorpayOrderDetails.id;
     const mockSignature = `sig_${Math.random().toString(36).substring(2, 12)}`;
 
     try {
-      const res = await fetch('/api/payments/razorpay/verify', {
+      const res = await apiFetch('/api/payments/razorpay/verify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orderId: razorpayOrderDetails.orderId,
           razorpay_order_id: rzpOrderId,
@@ -165,8 +188,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         throw new Error(data.error || 'Payment signature verification failed');
       }
 
-      setCreatedOrder(data.order);
-      onOrderCompleted(data.order);
+      const finalOrder = data.order || razorpayOrderDetails.order;
+      setCreatedOrder(finalOrder);
+      onOrderCompleted(finalOrder);
       setStep('success');
     } catch (err: any) {
       console.error('Payment Verification Error:', err);
@@ -180,12 +204,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setIsProcessingOrder(true);
 
     try {
-      await fetch('/api/payments/razorpay/fail', {
+      await apiFetch('/api/payments/razorpay/fail', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orderId: razorpayOrderDetails.orderId,
-          razorpay_order_id: razorpayOrderDetails.razorpayOrderId,
           failureReason: reason
         })
       });
@@ -207,7 +229,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             <Lock className="w-5 h-5 text-emerald-400" />
             <div>
               <h2 className="text-lg font-extrabold">256-Bit Encrypted Secure Checkout</h2>
-              <p className="text-xs text-slate-400">Order Total: ₹{grandTotal.toLocaleString('en-IN')}</p>
+              <p className="text-xs text-slate-400">Order Total: ₹{Number(grandTotal || 0).toLocaleString('en-IN')}</p>
             </div>
           </div>
 
@@ -221,11 +243,25 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
         <div className="p-6 space-y-6">
           {checkoutError && (
-            <div className="bg-red-50 border border-red-200 text-red-800 rounded-2xl p-4 text-xs font-medium flex items-center justify-between">
+            <div className="bg-red-50 border border-red-200 text-red-800 rounded-2xl p-4 text-xs font-medium flex items-center justify-between gap-3">
               <span>{checkoutError}</span>
-              <button onClick={() => setCheckoutError(null)} className="text-red-600 font-bold hover:underline">
-                Dismiss
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                {(checkoutError.toLowerCase().includes('authentication') || checkoutError.toLowerCase().includes('log in')) && onOpenAuth && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenAuth();
+                    }}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs cursor-pointer shadow-sm"
+                  >
+                    Log In / Register
+                  </button>
+                )}
+                <button onClick={() => setCheckoutError(null)} className="text-red-600 font-bold hover:underline cursor-pointer">
+                  Dismiss
+                </button>
+              </div>
             </div>
           )}
 
@@ -475,7 +511,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 </div>
                 <h3 className="text-xl font-extrabold">Razorpay Payment Gateway</h3>
                 <p className="text-blue-100 text-xs">
-                  Simulated Razorpay Modal • Order Amount: <strong>₹{grandTotal.toLocaleString('en-IN')}</strong>
+                  Simulated Razorpay Modal • Order Amount: <strong>₹{Number(grandTotal || 0).toLocaleString('en-IN')}</strong>
                 </p>
               </div>
 
