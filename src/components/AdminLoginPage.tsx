@@ -109,23 +109,38 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({
 
         <div className="p-8 space-y-6">
           {/* Quick 1-Click Admin Access */}
-          <div className="bg-slate-800/80 border border-slate-700/80 p-4 rounded-2xl space-y-2">
+          <div className="bg-slate-800/80 border border-slate-700/80 p-3.5 rounded-2xl space-y-2">
             <div className="flex items-center justify-between text-xs">
               <span className="font-extrabold text-indigo-400 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                 <span>Instant Admin Access</span>
               </span>
-              <span className="text-[10px] text-slate-400 font-mono">admin@store.com</span>
+              <span className="text-[10px] text-slate-400 font-mono">nexra3d@gmail.com</span>
             </div>
-            <button
-              type="button"
-              onClick={handleQuickAdminLogin}
-              disabled={loading}
-              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs py-2.5 px-4 rounded-xl transition-all cursor-pointer shadow-md shadow-emerald-900/30 flex items-center justify-center gap-2"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>1-Click Launch Admin Dashboard</span>
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('nexra3d@gmail.com');
+                  setPassword('admin123');
+                  handleAdminLogin(undefined, 'nexra3d@gmail.com', 'admin123');
+                }}
+                disabled={loading}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-[11px] py-2 px-3 rounded-xl transition-all cursor-pointer shadow-md shadow-indigo-900/30 flex items-center justify-center gap-1.5"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>nexra3d@gmail.com</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleQuickAdminLogin}
+                disabled={loading}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-[11px] py-2 px-3 rounded-xl transition-all cursor-pointer shadow-md shadow-emerald-900/30 flex items-center justify-center gap-1.5"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>admin@store.com</span>
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center space-x-2 my-2">

@@ -295,7 +295,11 @@ export default function App() {
       window.history.pushState(null, '', '/admin');
     }
     setCurrentView('admin');
-    setIsAdminOpen(true);
+    if (user?.role === 'ADMIN') {
+      setIsAdminOpen(true);
+    } else {
+      setIsAdminOpen(false);
+    }
   };
 
   // Fetch Products whenever filters change
@@ -340,7 +344,6 @@ export default function App() {
       const path = window.location.pathname.toLowerCase();
       if (path === '/admin' || path === '/admin/' || path.startsWith('/admin')) {
         setCurrentView('admin');
-        setIsAdminOpen(true);
       }
     };
 
@@ -349,10 +352,16 @@ export default function App() {
     return () => window.removeEventListener('popstate', handleUrlRoute);
   }, []);
 
-  // Ensure Admin Dashboard opens when user becomes authenticated as admin on /admin view
+  // Ensure Admin Dashboard opens ONLY when user is authenticated as ADMIN on /admin view
   useEffect(() => {
-    if (currentView === 'admin' && user?.role === 'ADMIN') {
-      setIsAdminOpen(true);
+    if (currentView === 'admin') {
+      if (user?.role === 'ADMIN') {
+        setIsAdminOpen(true);
+      } else {
+        setIsAdminOpen(false);
+      }
+    } else {
+      setIsAdminOpen(false);
     }
   }, [currentView, user]);
 

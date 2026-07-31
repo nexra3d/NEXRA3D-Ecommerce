@@ -74,7 +74,7 @@ export const productCreateSchema = z.object({
   shortDescription: z.string().trim().optional().nullable(),
   description: z.string().trim().optional().nullable(),
   price: z.coerce.number().min(0, 'Price must be 0 or greater'),
-  mrp: z.coerce.number().min(0, 'MRP must be 0 or greater'),
+  mrp: z.coerce.number().min(0, 'MRP must be 0 or greater').optional().nullable(),
   discountPercentage: z.coerce.number().min(0).max(100).default(0),
   taxPercentage: z.coerce.number().min(0).max(100).default(0),
   stockQuantity: z.coerce.number().int().min(0, 'Stock quantity cannot be negative').default(0),
@@ -87,7 +87,7 @@ export const productCreateSchema = z.object({
   isNewArrival: z.boolean().default(false),
   isBestSeller: z.boolean().default(false),
   categoryId: z.string().min(1, 'Category selection is required')
-}).refine((data) => data.mrp >= data.price, {
+}).refine((data) => (data.mrp !== undefined && data.mrp !== null ? data.mrp >= data.price : true), {
   message: 'MRP must be greater than or equal to selling price',
   path: ['mrp']
 });

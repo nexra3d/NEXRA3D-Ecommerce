@@ -114,11 +114,12 @@ export interface Product {
   categoryId: string;
   subcategoryId?: string;
   category?: Category;
-  images?: string[];
+  images?: any[];
   productImages?: ProductImage[];
   productVariants?: ProductVariant[];
   variants?: ProductVariant[];
   imageUrl?: string | null;
+  weight?: number;
   brand?: string;
   rating?: number;
   reviewCount?: number;

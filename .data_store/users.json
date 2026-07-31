@@ -1,0 +1,73 @@
+[
+  {
+    "id": "usr-admin-1",
+    "name": "NEXRA Administrator",
+    "email": "admin@vltypecertservices.com",
+    "phone": "+91 (080) 4567-8900",
+    "role": "ADMIN",
+    "avatarUrl": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=200",
+    "createdAt": "2026-01-01T00:00:00Z"
+  },
+  {
+    "id": "usr-admin-2",
+    "name": "Store Admin",
+    "email": "admin@store.com",
+    "phone": "+91 98765 00000",
+    "role": "ADMIN",
+    "avatarUrl": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=200",
+    "createdAt": "2026-01-01T00:00:00Z"
+  },
+  {
+    "id": "usr-admin-3",
+    "name": "NEXRA 3D Owner",
+    "email": "nexra3d@gmail.com",
+    "phone": "+91 98765 43210",
+    "role": "ADMIN",
+    "avatarUrl": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=200",
+    "createdAt": "2026-01-01T00:00:00Z"
+  },
+  {
+    "id": "usr-admin-4",
+    "name": "Varun Manurani",
+    "email": "varunmanurani@gmail.com",
+    "phone": "+91 98765 43210",
+    "role": "ADMIN",
+    "avatarUrl": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=200",
+    "createdAt": "2026-01-01T00:00:00Z"
+  },
+  {
+    "id": "usr-admin-5",
+    "name": "NEXRA Support Admin",
+    "email": "admin@nexra3d.com",
+    "phone": "+91 98765 43210",
+    "role": "ADMIN",
+    "avatarUrl": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=200",
+    "createdAt": "2026-01-01T00:00:00Z"
+  },
+  {
+    "id": "usr-customer-1",
+    "name": "Rahul Sharma",
+    "email": "customer@example.com",
+    "phone": "+91 98765 43210",
+    "role": "CUSTOMER",
+    "avatarUrl": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200",
+    "createdAt": "2026-01-15T00:00:00Z"
+  },
+  {
+    "id": "usr-customer-2",
+    "name": "Alex Johnson",
+    "email": "alex@example.com",
+    "phone": "+91 98765 12345",
+    "role": "CUSTOMER",
+    "avatarUrl": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200",
+    "createdAt": "2026-01-15T00:00:00Z"
+  },
+  {
+    "name": "Persistent Test User",
+    "email": "persisttest@example.com",
+    "phone": "",
+    "password": "$2b$10$IVKclaVWUV500QCfdsgFkO5csFlBasTJBZutx3rDfn76ZKf0GNTYy",
+    "role": "CUSTOMER",
+    "createdAt": "2026-07-31T07:40:33.671Z"
+  }
+]

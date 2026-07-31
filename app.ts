@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
+import fs from 'fs';
 import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -86,7 +87,10 @@ async function seedInitialUsersInPrisma() {
   try {
     const adminEmails = [
       { id: 'usr-admin-1', name: 'NEXRA Administrator', email: 'admin@vltypecertservices.com' },
-      { id: 'usr-admin-2', name: 'Store Admin', email: 'admin@store.com' }
+      { id: 'usr-admin-2', name: 'Store Admin', email: 'admin@store.com' },
+      { id: 'usr-admin-3', name: 'NEXRA 3D Owner', email: 'nexra3d@gmail.com' },
+      { id: 'usr-admin-4', name: 'Varun Manurani', email: 'varunmanurani@gmail.com' },
+      { id: 'usr-admin-5', name: 'NEXRA Support Admin', email: 'admin@nexra3d.com' }
     ];
 
     for (const adm of adminEmails) {
@@ -231,9 +235,28 @@ async function seedInitialCatalogInPrisma() {
 // Helper to reliably find or auto-create a category by ID, slug, or name
 async function findOrCreateCategory(idOrSlugOrName: string) {
   if (!idOrSlugOrName) return null;
+  const target = String(idOrSlugOrName).trim().toLowerCase();
 
+  // 1. Check categoriesStore first
+  let storeCat = categoriesStore.find(
+    (c) => c.id.toLowerCase() === target || c.slug.toLowerCase() === target || c.name.toLowerCase() === target
+  );
+  if (storeCat) return storeCat;
+
+  // 2. Check in INITIAL_CATEGORIES
+  const mockCat = INITIAL_CATEGORIES.find(
+    (c) => c.id.toLowerCase() === target || c.slug.toLowerCase() === target || c.name.toLowerCase() === target
+  );
+  if (mockCat) {
+    if (!categoriesStore.some((c) => c.id === mockCat.id)) {
+      categoriesStore.push(mockCat);
+      savePersistedData('categories.json', categoriesStore);
+    }
+    return mockCat;
+  }
+
+  // 3. Try Prisma if available
   try {
-    // 1. Try finding by ID, slug, or name
     let cat = await prisma.category.findFirst({
       where: {
         OR: [
@@ -244,106 +267,39 @@ async function findOrCreateCategory(idOrSlugOrName: string) {
       }
     });
 
-    if (cat) return cat;
-
-    // 2. Check in INITIAL_CATEGORIES
-    const mockCat = INITIAL_CATEGORIES.find(
-      (c) =>
-        c.id === idOrSlugOrName ||
-        c.slug === idOrSlugOrName ||
-        c.name.toLowerCase() === idOrSlugOrName.toLowerCase()
-    );
-
-    if (mockCat) {
-      cat = await prisma.category.upsert({
-        where: { id: mockCat.id },
-        update: {
-          name: mockCat.name,
-          slug: mockCat.slug,
-          description: mockCat.description || null,
-          imageUrl: mockCat.imageUrl || null,
-          isActive: true
-        },
-        create: {
-          id: mockCat.id,
-          name: mockCat.name,
-          slug: mockCat.slug,
-          description: mockCat.description || null,
-          imageUrl: mockCat.imageUrl || null,
-          isActive: true
-        }
-      });
-
-      if (mockCat.subcategories && Array.isArray(mockCat.subcategories)) {
-        for (const sub of mockCat.subcategories) {
-          const subExisting = await prisma.category.findUnique({ where: { id: sub.id } });
-          if (!subExisting) {
-            await prisma.category.create({
-              data: {
-                id: sub.id,
-                name: sub.name,
-                slug: sub.slug,
-                parentId: cat.id,
-                isActive: true
-              }
-            }).catch(() => null);
-          }
-        }
+    if (cat) {
+      const formatted: Category = {
+        id: cat.id,
+        name: cat.name,
+        slug: cat.slug,
+        description: cat.description || '',
+        imageUrl: cat.imageUrl || '',
+        parentId: cat.parentId || undefined,
+        isActive: cat.isActive
+      };
+      if (!categoriesStore.some((c) => c.id === formatted.id)) {
+        categoriesStore.push(formatted);
+        savePersistedData('categories.json', categoriesStore);
       }
-
-      return cat;
+      return formatted;
     }
-
-    // 3. Check in subcategories of INITIAL_CATEGORIES
-    for (const parent of INITIAL_CATEGORIES) {
-      if (parent.subcategories) {
-        const sub = parent.subcategories.find(
-          (s) =>
-            s.id === idOrSlugOrName ||
-            s.slug === idOrSlugOrName ||
-            s.name.toLowerCase() === idOrSlugOrName.toLowerCase()
-        );
-        if (sub) {
-          const parentCat = await findOrCreateCategory(parent.id);
-          cat = await prisma.category.upsert({
-            where: { id: sub.id },
-            update: {
-              name: sub.name,
-              slug: sub.slug,
-              parentId: parentCat ? parentCat.id : null,
-              isActive: true
-            },
-            create: {
-              id: sub.id,
-              name: sub.name,
-              slug: sub.slug,
-              parentId: parentCat ? parentCat.id : null,
-              isActive: true
-            }
-          });
-          return cat;
-        }
-      }
-    }
-
-    // 4. Create a new category on the fly
-    const baseSlug = idOrSlugOrName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `cat-${Date.now()}`;
-    const existingSlugCat = await prisma.category.findUnique({ where: { slug: baseSlug } });
-    const finalSlug = existingSlugCat ? `${baseSlug}-${Date.now().toString().slice(-4)}` : baseSlug;
-
-    cat = await prisma.category.create({
-      data: {
-        name: idOrSlugOrName,
-        slug: finalSlug,
-        isActive: true
-      }
-    });
-
-    return cat;
   } catch (err) {
-    console.error('findOrCreateCategory error:', err);
-    return null;
+    // Prisma offline or unavailable
   }
+
+  // 4. Create new category on the fly in store
+  const baseSlug = target.replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `cat-${Date.now()}`;
+  const newCat: Category = {
+    id: idOrSlugOrName.startsWith('cat-') ? idOrSlugOrName : `cat-${Date.now()}`,
+    name: idOrSlugOrName,
+    slug: baseSlug,
+    description: '',
+    imageUrl: '',
+    isActive: true
+  };
+  categoriesStore.push(newCat);
+  savePersistedData('categories.json', categoriesStore);
+  return newCat;
 }
 
 // Seed initial Services, FAQs, Testimonials, Banners, Site Settings in Prisma if empty
@@ -554,13 +510,52 @@ function formatProductResponse(p: any) {
 }
 
 
-// In-Memory Database Store (persistent during server runtime)
-let categoriesStore: Category[] = [...INITIAL_CATEGORIES];
-let productsStore: Product[] = [...INITIAL_PRODUCTS];
-let couponsStore: Coupon[] = [...INITIAL_COUPONS];
-let usersStore: User[] = [...INITIAL_USERS];
-let addressesStore: Address[] = [...INITIAL_ADDRESSES];
-let ordersStore: Order[] = [...INITIAL_ORDERS];
+// --- Local File Persistence Engine ---
+const DATA_STORE_DIR = path.join(process.cwd(), '.data_store');
+if (!fs.existsSync(DATA_STORE_DIR)) {
+  try {
+    fs.mkdirSync(DATA_STORE_DIR, { recursive: true });
+  } catch (e) {
+    console.warn('Could not create .data_store directory:', e);
+  }
+}
+
+function loadPersistedData<T>(filename: string, fallback: T): T {
+  try {
+    const file = path.join(DATA_STORE_DIR, filename);
+    if (fs.existsSync(file)) {
+      const text = fs.readFileSync(file, 'utf-8');
+      return JSON.parse(text);
+    }
+  } catch (err) {
+    console.warn(`[DATA STORE] Warning loading ${filename}:`, err);
+  }
+  return fallback;
+}
+
+function savePersistedData<T>(filename: string, data: T) {
+  try {
+    const file = path.join(DATA_STORE_DIR, filename);
+    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn(`[DATA STORE] Warning saving ${filename}:`, err);
+  }
+}
+
+// In-Memory Database Store (persisted to disk for reliability)
+let categoriesStore: Category[] = loadPersistedData<Category[]>('categories.json', [...INITIAL_CATEGORIES]);
+let productsStore: Product[] = loadPersistedData<Product[]>('products.json', [...INITIAL_PRODUCTS]);
+let couponsStore: Coupon[] = loadPersistedData<Coupon[]>('coupons.json', [...INITIAL_COUPONS]);
+
+// Merge INITIAL_USERS with persisted users so default & created accounts are always available
+const savedUsers = loadPersistedData<User[]>('users.json', []);
+const usersMap = new Map<string, User>();
+INITIAL_USERS.forEach((u) => usersMap.set(u.email.toLowerCase(), u));
+savedUsers.forEach((u) => usersMap.set(u.email.toLowerCase(), u));
+let usersStore: User[] = Array.from(usersMap.values());
+
+let addressesStore: Address[] = loadPersistedData<Address[]>('addresses.json', [...INITIAL_ADDRESSES]);
+let ordersStore: Order[] = loadPersistedData<Order[]>('orders.json', [...INITIAL_ORDERS]);
 let shipmentsStore: Shipment[] = INITIAL_ORDERS.map((o) => ({
   id: `shp-${o.id}`,
   orderId: o.id,
@@ -1042,6 +1037,8 @@ app.use(express.json());
         createdAt: createdAtIso
       } as any);
 
+      savePersistedData('users.json', usersStore);
+
       // Sign JWT token
       const token = jwt.sign(
         { userId: newUser.id, email: newUser.email, name: newUser.name, role: newUser.role },
@@ -1237,6 +1234,9 @@ app.use(express.json());
         if (postalCode !== undefined) storeUser.postalCode = postalCode;
       }
 
+      savePersistedData('users.json', usersStore);
+      savePersistedData('addresses.json', addressesStore);
+
       // Sync address in addressesStore
       if (addressLine1 || city || postalCode) {
         let defaultAddr = addressesStore.find(a => a.userId === authUser.id && a.isDefault);
@@ -1376,6 +1376,7 @@ app.use(express.json());
       if (storeUser) {
         (storeUser as any).password = hashedNewPassword;
       }
+      savePersistedData('users.json', usersStore);
 
       return res.json({ success: true, message: 'Password updated successfully!' });
     } catch (error: any) {
@@ -1384,104 +1385,57 @@ app.use(express.json());
     }
   });
 
-  // --- CATEGORIES ROUTES (Stage 4 Prisma Engine) ---
+  // --- CATEGORIES ROUTES (Stage 4 Engine) ---
 
   // GET /api/categories (Public)
   app.get('/api/categories', async (req: Request, res: Response) => {
     try {
       const { includeInactive } = req.query;
-      const where: any = {};
-      if (includeInactive !== 'true') {
-        where.isActive = true;
-      }
-
       let categories = await prisma.category.findMany({
-        where,
+        where: includeInactive !== 'true' ? { isActive: true } : undefined,
         include: {
           subcategories: {
             where: includeInactive !== 'true' ? { isActive: true } : undefined
           },
-          _count: {
-            select: { products: true }
-          }
+          _count: { select: { products: true } }
         },
         orderBy: { name: 'asc' }
-      });
+      }).catch(() => null);
 
-      if (!categories || categories.length === 0) {
-        await seedInitialCatalogInPrisma();
-        categories = await prisma.category.findMany({
-          where,
-          include: {
-            subcategories: {
-              where: includeInactive !== 'true' ? { isActive: true } : undefined
-            },
-            _count: {
-              select: { products: true }
-            }
-          },
-          orderBy: { name: 'asc' }
-        });
+      if (categories && categories.length > 0) {
+        return res.json(categories);
       }
+    } catch (e) {}
 
-      if (!categories || categories.length === 0) {
-        return res.json(INITIAL_CATEGORIES);
-      }
-
-      res.json(categories);
-    } catch (err) {
-      console.error('GET categories error:', err);
-      res.json(INITIAL_CATEGORIES);
+    let filtered = [...categoriesStore];
+    if (req.query.includeInactive !== 'true') {
+      filtered = filtered.filter((c) => c.isActive !== false);
     }
+    res.json(filtered);
   });
 
   // GET /api/categories/:id (Public)
   app.get('/api/categories/:id', async (req: Request, res: Response) => {
-    try {
-      const { id } = req.params;
-      let category = await prisma.category.findFirst({
-        where: {
-          OR: [{ id }, { slug: id }]
-        },
-        include: {
-          subcategories: true,
-          parent: true,
-          products: {
-            where: { isActive: true },
-            include: { category: true }
-          }
-        }
-      });
-
-      if (!category) {
-        const created = await findOrCreateCategory(id);
-        if (created) {
-          category = await prisma.category.findFirst({
-            where: { id: created.id },
-            include: {
-              subcategories: true,
-              parent: true,
-              products: {
-                where: { isActive: true },
-                include: { category: true }
-              }
-            }
-          });
-        }
-      }
-
-      if (!category) {
-        return res.status(404).json({ error: 'Category not found' });
-      }
-
-      res.json({
-        ...category,
-        products: category.products.map(formatProductResponse)
-      });
-    } catch (err) {
-      console.error('GET category by ID error:', err);
-      res.status(500).json({ error: 'Failed to fetch category details' });
+    const { id } = req.params;
+    const target = id.toLowerCase();
+    
+    let cat = categoriesStore.find((c) => c.id.toLowerCase() === target || c.slug.toLowerCase() === target || c.name.toLowerCase() === target);
+    if (!cat) {
+      cat = await findOrCreateCategory(id);
     }
+
+    if (!cat) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    const catProducts = productsStore.filter(
+      (p) => (p.categoryId === cat!.id || p.category?.id === cat!.id || p.category?.slug === cat!.slug) && p.isActive !== false
+    );
+
+    res.json({
+      ...cat,
+      products: catProducts
+    });
   });
 
   // POST /api/categories (ADMIN ONLY)
@@ -1495,48 +1449,38 @@ app.use(express.json());
     const { name, slug: inputSlug, description, imageUrl, isActive, parentId } = parseResult.data;
     const slug = inputSlug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
-    try {
-      const existingName = await prisma.category.findFirst({
-        where: { name: { equals: name, mode: 'insensitive' } }
-      });
-      if (existingName) {
-        return res.status(400).json({ error: 'Category with this name already exists' });
-      }
-
-      const existingSlug = await prisma.category.findUnique({ where: { slug } });
-      if (existingSlug) {
-        return res.status(400).json({ error: 'Category with this slug already exists' });
-      }
-
-      let parentCategoryId: string | null = null;
-      if (parentId) {
-        const parentCat = await findOrCreateCategory(parentId);
-        if (!parentCat) {
-          return res.status(400).json({ error: 'Parent category not found' });
-        }
-        parentCategoryId = parentCat.id;
-      }
-
-      const newCategory = await prisma.category.create({
-        data: {
-          name,
-          slug,
-          description: description || null,
-          imageUrl: imageUrl || null,
-          isActive: isActive ?? true,
-          parentId: parentCategoryId
-        },
-        include: {
-          subcategories: true,
-          parent: true
-        }
-      });
-
-      res.status(201).json(newCategory);
-    } catch (err: any) {
-      console.error('POST category error:', err);
-      res.status(500).json({ error: 'Failed to create category' });
+    if (categoriesStore.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+      return res.status(400).json({ error: 'Category with this name already exists' });
     }
+
+    const newCategory: Category = {
+      id: `cat-${Date.now()}`,
+      name,
+      slug,
+      description: description || '',
+      imageUrl: imageUrl || '',
+      isActive: isActive ?? true,
+      parentId: parentId || undefined
+    };
+
+    categoriesStore.push(newCategory);
+    savePersistedData('categories.json', categoriesStore);
+
+    try {
+      await prisma.category.create({
+        data: {
+          id: newCategory.id,
+          name: newCategory.name,
+          slug: newCategory.slug,
+          description: newCategory.description || null,
+          imageUrl: newCategory.imageUrl || null,
+          isActive: newCategory.isActive,
+          parentId: newCategory.parentId || null
+        }
+      });
+    } catch (e) {}
+
+    res.status(201).json(newCategory);
   });
 
   // PUT /api/categories/:id (ADMIN ONLY)
@@ -1550,192 +1494,116 @@ app.use(express.json());
     const { id } = req.params;
     const data = parseResult.data;
 
+    let existing = categoriesStore.find((c) => c.id === id || c.slug === id || c.name.toLowerCase() === id.toLowerCase());
+    if (!existing) {
+      existing = await findOrCreateCategory(id);
+    }
+    if (!existing) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    const cIdx = categoriesStore.findIndex((c) => c.id === existing.id || c.slug === existing.slug);
+    const updatedCategory: Category = {
+      ...existing,
+      ...(data.name && { name: data.name }),
+      ...(data.slug && { slug: data.slug }),
+      description: data.description !== undefined ? (data.description || '') : existing.description,
+      imageUrl: data.imageUrl !== undefined ? (data.imageUrl || '') : existing.imageUrl,
+      isActive: data.isActive !== undefined ? data.isActive : existing.isActive,
+      parentId: data.parentId !== undefined ? (data.parentId || undefined) : existing.parentId
+    };
+
+    if (cIdx !== -1) {
+      categoriesStore[cIdx] = updatedCategory;
+    } else {
+      categoriesStore.push(updatedCategory);
+    }
+    savePersistedData('categories.json', categoriesStore);
+
     try {
-      let existing = await prisma.category.findUnique({ where: { id } });
-      if (!existing) {
-        existing = await findOrCreateCategory(id);
-      }
-      if (!existing) {
-        return res.status(404).json({ error: 'Category not found' });
-      }
-
-      if (data.name && data.name.toLowerCase() !== existing.name.toLowerCase()) {
-        const existingName = await prisma.category.findFirst({
-          where: {
-            name: { equals: data.name, mode: 'insensitive' },
-            NOT: { id: existing.id }
-          }
-        });
-        if (existingName) {
-          return res.status(400).json({ error: 'Another category with this name already exists' });
-        }
-      }
-
-      if (data.slug && data.slug !== existing.slug) {
-        const existingSlug = await prisma.category.findFirst({
-          where: {
-            slug: data.slug,
-            NOT: { id: existing.id }
-          }
-        });
-        if (existingSlug) {
-          return res.status(400).json({ error: 'Another category with this slug already exists' });
-        }
-      }
-
-      let parentCategoryId = data.parentId !== undefined ? data.parentId : existing.parentId;
-      if (parentCategoryId) {
-        const parentCat = await findOrCreateCategory(parentCategoryId);
-        parentCategoryId = parentCat ? parentCat.id : null;
-      }
-
-      const updated = await prisma.category.update({
+      await prisma.category.update({
         where: { id: existing.id },
         data: {
-          name: data.name,
-          slug: data.slug,
+          ...(data.name && { name: data.name }),
+          ...(data.slug && { slug: data.slug }),
           description: data.description !== undefined ? data.description : existing.description,
           imageUrl: data.imageUrl !== undefined ? data.imageUrl : existing.imageUrl,
           isActive: data.isActive !== undefined ? data.isActive : existing.isActive,
-          parentId: parentCategoryId
-        },
-        include: {
-          subcategories: true,
-          parent: true
+          parentId: data.parentId !== undefined ? data.parentId : existing.parentId
         }
       });
+    } catch (e) {}
 
-      res.json(updated);
-    } catch (err: any) {
-      console.error('PUT category error:', err);
-      res.status(500).json({ error: 'Failed to update category' });
-    }
+    return res.json(updatedCategory);
   });
 
   // DELETE /api/categories/:id (ADMIN ONLY)
   app.delete('/api/categories/:id', requireAdminMiddleware, async (req: Request, res: Response) => {
     const { id } = req.params;
-    try {
-      let category = await prisma.category.findUnique({
-        where: { id },
-        include: {
-          _count: {
-            select: { products: true, subcategories: true }
-          }
+    let category = categoriesStore.find((c) => c.id === id || c.slug === id || c.name.toLowerCase() === id.toLowerCase());
+    if (!category) {
+      category = await findOrCreateCategory(id);
+    }
+
+    if (!category) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    const force = req.query.force === 'true';
+    const assignedProducts = productsStore.filter(
+      (p) => p.categoryId === category.id || p.category?.id === category.id || p.category?.slug === category.slug
+    );
+
+    if (!force && assignedProducts.length > 0) {
+      return res.status(400).json({
+        error: `Cannot delete category "${category.name}" because it has ${assignedProducts.length} assigned products. Would you like to force delete and reassign products?`,
+        hasProducts: true
+      });
+    }
+
+    if (force) {
+      productsStore.forEach((p) => {
+        if (p.categoryId === category.id || p.category?.id === category.id) {
+          p.categoryId = 'cat-3d-printers';
+          p.category = { id: 'cat-3d-printers', name: '3D Printers', slug: '3d-printers' };
         }
       });
-
-      if (!category) {
-        const catFound = await findOrCreateCategory(id);
-        if (catFound) {
-          category = await prisma.category.findUnique({
-            where: { id: catFound.id },
-            include: {
-              _count: {
-                select: { products: true, subcategories: true }
-              }
-            }
-          });
-        }
-      }
-
-      if (!category) {
-        return res.status(404).json({ error: 'Category not found' });
-      }
-
-      const force = req.query.force === 'true';
-
-      if (!force && category._count.products > 0) {
-        return res.status(400).json({
-          error: `Cannot delete category "${category.name}" because it has ${category._count.products} assigned products. Would you like to force delete and reassign products to General/Uncategorized?`,
-          hasProducts: true
-        });
-      }
-
-      if (!force && category._count.subcategories > 0) {
-        return res.status(400).json({
-          error: `Cannot delete category "${category.name}" because it has ${category._count.subcategories} subcategories attached. Please reassign subcategories or force delete.`,
-          hasSubcategories: true
-        });
-      }
-
-      if (force) {
-        let uncategorized = await prisma.category.findUnique({ where: { slug: 'uncategorized' } }).catch(() => null);
-        if (!uncategorized) {
-          uncategorized = await prisma.category.create({
-            data: {
-              id: 'cat-uncategorized',
-              name: 'General & Uncategorized',
-              slug: 'uncategorized',
-              description: 'General category for uncategorized items',
-              isActive: true
-            }
-          }).catch(() => null);
-        }
-
-        const fallbackCatId = uncategorized ? uncategorized.id : 'cat-3d-printers';
-
-        await prisma.product.updateMany({
-          where: { categoryId: category.id },
-          data: { categoryId: fallbackCatId }
-        }).catch(() => null);
-
-        await prisma.category.updateMany({
-          where: { parentId: category.id },
-          data: { parentId: null }
-        }).catch(() => null);
-      }
-
-      await prisma.category.delete({ where: { id: category.id } });
-      res.json({ success: true, message: 'Category deleted successfully' });
-    } catch (err: any) {
-      console.error('DELETE category error:', err);
-      res.status(500).json({ error: 'Failed to delete category: ' + (err?.message || 'Server error') });
+      savePersistedData('products.json', productsStore);
     }
+
+    categoriesStore = categoriesStore.filter((c) => c.id !== category.id && c.slug !== category.slug);
+    savePersistedData('categories.json', categoriesStore);
+
+    try {
+      await prisma.category.delete({ where: { id: category.id } });
+    } catch (e) {}
+
+    return res.json({ success: true, message: 'Category deleted successfully' });
   });
 
-  // --- PRODUCTS ROUTES (Stage 4 Prisma Engine) ---
+  // --- PRODUCTS ROUTES (Stage 4 Engine) ---
 
   // GET /api/products (Public)
   app.get('/api/products', async (req: Request, res: Response) => {
+    const page = Math.max(1, parseInt(String(req.query.page || '1'), 10));
+    const limit = Math.max(1, Math.min(500, parseInt(String(req.query.limit || '500'), 10)));
+    const { category, categoryId, search, includeInactive, isFeatured, isNewArrival, isBestSeller } = req.query;
+
     try {
-      const page = Math.max(1, parseInt(String(req.query.page || '1'), 10));
-      const limit = Math.max(1, Math.min(500, parseInt(String(req.query.limit || '500'), 10)));
-      const skip = (page - 1) * limit;
-
-      const {
-        category,
-        categoryId,
-        search,
-        minPrice,
-        maxPrice,
-        inStock,
-        isFeatured,
-        isNewArrival,
-        isBestSeller,
-        includeInactive,
-        sortBy,
-        sort,
-        onSale,
-        brands
-      } = req.query;
-
+      const catParam = (categoryId || category) as string;
       const andConditions: any[] = [];
 
       if (includeInactive !== 'true') {
         andConditions.push({ isActive: true });
       }
 
-      const catParam = (categoryId || category) as string;
       if (catParam) {
         andConditions.push({
           OR: [
             { categoryId: catParam },
             { category: { id: catParam } },
             { category: { slug: catParam } },
-            { category: { name: { equals: catParam, mode: 'insensitive' } } },
-            { category: { parentId: catParam } },
-            { category: { parent: { slug: catParam } } }
+            { category: { name: { equals: catParam, mode: 'insensitive' } } }
           ]
         });
       }
@@ -1746,38 +1614,9 @@ app.use(express.json());
           OR: [
             { name: { contains: q, mode: 'insensitive' } },
             { sku: { contains: q, mode: 'insensitive' } },
-            { shortDescription: { contains: q, mode: 'insensitive' } },
-            { description: { contains: q, mode: 'insensitive' } },
-            { category: { name: { contains: q, mode: 'insensitive' } } }
+            { description: { contains: q, mode: 'insensitive' } }
           ]
         });
-      }
-
-      if (minPrice || maxPrice) {
-        const priceCond: any = {};
-        if (minPrice) priceCond.gte = Number(minPrice);
-        if (maxPrice) priceCond.lte = Number(maxPrice);
-        andConditions.push({ price: priceCond });
-      }
-
-      if (inStock === 'true') {
-        andConditions.push({ stockQuantity: { gt: 0 } });
-      }
-
-      if (onSale === 'true') {
-        andConditions.push({ discountPercentage: { gt: 0 } });
-      }
-
-      if (brands) {
-        const brandList = String(brands).split(',').filter(Boolean);
-        if (brandList.length > 0) {
-          andConditions.push({
-            OR: [
-              { brand: { in: brandList } },
-              { category: { name: { in: brandList } } }
-            ]
-          });
-        }
       }
 
       if (isFeatured === 'true') andConditions.push({ isFeatured: true });
@@ -1786,110 +1625,108 @@ app.use(express.json());
 
       const where: any = andConditions.length > 0 ? { AND: andConditions } : {};
 
-      const sortVal = sortBy || sort;
-      let orderBy: any = { createdAt: 'desc' };
-      if (sortVal === 'price-low-high' || sortVal === 'price-asc') {
-        orderBy = { price: 'asc' };
-      } else if (sortVal === 'price-high-low' || sortVal === 'price-desc') {
-        orderBy = { price: 'desc' };
-      } else if (sortVal === 'name-asc') {
-        orderBy = { name: 'asc' };
-      } else if (sortVal === 'newest') {
-        orderBy = { createdAt: 'desc' };
-      }
-
-      let [total, rawProducts] = await Promise.all([
+      const [total, rawProducts] = await Promise.all([
         prisma.product.count({ where }),
         prisma.product.findMany({
           where,
-          skip,
+          skip: (page - 1) * limit,
           take: limit,
-          orderBy,
+          orderBy: { createdAt: 'desc' },
           include: { category: true, images: true, variants: true }
         })
       ]);
 
-      if (total === 0 && !search && !catParam) {
-        await seedInitialCatalogInPrisma();
-        [total, rawProducts] = await Promise.all([
-          prisma.product.count({ where }),
-          prisma.product.findMany({
-            where,
-            skip,
-            take: limit,
-            orderBy,
-            include: { category: true, images: true, variants: true }
-          })
-        ]);
-      }
-
-      const products = rawProducts.map(formatProductResponse);
-
-      // Keep in-memory store updated with current active product list
-      if (products.length > 0) {
-        products.forEach((p) => {
-          const idx = productsStore.findIndex((existing) => existing.id === p.id);
-          if (idx !== -1) {
-            productsStore[idx] = p;
-          } else {
-            productsStore.push(p);
-          }
+      if (rawProducts && rawProducts.length > 0) {
+        const formatted = rawProducts.map(formatProductResponse);
+        return res.json({
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit) || 1,
+          products: formatted
         });
       }
+    } catch (e) {}
 
-      res.json({
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit) || 1,
-        products
-      });
-    } catch (err) {
-      console.error('GET products error:', err);
-      res.status(500).json({ error: 'Failed to fetch products' });
+    // Fallback to productsStore
+    let list = [...productsStore];
+
+    if (includeInactive !== 'true') {
+      list = list.filter((p) => p.isActive !== false);
     }
+
+    const catParam = ((categoryId || category) as string)?.toLowerCase();
+    if (catParam) {
+      list = list.filter(
+        (p) =>
+          p.categoryId?.toLowerCase() === catParam ||
+          p.category?.id?.toLowerCase() === catParam ||
+          p.category?.slug?.toLowerCase() === catParam ||
+          p.category?.name?.toLowerCase() === catParam
+      );
+    }
+
+    if (search) {
+      const q = String(search).trim().toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.sku.toLowerCase().includes(q) ||
+          (p.description && p.description.toLowerCase().includes(q))
+      );
+    }
+
+    if (isFeatured === 'true') list = list.filter((p) => p.isFeatured);
+    if (isNewArrival === 'true') list = list.filter((p) => p.isNewArrival);
+    if (isBestSeller === 'true') list = list.filter((p) => p.isBestSeller);
+
+    const total = list.length;
+    const startIndex = (page - 1) * limit;
+    const paginated = list.slice(startIndex, startIndex + limit);
+
+    res.json({
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1,
+      products: paginated
+    });
   });
 
   // GET /api/products/slug/:slug (Public)
   app.get('/api/products/slug/:slug', async (req: Request, res: Response) => {
+    const { slug } = req.params;
     try {
-      const { slug } = req.params;
       const raw = await prisma.product.findUnique({
         where: { slug },
         include: { category: true, images: true, variants: true }
       });
+      if (raw) return res.json(formatProductResponse(raw));
+    } catch (e) {}
 
-      if (!raw) {
-        return res.status(404).json({ error: 'Product not found' });
-      }
-
-      res.json(formatProductResponse(raw));
-    } catch (err) {
-      console.error('GET product by slug error:', err);
-      res.status(500).json({ error: 'Failed to fetch product' });
+    const prod = productsStore.find((p) => p.slug === slug || p.id === slug);
+    if (!prod) {
+      return res.status(404).json({ error: 'Product not found' });
     }
+    res.json(prod);
   });
 
   // GET /api/products/:id (Public)
   app.get('/api/products/:id', async (req: Request, res: Response) => {
+    const { id } = req.params;
     try {
-      const { id } = req.params;
       const raw = await prisma.product.findFirst({
-        where: {
-          OR: [{ id }, { slug: id }]
-        },
+        where: { OR: [{ id }, { slug: id }] },
         include: { category: true, images: true, variants: true }
       });
+      if (raw) return res.json(formatProductResponse(raw));
+    } catch (e) {}
 
-      if (!raw) {
-        return res.status(404).json({ error: 'Product not found' });
-      }
-
-      res.json(formatProductResponse(raw));
-    } catch (err) {
-      console.error('GET product by ID error:', err);
-      res.status(500).json({ error: 'Failed to fetch product' });
+    const prod = productsStore.find((p) => p.id === id || p.slug === id || p.sku === id);
+    if (!prod) {
+      return res.status(404).json({ error: 'Product not found' });
     }
+    res.json(prod);
   });
 
   // POST /api/products (ADMIN ONLY)
@@ -1902,66 +1739,98 @@ app.use(express.json());
 
     const data = parseResult.data;
     const baseSlug = data.slug || data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `product-${Date.now()}`;
-    
-    let finalSlug = baseSlug;
-    const existingSlug = await prisma.product.findUnique({ where: { slug: baseSlug } });
-    if (existingSlug) {
-      finalSlug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
-    }
+    const finalSlug = productsStore.some((p) => p.slug === baseSlug)
+      ? `${baseSlug}-${Date.now().toString().slice(-4)}`
+      : baseSlug;
 
-    let finalSku = data.sku;
-    const existingSku = await prisma.product.findUnique({ where: { sku: data.sku } });
-    if (existingSku) {
-      finalSku = `${data.sku}-${Date.now().toString().slice(-4)}`;
-    }
+    const baseSku = data.sku || `SKU-${Date.now().toString().slice(-6)}`;
+    const finalSku = productsStore.some((p) => p.sku === baseSku)
+      ? `${baseSku}-${Date.now().toString().slice(-3)}`
+      : baseSku;
 
-    const price = data.price;
-    const mrp = data.mrp && data.mrp >= price ? data.mrp : price;
+    const category = (await findOrCreateCategory(data.categoryId)) || {
+      id: data.categoryId || 'cat-3d-printers',
+      name: '3D Printers',
+      slug: '3d-printers',
+      description: '',
+      imageUrl: '',
+      isActive: true
+    };
 
-    let discountPercentage = data.discountPercentage || 0;
-    if (mrp > price && (!data.discountPercentage || data.discountPercentage === 0)) {
+    const price = Number(data.price);
+    const mrp = data.mrp !== undefined && data.mrp !== null ? Number(data.mrp) : price;
+    let discountPercentage = Number(data.discountPercentage || 0);
+    if (mrp > price && discountPercentage === 0) {
       discountPercentage = Math.round(((mrp - price) / mrp) * 100);
     }
 
+    const newProdId = `prd-${Date.now()}`;
+    const newProduct: Product = {
+      id: newProdId,
+      name: data.name,
+      slug: finalSlug,
+      sku: finalSku,
+      shortDescription: data.shortDescription || '',
+      description: data.description || '',
+      price,
+      mrp,
+      discountPercentage,
+      taxPercentage: Number(data.taxPercentage || 0),
+      stockQuantity: Number(data.stockQuantity || 0),
+      lowStockThreshold: Number(data.lowStockThreshold || 5),
+      weight: data.weight ? Number(data.weight) : undefined,
+      specifications: data.specifications || {},
+      imageUrl: data.imageUrl || 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800',
+      isActive: data.isActive ?? true,
+      isFeatured: data.isFeatured ?? false,
+      isNewArrival: data.isNewArrival ?? false,
+      isBestSeller: data.isBestSeller ?? false,
+      categoryId: category.id,
+      category: {
+        id: category.id,
+        name: category.name,
+        slug: category.slug,
+        description: category.description || ''
+      },
+      images: data.imageUrl
+        ? [{ id: `img-${Date.now()}`, productId: newProdId, url: data.imageUrl, isPrimary: true, sortOrder: 0 }]
+        : [],
+      variants: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    productsStore.unshift(newProduct);
+    savePersistedData('products.json', productsStore);
+
     try {
-      const category = await findOrCreateCategory(data.categoryId);
-      if (!category) {
-        return res.status(400).json({ error: 'Selected Category does not exist' });
-      }
-
-      const created = await prisma.product.create({
+      await prisma.product.create({
         data: {
-          name: data.name,
-          slug: finalSlug,
-          sku: finalSku,
-          shortDescription: data.shortDescription || null,
-          description: data.description || null,
-          price,
-          mrp,
-          discountPercentage,
-          taxPercentage: data.taxPercentage || 0,
-          stockQuantity: data.stockQuantity || 0,
-          lowStockThreshold: data.lowStockThreshold || 5,
-          weight: data.weight || null,
-          specifications: (data.specifications as any) || {},
-          imageUrl: data.imageUrl || null,
-          isActive: data.isActive ?? true,
-          isFeatured: data.isFeatured ?? false,
-          isNewArrival: data.isNewArrival ?? false,
-          isBestSeller: data.isBestSeller ?? false,
+          id: newProduct.id,
+          name: newProduct.name,
+          slug: newProduct.slug,
+          sku: newProduct.sku,
+          shortDescription: newProduct.shortDescription || null,
+          description: newProduct.description || null,
+          price: newProduct.price,
+          mrp: newProduct.mrp,
+          discountPercentage: newProduct.discountPercentage,
+          taxPercentage: newProduct.taxPercentage,
+          stockQuantity: newProduct.stockQuantity,
+          lowStockThreshold: newProduct.lowStockThreshold,
+          weight: newProduct.weight || null,
+          specifications: newProduct.specifications || {},
+          imageUrl: newProduct.imageUrl || null,
+          isActive: newProduct.isActive,
+          isFeatured: newProduct.isFeatured,
+          isNewArrival: newProduct.isNewArrival,
+          isBestSeller: newProduct.isBestSeller,
           categoryId: category.id
-        },
-        include: { category: true }
+        }
       });
+    } catch (e) {}
 
-      const formattedCreated = formatProductResponse(created);
-      productsStore.push(formattedCreated);
-
-      res.status(201).json(formattedCreated);
-    } catch (err: any) {
-      console.error('POST product error:', err);
-      res.status(500).json({ error: 'Failed to create product' });
-    }
+    res.status(201).json(newProduct);
   });
 
   // PUT /api/products/:id (ADMIN ONLY)
@@ -1975,81 +1844,85 @@ app.use(express.json());
     const { id } = req.params;
     const data = parseResult.data;
 
+    let pIdx = productsStore.findIndex((p) => p.id === id || p.slug === id);
+    if (pIdx === -1) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const existing = productsStore[pIdx];
+
+    let categoryId = existing.categoryId;
+    let category = existing.category;
+    if (data.categoryId) {
+      const foundCat = await findOrCreateCategory(data.categoryId);
+      if (foundCat) {
+        categoryId = foundCat.id;
+        category = { id: foundCat.id, name: foundCat.name, slug: foundCat.slug };
+      }
+    }
+
+    const price = data.price !== undefined ? Number(data.price) : existing.price;
+    const mrp = data.mrp !== undefined ? Number(data.mrp) : existing.mrp;
+    let discountPercentage = data.discountPercentage !== undefined ? Number(data.discountPercentage) : existing.discountPercentage;
+    if (data.discountPercentage === undefined && mrp > price) {
+      discountPercentage = Math.round(((mrp - price) / mrp) * 100);
+    }
+
+    const updatedProd: Product = {
+      ...existing,
+      ...(data.name && { name: data.name }),
+      ...(data.slug && { slug: data.slug }),
+      ...(data.sku && { sku: data.sku }),
+      shortDescription: data.shortDescription !== undefined ? (data.shortDescription || '') : existing.shortDescription,
+      description: data.description !== undefined ? (data.description || '') : existing.description,
+      price,
+      mrp,
+      discountPercentage,
+      taxPercentage: data.taxPercentage !== undefined ? Number(data.taxPercentage) : existing.taxPercentage,
+      stockQuantity: data.stockQuantity !== undefined ? Number(data.stockQuantity) : existing.stockQuantity,
+      lowStockThreshold: data.lowStockThreshold !== undefined ? Number(data.lowStockThreshold) : existing.lowStockThreshold,
+      weight: data.weight !== undefined ? (data.weight ? Number(data.weight) : undefined) : existing.weight,
+      specifications: data.specifications !== undefined ? data.specifications : existing.specifications,
+      imageUrl: data.imageUrl !== undefined ? (data.imageUrl || '') : existing.imageUrl,
+      isActive: data.isActive !== undefined ? data.isActive : existing.isActive,
+      isFeatured: data.isFeatured !== undefined ? data.isFeatured : existing.isFeatured,
+      isNewArrival: data.isNewArrival !== undefined ? data.isNewArrival : existing.isNewArrival,
+      isBestSeller: data.isBestSeller !== undefined ? data.isBestSeller : existing.isBestSeller,
+      categoryId,
+      category,
+      updatedAt: new Date().toISOString()
+    };
+
+    productsStore[pIdx] = updatedProd;
+    savePersistedData('products.json', productsStore);
+
     try {
-      const existing = await prisma.product.findUnique({ where: { id } });
-      if (!existing) {
-        return res.status(404).json({ error: 'Product not found' });
-      }
-
-      if (data.sku && data.sku !== existing.sku) {
-        const existingSku = await prisma.product.findUnique({ where: { sku: data.sku } });
-        if (existingSku) {
-          return res.status(400).json({ error: `SKU "${data.sku}" already belongs to another product` });
-        }
-      }
-
-      if (data.slug && data.slug !== existing.slug) {
-        const existingSlug = await prisma.product.findUnique({ where: { slug: data.slug } });
-        if (existingSlug) {
-          return res.status(400).json({ error: `Slug "${data.slug}" already belongs to another product` });
-        }
-      }
-
-      let targetCategoryId = existing.categoryId;
-      if (data.categoryId) {
-        const category = await findOrCreateCategory(data.categoryId);
-        if (!category) {
-          return res.status(400).json({ error: 'Selected Category does not exist' });
-        }
-        targetCategoryId = category.id;
-      }
-
-      const price = data.price !== undefined ? data.price : Number(existing.price);
-      const mrp = data.mrp !== undefined ? data.mrp : Number(existing.mrp);
-      let discountPercentage = data.discountPercentage;
-      if (discountPercentage === undefined && mrp > price) {
-        discountPercentage = Math.round(((mrp - price) / mrp) * 100);
-      }
-
-      const updated = await prisma.product.update({
-        where: { id },
+      await prisma.product.update({
+        where: { id: existing.id },
         data: {
           ...(data.name && { name: data.name }),
           ...(data.slug && { slug: data.slug }),
           ...(data.sku && { sku: data.sku }),
           shortDescription: data.shortDescription !== undefined ? data.shortDescription : existing.shortDescription,
           description: data.description !== undefined ? data.description : existing.description,
-          ...(data.price !== undefined && { price: data.price }),
-          ...(data.mrp !== undefined && { mrp: data.mrp }),
-          ...(discountPercentage !== undefined && { discountPercentage }),
-          ...(data.taxPercentage !== undefined && { taxPercentage: data.taxPercentage }),
-          ...(data.stockQuantity !== undefined && { stockQuantity: data.stockQuantity }),
-          ...(data.lowStockThreshold !== undefined && { lowStockThreshold: data.lowStockThreshold }),
+          price,
+          mrp,
+          discountPercentage,
+          taxPercentage: data.taxPercentage !== undefined ? data.taxPercentage : existing.taxPercentage,
+          stockQuantity: data.stockQuantity !== undefined ? data.stockQuantity : existing.stockQuantity,
+          lowStockThreshold: data.lowStockThreshold !== undefined ? data.lowStockThreshold : existing.lowStockThreshold,
           weight: data.weight !== undefined ? data.weight : existing.weight,
-          specifications: data.specifications !== undefined ? data.specifications : (existing.specifications as any),
           imageUrl: data.imageUrl !== undefined ? data.imageUrl : existing.imageUrl,
-          ...(data.isActive !== undefined && { isActive: data.isActive }),
-          ...(data.isFeatured !== undefined && { isFeatured: data.isFeatured }),
-          ...(data.isNewArrival !== undefined && { isNewArrival: data.isNewArrival }),
-          ...(data.isBestSeller !== undefined && { isBestSeller: data.isBestSeller }),
-          ...(data.categoryId && { categoryId: targetCategoryId })
-        },
-        include: { category: true }
+          isActive: data.isActive !== undefined ? data.isActive : existing.isActive,
+          isFeatured: data.isFeatured !== undefined ? data.isFeatured : existing.isFeatured,
+          isNewArrival: data.isNewArrival !== undefined ? data.isNewArrival : existing.isNewArrival,
+          isBestSeller: data.isBestSeller !== undefined ? data.isBestSeller : existing.isBestSeller,
+          categoryId
+        }
       });
+    } catch (e) {}
 
-      const formattedUpdated = formatProductResponse(updated);
-      const pIdx = productsStore.findIndex((p) => p.id === id);
-      if (pIdx !== -1) {
-        productsStore[pIdx] = formattedUpdated;
-      } else {
-        productsStore.push(formattedUpdated);
-      }
-
-      res.json(formattedUpdated);
-    } catch (err: any) {
-      console.error('PUT product error:', err);
-      res.status(500).json({ error: 'Failed to update product' });
-    }
+    res.json(updatedProd);
   });
 
   // DELETE /api/products/:id (ADMIN ONLY)
@@ -2057,44 +1930,44 @@ app.use(express.json());
     const { id } = req.params;
     const { permanent } = req.query;
 
-    try {
-      const existing = await prisma.product.findUnique({ where: { id } });
-      if (!existing) {
-        return res.status(404).json({ error: 'Product not found' });
-      }
+    const pIdx = productsStore.findIndex((p) => p.id === id || p.slug === id);
+    if (pIdx === -1) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
 
-      if (permanent === 'true') {
-        // Delete child relations first to prevent Foreign Key constraints error
-        await prisma.productImage.deleteMany({ where: { productId: id } }).catch(() => null);
-        await prisma.productVariant.deleteMany({ where: { productId: id } }).catch(() => null);
-        await prisma.cartItem.deleteMany({ where: { productId: id } }).catch(() => null);
-        await prisma.wishlistItem.deleteMany({ where: { productId: id } }).catch(() => null);
-        await prisma.review.deleteMany({ where: { productId: id } }).catch(() => null);
-        await prisma.orderItem.deleteMany({ where: { productId: id } }).catch(() => null);
+    const targetProd = productsStore[pIdx];
 
-        await prisma.product.delete({ where: { id } });
-        productsStore = productsStore.filter((p) => p.id !== id);
-        return res.json({ success: true, message: 'Product permanently deleted' });
-      } else {
-        const updated = await prisma.product.update({
-          where: { id },
-          data: { isActive: false },
-          include: { category: true }
+    if (permanent === 'true') {
+      productsStore = productsStore.filter((p) => p.id !== targetProd.id && p.slug !== targetProd.slug);
+      savePersistedData('products.json', productsStore);
+
+      try {
+        await prisma.productImage.deleteMany({ where: { productId: targetProd.id } }).catch(() => null);
+        await prisma.productVariant.deleteMany({ where: { productId: targetProd.id } }).catch(() => null);
+        await prisma.cartItem.deleteMany({ where: { productId: targetProd.id } }).catch(() => null);
+        await prisma.wishlistItem.deleteMany({ where: { productId: targetProd.id } }).catch(() => null);
+        await prisma.review.deleteMany({ where: { productId: targetProd.id } }).catch(() => null);
+        await prisma.orderItem.deleteMany({ where: { productId: targetProd.id } }).catch(() => null);
+        await prisma.product.delete({ where: { id: targetProd.id } });
+      } catch (e) {}
+
+      return res.json({ success: true, message: 'Product permanently deleted' });
+    } else {
+      productsStore[pIdx].isActive = false;
+      savePersistedData('products.json', productsStore);
+
+      try {
+        await prisma.product.update({
+          where: { id: targetProd.id },
+          data: { isActive: false }
         });
-        const formattedSoftDel = formatProductResponse(updated);
-        const pIdx = productsStore.findIndex((p) => p.id === id);
-        if (pIdx !== -1) {
-          productsStore[pIdx] = formattedSoftDel;
-        }
-        return res.json({
-          success: true,
-          message: 'Product deactivated (soft deleted)',
-          product: formattedSoftDel
-        });
-      }
-    } catch (err: any) {
-      console.error('DELETE product error:', err);
-      res.status(500).json({ error: 'Failed to delete or deactivate product' });
+      } catch (e) {}
+
+      return res.json({
+        success: true,
+        message: 'Product deactivated (soft deleted)',
+        product: productsStore[pIdx]
+      });
     }
   });
 
