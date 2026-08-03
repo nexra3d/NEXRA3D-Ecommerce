@@ -321,6 +321,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [variantError, setVariantError] = useState<string | null>(null);
 
   useEffect(() => {
+    fetchAdminOrders();
+
     fetch('/api/admin/analytics', { headers: getAuthHeaders(), credentials: 'include' })
       .then((res) => res.json())
       .then((data) => setAnalytics(data))

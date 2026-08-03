@@ -1970,15 +1970,15 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
 
     let shippingAddressData: any = null;
     if (addressId) {
-      shippingAddressData = await prisma.address.findUnique({ where: { id: addressId } });
+      shippingAddressData = await prisma.address.findUnique({ where: { id: addressId } }).catch(() => null);
+    }
+    if (!shippingAddressData && (customAddress || req.body.shippingAddress)) {
+      shippingAddressData = customAddress || req.body.shippingAddress;
     }
     if (!shippingAddressData) {
       shippingAddressData = await prisma.address.findFirst({
         where: { userId, isDefault: true }
       });
-    }
-    if (!shippingAddressData && customAddress) {
-      shippingAddressData = customAddress;
     }
 
     if (!shippingAddressData) {
@@ -2069,26 +2069,13 @@ app.get('/api/orders', requireAuthMiddleware, async (req: AuthenticatedRequest, 
   const userId = req.user.id;
   const userEmail = req.user.email;
   try {
-    if (userEmail && req.user.role !== 'ADMIN') {
-      try {
-        await prisma.order.updateMany({
-          where: {
-            user: { email: { equals: userEmail, mode: 'insensitive' } },
-            userId: { not: userId }
-          },
-          data: { userId }
-        });
-      } catch (e) {
-        // Ignore silent sync errors
-      }
-    }
-
     const whereClause: any = {};
     if (req.user.role !== 'ADMIN') {
-      whereClause.OR = [
-        { userId: userId },
-        { user: { email: { equals: userEmail, mode: 'insensitive' } } }
-      ];
+      const orConditions: any[] = [{ userId: userId }];
+      if (userEmail) {
+        orConditions.push({ user: { email: { equals: userEmail, mode: 'insensitive' } } });
+      }
+      whereClause.OR = orConditions;
     } else if (req.query.userId) {
       whereClause.userId = String(req.query.userId);
     }
@@ -2715,8 +2702,9 @@ app.post('/api/payments/razorpay/create-order', requireAuthMiddleware, async (re
 app.post('/api/payments/razorpay/verify', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { orderId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    let updatedOrder = null;
     if (orderId) {
-      await prisma.order.update({
+      updatedOrder = await prisma.order.update({
         where: { id: orderId },
         data: {
           paymentStatus: 'PAID',
@@ -2724,10 +2712,11 @@ app.post('/api/payments/razorpay/verify', requireAuthMiddleware, async (req: Aut
           razorpayOrderId: razorpay_order_id || null,
           razorpayPaymentId: razorpay_payment_id || `pay_${Date.now()}`,
           razorpaySignature: razorpay_signature || null
-        }
-      }).catch(() => {});
+        },
+        include: { items: { include: { product: true } }, user: true, shipment: true }
+      }).catch(() => null);
     }
-    return res.json({ success: true, message: 'Payment verified' });
+    return res.json({ success: true, message: 'Payment verified', order: updatedOrder });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || 'Payment verification failed' });
   }

@@ -37,6 +37,7 @@ interface AccountDashboardProps {
   onNavigateHome: () => void;
   onNavigateLogin: () => void;
   onSelectOrderToTrack?: (order: Order) => void;
+  orders?: Order[];
 }
 
 export const AccountDashboard: React.FC<AccountDashboardProps> = ({
@@ -47,7 +48,8 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
   onLogout,
   onNavigateHome,
   onNavigateLogin,
-  onSelectOrderToTrack
+  onSelectOrderToTrack,
+  orders: initialOrders
 }) => {
   // If user is not logged in, show access prompt
   if (!user) {
@@ -111,9 +113,15 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
   }, [user]);
 
   // Orders state
-  const [userOrders, setUserOrders] = useState<Order[]>([]);
+  const [userOrders, setUserOrders] = useState<Order[]>(initialOrders || []);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialOrders && initialOrders.length > 0) {
+      setUserOrders(initialOrders);
+    }
+  }, [initialOrders]);
 
   const fetchUserOrders = async () => {
     if (!user) {
@@ -1000,7 +1008,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                         <div>
                           <span className="text-slate-400 text-[10px] uppercase tracking-wider block font-bold">Payment Status</span>
                           <span className={`inline-block font-black text-[11px] px-2 py-0.5 rounded ${
-                            order.paymentStatus === 'CAPTURED' || order.paymentStatus === 'SUCCESS'
+                            order.paymentStatus === 'CAPTURED' || order.paymentStatus === 'SUCCESS' || order.paymentStatus === 'PAID'
                               ? 'bg-emerald-100 text-emerald-800'
                               : order.paymentStatus === 'COD' || order.paymentMethod === 'COD' || order.paymentMethod === 'CASH_ON_DELIVERY'
                               ? 'bg-blue-100 text-blue-800'

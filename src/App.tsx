@@ -770,6 +770,7 @@ export default function App() {
           onNavigateHome={() => setCurrentView('home')}
           onNavigateLogin={() => setCurrentView('login')}
           onSelectOrderToTrack={(orderToTrack) => setTrackingOrder(orderToTrack)}
+          orders={userOrders}
         />
       )}
 
