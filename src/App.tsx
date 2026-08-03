@@ -132,6 +132,39 @@ export default function App() {
     }
   };
 
+  const formatCartItems = (rawItems: any[]): CartItem[] => {
+    if (!Array.isArray(rawItems)) return [];
+    return rawItems.map((i: any) => {
+      const p = i.product || {};
+      const unitPrice = i.unitPrice ?? i.price ?? p.price ?? 0;
+      const unitMrp = i.unitMrp ?? i.mrp ?? p.mrp ?? unitPrice;
+      const availableStock = i.availableStock ?? p.stockQuantity ?? p.stock ?? 100;
+
+      return {
+        id: i.id,
+        productId: i.productId,
+        product: {
+          id: p.id || i.productId,
+          title: p.name || p.title || i.title || 'Product',
+          brand: p.category?.name || p.brand || 'Brand',
+          price: unitPrice,
+          salePrice: unitPrice,
+          mrp: unitMrp,
+          stock: availableStock,
+          stockQuantity: availableStock,
+          slug: p.slug || '',
+          sku: p.sku || '',
+          categoryId: p.categoryId || '',
+          images: Array.isArray(p.images) && p.images.length > 0 ? p.images : [p.imageUrl || i.imageUrl || ''],
+          imageUrl: p.imageUrl || i.imageUrl || ''
+        },
+        quantity: i.quantity,
+        variantId: i.variantId,
+        variant: i.variant
+      };
+    });
+  };
+
   const fetchCart = async () => {
     setIsCartLoading(true);
     try {
@@ -139,37 +172,7 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setCartData(data);
-        if (data && Array.isArray(data.items)) {
-          const legacyItems = data.items.map((i: any) => {
-            const p = i.product || {};
-            const unitPrice = i.unitPrice ?? i.price ?? p.price ?? 0;
-            const unitMrp = i.unitMrp ?? i.mrp ?? p.mrp ?? unitPrice;
-            const availableStock = i.availableStock ?? p.stockQuantity ?? p.stock ?? 100;
-
-            return {
-              id: i.id,
-              productId: i.productId,
-              product: {
-                id: p.id || i.productId,
-                title: p.name || p.title || i.title || 'Product',
-                brand: p.category?.name || p.brand || 'Brand',
-                price: unitPrice,
-                salePrice: unitPrice,
-                mrp: unitMrp,
-                stock: availableStock,
-                stockQuantity: availableStock,
-                images: p.images && p.images.length > 0 ? p.images : [p.imageUrl || i.imageUrl || ''],
-                imageUrl: p.imageUrl || i.imageUrl || ''
-              },
-              quantity: i.quantity,
-              variantId: i.variantId,
-              variant: i.variant
-            };
-          });
-          setCartItems(legacyItems);
-        } else {
-          setCartItems([]);
-        }
+        setCartItems(formatCartItems(data?.items));
       } else {
         setCartData(null);
         setCartItems([]);
@@ -340,6 +343,14 @@ export default function App() {
 
   useEffect(() => {
     fetchData();
+
+    const handleUnauthorized = () => {
+      setUser(null);
+      clearStoredAuth();
+    };
+
+    window.addEventListener('auth_unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth_unauthorized', handleUnauthorized);
   }, []);
 
   // Listen for /admin URL route
@@ -437,6 +448,12 @@ export default function App() {
 
   // Cart Actions
   const handleAddToCart = async (productOrId: Product | string, variantIdOrQty?: string | number, quantity = 1) => {
+    if (!user) {
+      setIsAuthOpen(true);
+      showToast('Please log in or create an account to add items to cart');
+      return;
+    }
+
     const prodId = typeof productOrId === 'string' ? productOrId : productOrId.id;
     let actualVariantId: string | undefined = undefined;
     let actualQty = 1;
@@ -459,28 +476,7 @@ export default function App() {
         throw new Error(data.error || 'Failed to add item to cart');
       }
       setCartData(data);
-      if (data && Array.isArray(data.items)) {
-        const legacyItems = data.items.map((i: any) => ({
-          id: i.id,
-          productId: i.productId,
-          product: {
-            id: i.product.id,
-            title: i.product.name,
-            brand: i.product.category?.name || 'Brand',
-            price: i.unitPrice,
-            salePrice: i.unitPrice,
-            mrp: i.unitMrp,
-            stock: i.availableStock,
-            stockQuantity: i.availableStock,
-            images: [i.product.imageUrl],
-            imageUrl: i.product.imageUrl
-          },
-          quantity: i.quantity,
-          variantId: i.variantId,
-          variant: i.variant
-        }));
-        setCartItems(legacyItems);
-      }
+      setCartItems(formatCartItems(data?.items));
       showToast('Item added to Shopping Cart!');
     } catch (err: any) {
       console.error('Add to cart error:', err);
@@ -506,28 +502,7 @@ export default function App() {
         throw new Error(data.error || 'Failed to update item quantity');
       }
       setCartData(data);
-      if (data && Array.isArray(data.items)) {
-        const legacyItems = data.items.map((i: any) => ({
-          id: i.id,
-          productId: i.productId,
-          product: {
-            id: i.product.id,
-            title: i.product.name,
-            brand: i.product.category?.name || 'Brand',
-            price: i.unitPrice,
-            salePrice: i.unitPrice,
-            mrp: i.unitMrp,
-            stock: i.availableStock,
-            stockQuantity: i.availableStock,
-            images: [i.product.imageUrl],
-            imageUrl: i.product.imageUrl
-          },
-          quantity: i.quantity,
-          variantId: i.variantId,
-          variant: i.variant
-        }));
-        setCartItems(legacyItems);
-      }
+      setCartItems(formatCartItems(data?.items));
     } catch (err: any) {
       console.error('Update cart quantity error:', err);
       throw err;
@@ -549,28 +524,7 @@ export default function App() {
         throw new Error(data.error || 'Failed to remove item');
       }
       setCartData(data);
-      if (data && Array.isArray(data.items)) {
-        const legacyItems = data.items.map((i: any) => ({
-          id: i.id,
-          productId: i.productId,
-          product: {
-            id: i.product.id,
-            title: i.product.name,
-            brand: i.product.category?.name || 'Brand',
-            price: i.unitPrice,
-            salePrice: i.unitPrice,
-            mrp: i.unitMrp,
-            stock: i.availableStock,
-            stockQuantity: i.availableStock,
-            images: [i.product.imageUrl],
-            imageUrl: i.product.imageUrl
-          },
-          quantity: i.quantity,
-          variantId: i.variantId,
-          variant: i.variant
-        }));
-        setCartItems(legacyItems);
-      }
+      setCartItems(formatCartItems(data?.items));
       showToast('Item removed from Cart');
     } catch (err: any) {
       console.error('Remove cart item error:', err);

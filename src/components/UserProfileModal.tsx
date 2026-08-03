@@ -28,13 +28,16 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   isOpen,
   user,
   onClose,
-  addresses,
-  orders,
+  addresses = [],
+  orders = [],
   onAddNewAddress,
   onTrackOrder,
   onLogout
 }) => {
   if (!isOpen || !user) return null;
+
+  const safeOrders = Array.isArray(orders) ? orders : [];
+  const safeAddresses = Array.isArray(addresses) ? addresses : [];
 
   const [activeTab, setActiveTab] = useState<'orders' | 'addresses' | 'profile'>('orders');
 
@@ -102,7 +105,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 : 'text-slate-600 hover:text-slate-900 border-transparent'
             }`}
           >
-            Order History ({orders.length})
+            Order History ({safeOrders.length})
           </button>
           <button
             onClick={() => setActiveTab('addresses')}
@@ -112,7 +115,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 : 'text-slate-600 hover:text-slate-900 border-transparent'
             }`}
           >
-            Saved Addresses ({addresses.length})
+            Saved Addresses ({safeAddresses.length})
           </button>
           <button
             onClick={() => setActiveTab('profile')}
@@ -131,25 +134,25 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           {/* ORDERS TAB */}
           {activeTab === 'orders' && (
             <div className="space-y-4">
-              {orders.length > 0 ? (
-                orders.map((ord) => (
+              {safeOrders.length > 0 ? (
+                safeOrders.map((ord) => (
                   <div key={ord.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
                       <div>
                         <div className="flex items-center space-x-2">
                           <span className="font-extrabold text-slate-900 text-sm">{ord.orderNumber}</span>
                           <span className="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
-                            {ord.orderStatus.replace(/_/g, ' ')}
+                            {(ord.orderStatus || ord.status || '').replace(/_/g, ' ')}
                           </span>
                         </div>
                         <span className="text-[11px] text-slate-500">
-                          Placed on {new Date(ord.createdAt).toLocaleDateString()} • {ord.items.length} Items
+                          Placed on {new Date(ord.createdAt).toLocaleDateString()} • {(ord.items || []).length} Items
                         </span>
                       </div>
 
                       <div className="flex items-center space-x-3">
                         <span className="text-sm font-black text-slate-900">
-                          ₹{Number(ord.totalAmount || 0).toLocaleString('en-IN')}
+                          ₹{Number(ord.totalAmount || ord.subtotal || 0).toLocaleString('en-IN')}
                         </span>
                         <button
                           onClick={() => {
@@ -166,10 +169,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
                     {/* Item Thumbnails Preview */}
                     <div className="flex items-center space-x-2 overflow-x-auto pt-1">
-                      {ord.items.map((it) => (
+                      {(ord.items || []).map((it) => (
                         <div key={it.id} className="flex items-center space-x-2 bg-white border border-slate-200 rounded-xl p-1.5 shrink-0 text-xs">
-                          <img src={it.productImage} alt={it.productTitle} className="w-8 h-8 rounded-lg object-cover" />
-                          <span className="font-semibold text-slate-800 max-w-[120px] truncate">{it.productTitle}</span>
+                          <img src={it.productImage || (it.product && it.product.imageUrl)} alt={it.productTitle || (it.product && it.product.name)} className="w-8 h-8 rounded-lg object-cover" />
+                          <span className="font-semibold text-slate-800 max-w-[120px] truncate">{it.productTitle || (it.product && it.product.name)}</span>
                         </div>
                       ))}
                     </div>
@@ -259,7 +262,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {addresses.map((addr) => (
+                {safeAddresses.map((addr) => (
                   <div key={addr.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-slate-900 text-sm">{addr.fullName}</span>

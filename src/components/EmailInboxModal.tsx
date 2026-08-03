@@ -8,7 +8,7 @@ interface EmailInboxModalProps {
   emails: EmailNotification[];
 }
 
-export const EmailInboxModal: React.FC<EmailInboxModalProps> = ({ isOpen, onClose, emails }) => {
+export const EmailInboxModal: React.FC<EmailInboxModalProps> = ({ isOpen, onClose, emails = [] }) => {
   if (!isOpen) return null;
 
   return (

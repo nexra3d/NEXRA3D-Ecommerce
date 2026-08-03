@@ -55,10 +55,10 @@ interface AdminDashboardProps {
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   isOpen,
   onClose,
-  products,
-  categories,
-  orders,
-  coupons,
+  products = [],
+  categories = [],
+  orders = [],
+  coupons = [],
   onRefreshData
 }) => {
   if (!isOpen) return null;

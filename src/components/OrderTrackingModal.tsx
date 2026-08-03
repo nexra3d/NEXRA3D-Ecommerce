@@ -216,7 +216,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
           <div className="space-y-3">
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Logistics Milestones</h3>
             <div className="space-y-3 border-l-2 border-slate-200 pl-4 ml-2">
-              {order.trackingEvents.map((evt, idx) => (
+              {(order.trackingEvents || []).map((evt, idx) => (
                 <div key={idx} className="relative space-y-0.5">
                   <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-indigo-600 ring-4 ring-white" />
                   <div className="flex items-center justify-between text-xs">
@@ -234,7 +234,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
           <div className="space-y-3 border-t border-slate-200 pt-4">
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Itemized Bill</h3>
             <div className="space-y-2">
-              {order.items.map((item) => (
+              {(order.items || []).map((item) => (
                 <div key={item.id} className="flex items-center justify-between text-xs py-1 border-b border-slate-100 last:border-none">
                   <div className="flex items-center space-x-3">
                     <img src={item.productImage} alt={item.productTitle} className="w-10 h-10 rounded-lg object-cover bg-slate-100" />

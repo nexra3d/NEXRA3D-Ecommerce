@@ -197,16 +197,16 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
 
   const openEditAddressModal = (addr: Address) => {
     setEditingAddress(addr);
-    setAddrFullName(addr.fullName);
-    setAddrPhone(addr.phone);
-    setAddrStreetAddress(addr.streetAddress);
+    setAddrFullName(addr.fullName || '');
+    setAddrPhone(addr.phone || '');
+    setAddrStreetAddress(addr.streetAddress || '');
     setAddrApartment(addr.apartment || '');
-    setAddrCity(addr.city);
-    setAddrState(addr.state);
-    setAddrPostalCode(addr.postalCode);
+    setAddrCity(addr.city || '');
+    setAddrState(addr.state || '');
+    setAddrPostalCode(addr.postalCode || '');
     setAddrCountry(addr.country || 'India');
-    setAddrType(addr.type);
-    setAddrIsDefault(addr.isDefault);
+    setAddrType(addr.type || 'HOME');
+    setAddrIsDefault(!!addr.isDefault);
     setAddrError('');
     setShowAddressForm(true);
   };
@@ -684,7 +684,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                     <input
                       type="email"
                       disabled
-                      value={user.email}
+                      value={user.email || ''}
                       className="w-full bg-slate-100 border border-slate-200 text-slate-500 rounded-xl pl-10 pr-4 py-3 text-xs font-medium cursor-not-allowed"
                     />
                   </div>
@@ -819,7 +819,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                   <input
                     type="text"
                     disabled
-                    value={user.role}
+                    value={user.role || ''}
                     className="w-full bg-slate-100 border border-slate-200 text-slate-500 rounded-xl px-4 py-3 text-xs font-mono font-extrabold cursor-not-allowed"
                   />
                   <span className="text-[10px] text-slate-400 mt-1 block">
@@ -994,11 +994,15 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                           <span className={`inline-block font-black text-[11px] px-2 py-0.5 rounded ${
                             order.paymentStatus === 'CAPTURED' || order.paymentStatus === 'SUCCESS'
                               ? 'bg-emerald-100 text-emerald-800'
+                              : order.paymentStatus === 'COD' || order.paymentMethod === 'COD' || order.paymentMethod === 'CASH_ON_DELIVERY'
+                              ? 'bg-blue-100 text-blue-800'
                               : order.paymentStatus === 'FAILED'
                               ? 'bg-rose-100 text-rose-800'
                               : 'bg-amber-100 text-amber-800'
                           }`}>
-                            {order.paymentStatus}
+                            {order.paymentStatus === 'COD' || order.paymentMethod === 'COD' || order.paymentMethod === 'CASH_ON_DELIVERY'
+                              ? 'COD (Pay on Delivery)'
+                              : order.paymentStatus}
                           </span>
                         </div>
 
@@ -1013,9 +1017,9 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                         <div className="flex items-center space-x-3 overflow-x-auto">
                           {order.items.slice(0, 3).map((item) => (
                             <div key={item.id} className="flex items-center space-x-2 bg-white border border-slate-200 rounded-xl p-1.5 shrink-0">
-                              <img src={item.productImage} alt={item.productTitle} className="w-8 h-8 rounded-lg object-cover" />
+                              <img src={item.productImage || (item.product && item.product.imageUrl)} alt={item.productTitle || (item.product && item.product.name)} className="w-8 h-8 rounded-lg object-cover" />
                               <div className="text-[11px] pr-2">
-                                <span className="font-bold text-slate-900 block max-w-[120px] truncate">{item.productTitle}</span>
+                                <span className="font-bold text-slate-900 block max-w-[120px] truncate">{item.productTitle || (item.product && item.product.name)}</span>
                                 <span className="text-slate-500 text-[10px]">Qty: {item.quantity}</span>
                               </div>
                             </div>
@@ -1027,7 +1031,9 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
 
                         {/* Action buttons */}
                         <div className="flex items-center space-x-2 shrink-0">
-                          {(order.paymentStatus === 'FAILED' || order.paymentStatus === 'PENDING') && (
+                          {(order.paymentStatus === 'FAILED' || order.paymentStatus === 'PENDING') &&
+                           order.paymentMethod !== 'COD' &&
+                           order.paymentMethod !== 'CASH_ON_DELIVERY' && (
                             <button
                               onClick={() => handleRetryPayment(order)}
                               disabled={retryingOrderId === order.id}

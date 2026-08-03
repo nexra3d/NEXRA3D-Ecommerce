@@ -559,7 +559,7 @@ async function requireAuthMiddleware(req: AuthenticatedRequest, res: Response, n
     }
 
     if (!user) {
-      return res.status(401).json({ error: 'User account not found.' });
+      return res.status(401).json({ error: 'Invalid or expired session. Please log in again.' });
     }
 
     req.user = user;
@@ -890,11 +890,25 @@ const handleProfileUpdate = async (req: AuthenticatedRequest, res: Response) => 
   } = req.body;
 
   try {
+    let emailToUpdate: string | undefined = undefined;
+    if (email && typeof email === 'string' && email.trim() !== '' && email.toLowerCase().trim() !== req.user.email.toLowerCase()) {
+      const existingEmailUser = await prisma.user.findFirst({
+        where: {
+          email: email.toLowerCase().trim(),
+          NOT: { id: userId }
+        }
+      });
+      if (existingEmailUser) {
+        return res.status(400).json({ error: 'This email is already in use by another account.' });
+      }
+      emailToUpdate = email.toLowerCase().trim();
+    }
+
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: {
         name: name !== undefined && name !== '' ? name : undefined,
-        email: email !== undefined && email !== '' ? email.toLowerCase().trim() : undefined,
+        email: emailToUpdate,
         phone: phone !== undefined ? phone : undefined,
         company: company !== undefined ? company : undefined,
         gst: gst !== undefined ? gst : undefined,
@@ -2005,13 +2019,15 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
 
     const orderNumber = 'ORD-' + Math.floor(100000 + Math.random() * 900000);
 
+    const isCod = paymentMethod === 'COD' || paymentMethod === 'CASH_ON_DELIVERY';
+
     const newOrder = await prisma.order.create({
       data: {
         orderNumber,
         userId,
-        status: 'PENDING',
-        paymentStatus: 'PENDING',
-        paymentMethod,
+        status: (isCod ? 'PROCESSING' : 'PENDING') as any,
+        paymentStatus: (isCod ? 'COD' : 'PENDING') as any,
+        paymentMethod: isCod ? 'COD' : paymentMethod,
         subtotal,
         discountAmount,
         taxAmount,
@@ -2093,6 +2109,43 @@ app.get('/api/orders/:id', requireAuthMiddleware, async (req: AuthenticatedReque
     return res.json(order);
   } catch (err: any) {
     return res.status(500).json({ error: 'Failed to fetch order' });
+  }
+});
+
+app.put(['/api/orders/:id/status', '/api/admin/orders/:id/status'], requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  const { id } = req.params;
+  const { status, paymentStatus, title, description } = req.body;
+
+  try {
+    const existing = await prisma.order.findFirst({
+      where: { OR: [{ id }, { orderNumber: id }] }
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (req.user.role !== 'ADMIN' && existing.userId !== req.user.id) {
+      return res.status(403).json({ error: 'Unauthorized to update order status' });
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: existing.id },
+      data: {
+        status: status || existing.status,
+        paymentStatus: paymentStatus || existing.paymentStatus
+      },
+      include: {
+        items: { include: { product: true } },
+        user: true,
+        shipment: true
+      }
+    });
+
+    return res.json({ success: true, message: 'Order status updated successfully', order: updated });
+  } catch (err: any) {
+    console.error('Error updating order status:', err);
+    return res.status(500).json({ error: 'Failed to update order status' });
   }
 });
 

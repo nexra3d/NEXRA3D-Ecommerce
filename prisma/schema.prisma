@@ -32,6 +32,7 @@ enum PaymentStatus {
   PAID
   FAILED
   REFUNDED
+  COD
 }
 
 enum QuoteStatus {

@@ -13,7 +13,7 @@ interface WishlistModalProps {
 export const WishlistModal: React.FC<WishlistModalProps> = ({
   isOpen,
   onClose,
-  wishlistProducts,
+  wishlistProducts = [],
   onRemoveFromWishlist,
   onAddToCart
 }) => {

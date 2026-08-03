@@ -7,15 +7,13 @@ interface NexraLogoProps {
   className?: string;
 }
 
-export const NexraLogo: React.FC<NexraLogoProps> = ({
-  variant = 'light',
-  size = 'md',
-  showSubtitle = true,
-  className = ''
-}) => {
-  const isDarkBg = variant === 'dark';
+interface SpiralMarkProps {
+  idSuffix: string;
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  isDarkBg?: boolean;
+}
 
-  // Sizing heights for the logo mark and typography
+const SpiralMark: React.FC<SpiralMarkProps> = ({ idSuffix, size = 'md', isDarkBg = false }) => {
   const iconHeights = {
     sm: 'h-9',
     md: 'h-12',
@@ -23,25 +21,7 @@ export const NexraLogo: React.FC<NexraLogoProps> = ({
     xl: 'h-24'
   };
 
-  const titleFontSizes = {
-    sm: 'text-base font-black',
-    md: 'text-xl font-black',
-    lg: 'text-3xl font-black',
-    xl: 'text-5xl font-black'
-  };
-
-  const subFontSizes = {
-    sm: 'text-[9px]',
-    md: 'text-[11px]',
-    lg: 'text-sm',
-    xl: 'text-lg'
-  };
-
-  const primaryTextColor = isDarkBg ? 'text-white' : 'text-slate-900';
-  const companyTextColor = isDarkBg ? 'text-amber-300 font-medium' : 'text-amber-800 font-semibold';
-
-  // Render the Golden Nautilus Feather Spiral Emblem SVG
-  const renderSpiralMark = (idSuffix: string) => (
+  return (
     <svg
       viewBox="0 0 120 120"
       fill="none"
@@ -115,15 +95,41 @@ export const NexraLogo: React.FC<NexraLogoProps> = ({
       </text>
     </svg>
   );
+};
+
+export const NexraLogo: React.FC<NexraLogoProps> = ({
+  variant = 'light',
+  size = 'md',
+  showSubtitle = true,
+  className = ''
+}) => {
+  const isDarkBg = variant === 'dark';
+
+  const titleFontSizes = {
+    sm: 'text-base font-black',
+    md: 'text-xl font-black',
+    lg: 'text-3xl font-black',
+    xl: 'text-5xl font-black'
+  };
+
+  const subFontSizes = {
+    sm: 'text-[9px]',
+    md: 'text-[11px]',
+    lg: 'text-sm',
+    xl: 'text-lg'
+  };
+
+  const primaryTextColor = isDarkBg ? 'text-white' : 'text-slate-900';
+  const companyTextColor = isDarkBg ? 'text-amber-300 font-medium' : 'text-amber-800 font-semibold';
 
   if (variant === 'icon-only') {
-    return renderSpiralMark('iconOnly');
+    return <SpiralMark idSuffix="iconOnly" size={size} isDarkBg={isDarkBg} />;
   }
 
   return (
     <div className={`inline-flex items-center gap-3.5 sm:gap-5 select-none ${className}`}>
       {/* 1. First: Separated Logo Icon Emblem */}
-      {renderSpiralMark(variant)}
+      <SpiralMark idSuffix={variant} size={size} isDarkBg={isDarkBg} />
 
       {/* 2. Then: Separated Header & Company Name */}
       <div className="flex flex-col justify-center">
@@ -143,6 +149,3 @@ export const NexraLogo: React.FC<NexraLogoProps> = ({
     </div>
   );
 };
-
-
-

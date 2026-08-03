@@ -170,7 +170,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
             </div>
 
             {/* Subcategory Filter if category is selected */}
-            {selectedCategoryObj && selectedCategoryObj.subcategories.length > 0 && (
+            {selectedCategoryObj && Array.isArray(selectedCategoryObj.subcategories) && selectedCategoryObj.subcategories.length > 0 && (
               <div className="space-y-2 pt-2 border-t border-slate-100">
                 <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
                   Subcategory

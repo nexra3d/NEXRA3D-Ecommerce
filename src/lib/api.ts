@@ -56,9 +56,18 @@ export async function apiFetch(url: string, options: RequestInit = {}): Promise<
     delete (headers as any)['Content-Type'];
   }
 
-  return fetch(url, {
+  const res = await fetch(url, {
     ...options,
     credentials: 'same-origin',
     headers
   });
+
+  if (res.status === 401 && !url.includes('/api/auth/login') && !url.includes('/api/auth/register') && !url.includes('/api/auth/me')) {
+    clearStoredAuth();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('auth_unauthorized'));
+    }
+  }
+
+  return res;
 }

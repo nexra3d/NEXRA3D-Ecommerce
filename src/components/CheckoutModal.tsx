@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   ShieldCheck,
@@ -31,10 +31,10 @@ interface CheckoutModalProps {
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   isOpen,
   onClose,
-  cartItems,
-  savedAddresses,
+  cartItems = [],
+  savedAddresses = [],
   appliedCoupon,
-  discountAmount,
+  discountAmount = 0,
   onAddNewAddress,
   onOrderCompleted,
   currentUser,
@@ -42,12 +42,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
+  const addressList = Array.isArray(savedAddresses) ? savedAddresses : [];
+  const safeCartItems = Array.isArray(cartItems) ? cartItems : [];
+
   const [step, setStep] = useState<'address' | 'payment' | 'razorpay_modal' | 'success'>('address');
   const [selectedAddressId, setSelectedAddressId] = useState<string>(
-    savedAddresses.find((a) => a.isDefault)?.id || savedAddresses[0]?.id || ''
+    addressList.find((a) => a.isDefault)?.id || addressList[0]?.id || ''
   );
 
-  const [showAddAddressForm, setShowAddAddressForm] = useState(savedAddresses.length === 0);
+  const [showAddAddressForm, setShowAddAddressForm] = useState(addressList.length === 0);
   const [newFullName, setNewFullName] = useState(currentUser?.name || '');
   const [newPhone, setNewPhone] = useState(currentUser?.phone || '');
   const [newStreet, setNewStreet] = useState('');
@@ -59,13 +62,44 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [isProcessingOrder, setIsProcessingOrder] = useState(false);
   const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
 
+  useEffect(() => {
+    if (isOpen) {
+      if (savedAddresses && savedAddresses.length > 0) {
+        const defaultAddr = savedAddresses.find((a) => a.isDefault) || savedAddresses[0];
+        if (defaultAddr) {
+          setSelectedAddressId(defaultAddr.id);
+        }
+        setShowAddAddressForm(false);
+      } else {
+        setShowAddAddressForm(true);
+      }
+
+      if (currentUser) {
+        setNewFullName(currentUser.name || '');
+        setNewPhone(currentUser.phone || '');
+        if (currentUser.addresses && currentUser.addresses.length > 0) {
+          const defaultUserAddr = currentUser.addresses.find((a: any) => a.isDefault) || currentUser.addresses[0];
+          setNewStreet(defaultUserAddr.streetAddress || defaultUserAddr.addressLine1 || '');
+          setNewCity(defaultUserAddr.city || '');
+          setNewState(defaultUserAddr.state || '');
+          setNewPostalCode(defaultUserAddr.postalCode || '');
+        } else {
+          setNewStreet(currentUser.addressLine1 || '');
+          setNewCity(currentUser.city || '');
+          setNewState(currentUser.state || '');
+          setNewPostalCode(currentUser.postalCode || '');
+        }
+      }
+    }
+  }, [isOpen, savedAddresses, currentUser]);
+
   // Totals
-  const subtotal = cartItems.reduce(
-    (acc, item) => acc + (item.product.salePrice || item.product.price) * item.quantity,
+  const subtotal = safeCartItems.reduce(
+    (acc, item) => acc + (item.product ? ((item.product.salePrice || item.product.price) * item.quantity) : 0),
     0
   );
   const tax = Math.round(subtotal * 0.18);
-  const shippingFee = subtotal > 999 || cartItems.length === 0 ? 0 : 99;
+  const shippingFee = subtotal > 999 || safeCartItems.length === 0 ? 0 : 99;
   const grandTotal = Math.max(0, subtotal + tax + shippingFee - discountAmount);
 
   const handleSaveAddress = async (e: React.FormEvent) => {
@@ -96,8 +130,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       return;
     }
 
-    const chosenAddress = savedAddresses.find((a) => a.id === selectedAddressId) || savedAddresses[0];
-    if (!chosenAddress && savedAddresses.length > 0) {
+    const chosenAddress = addressList.find((a) => a.id === selectedAddressId) || addressList[0];
+    if (!chosenAddress && addressList.length > 0) {
       setCheckoutError('Please select or add a shipping address.');
       return;
     }

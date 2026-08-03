@@ -235,7 +235,8 @@ class MemoryStore {
       cloned.orders = this.getStore('order').filter((o) => o.userId === item.id);
     }
     if (include.category && item.categoryId) {
-      cloned.category = this.getStore('category').find((c) => c.id === item.categoryId) || null;
+      const cat = this.getStore('category').find((c) => c.id === item.categoryId) || null;
+      cloned.category = cat;
     }
     if (include.images) {
       cloned.images = this.getStore('productImage').filter((i) => i.productId === item.id);
@@ -244,13 +245,45 @@ class MemoryStore {
       cloned.variants = this.getStore('productVariant').filter((v) => v.productId === item.id);
     }
     if (include.items) {
+      let rawItems: any[] = [];
       if (modelLower === 'cart') {
-        cloned.items = this.getStore('cartItem').filter((ci) => ci.cartId === item.id);
+        rawItems = this.getStore('cartItem').filter((ci) => ci.cartId === item.id);
       } else if (modelLower === 'wishlist') {
-        cloned.items = this.getStore('wishlistItem').filter((wi) => wi.wishlistId === item.id);
+        rawItems = this.getStore('wishlistItem').filter((wi) => wi.wishlistId === item.id);
       } else if (modelLower === 'order') {
-        cloned.items = this.getStore('orderItem').filter((oi) => oi.orderId === item.id);
+        rawItems = this.getStore('orderItem').filter((oi) => oi.orderId === item.id);
       }
+
+      const itemIncludes = typeof include.items === 'object' ? (include.items.include || { product: true, variant: true }) : { product: true, variant: true };
+      const modelChildType = modelLower === 'cart' ? 'cartItem' : (modelLower === 'wishlist' ? 'wishlistItem' : 'orderItem');
+      cloned.items = rawItems.map((child) => this.attachIncludes(child, modelChildType, itemIncludes));
+    }
+    if (include.product || modelLower === 'cartitem' || modelLower === 'wishlistitem' || modelLower === 'orderitem') {
+      if (item.productId && !cloned.product) {
+        const prod = this.getStore('product').find((p) => p.id === item.productId) || null;
+        if (prod) {
+          const prodIncludes = typeof include.product === 'object' ? (include.product.include || { images: true, category: true }) : { images: true, category: true };
+          cloned.product = this.attachIncludes(prod, 'product', prodIncludes);
+        } else {
+          cloned.product = null;
+        }
+      }
+    }
+    if (include.variant || modelLower === 'cartitem' || modelLower === 'orderitem') {
+      if (item.variantId && !cloned.variant) {
+        cloned.variant = this.getStore('productVariant').find((v) => v.id === item.variantId) || null;
+      }
+    }
+    if (include.shipment && modelLower === 'order') {
+      const shp = this.getStore('shipment').find((s) => s.orderId === item.id) || null;
+      if (shp) {
+        cloned.shipment = this.attachIncludes(shp, 'shipment', { statusHistory: true });
+      } else {
+        cloned.shipment = null;
+      }
+    }
+    if (include.statusHistory && modelLower === 'shipment') {
+      cloned.statusHistory = this.getStore('shipmentStatusHistory').filter((sh) => sh.shipmentId === item.id);
     }
     if (include.user && item.userId) {
       cloned.user = this.getStore('user').find((u) => u.id === item.userId) || null;
@@ -296,14 +329,57 @@ class MemoryStore {
       },
 
       create: async (args: any = {}) => {
-        const data = args.data || {};
+        const data = { ...(args.data || {}) };
+        const id = data.id || generateId(modelName.toLowerCase());
+
+        let nestedItemsToCreate: any[] = [];
+        if (data.items && typeof data.items === 'object' && data.items.create) {
+          nestedItemsToCreate = Array.isArray(data.items.create) ? data.items.create : [data.items.create];
+          delete data.items;
+        }
+
+        let nestedStatusHistory: any[] = [];
+        if (data.statusHistory && typeof data.statusHistory === 'object' && data.statusHistory.create) {
+          nestedStatusHistory = Array.isArray(data.statusHistory.create) ? data.statusHistory.create : [data.statusHistory.create];
+          delete data.statusHistory;
+        }
+
         const newItem = {
-          id: data.id || generateId(modelName.toLowerCase()),
+          id,
           ...data,
           createdAt: data.createdAt || new Date(),
           updatedAt: data.updatedAt || new Date()
         };
         store.push(newItem);
+
+        if (nestedItemsToCreate.length > 0 && modelName.toLowerCase() === 'order') {
+          const orderItemStore = this.getStore('orderItem');
+          for (const itemData of nestedItemsToCreate) {
+            const orderItem = {
+              id: itemData.id || generateId('orderitem'),
+              orderId: id,
+              ...itemData,
+              createdAt: new Date(),
+              updatedAt: new Date()
+            };
+            orderItemStore.push(orderItem);
+          }
+        }
+
+        if (nestedStatusHistory.length > 0 && modelName.toLowerCase() === 'shipment') {
+          const shpHistoryStore = this.getStore('shipmentStatusHistory');
+          for (const shData of nestedStatusHistory) {
+            const shItem = {
+              id: shData.id || generateId('shphistory'),
+              shipmentId: id,
+              ...shData,
+              createdAt: new Date(),
+              updatedAt: new Date()
+            };
+            shpHistoryStore.push(shItem);
+          }
+        }
+
         return this.attachIncludes(newItem, modelName, args.include);
       },
 
