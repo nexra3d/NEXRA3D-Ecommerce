@@ -114,9 +114,12 @@ export default function App() {
         const text = await res.text();
         data = text ? JSON.parse(text) : {};
       } catch {}
-      if (data?.user) {
+      if (res.ok && data?.user) {
         setUser(data.user);
         setStoredAuth(data.token, data.user);
+      } else if (res.status === 401 || (res.ok && !data?.user)) {
+        clearStoredAuth();
+        setUser(null);
       } else if (storedUser) {
         setUser(storedUser);
       }
