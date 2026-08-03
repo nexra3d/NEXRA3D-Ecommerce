@@ -145,6 +145,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return headers;
   };
 
+  const [adminOrders, setAdminOrders] = useState<Order[]>(orders);
+
+  useEffect(() => {
+    if (orders && orders.length > 0) {
+      setAdminOrders(orders);
+    }
+  }, [orders]);
+
+  const fetchAdminOrders = async () => {
+    try {
+      const res = await fetch('/api/orders', {
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setAdminOrders(data);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch admin orders:', err);
+    }
+  };
+
   const fetchShipments = async () => {
     try {
       const res = await fetch('/api/admin/shipments', {
@@ -161,6 +186,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   useEffect(() => {
+    fetchAdminOrders();
     if (activeTab === 'shipments' || activeTab === 'orders' || activeTab === 'overview') {
       fetchShipments();
     }
@@ -168,10 +194,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleCreateShipmentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedOrderForShipment) return;
+    const activeList = adminOrders.length > 0 ? adminOrders : orders;
+    const targetOrder = selectedOrderForShipment || activeList[0];
+    if (!targetOrder) {
+      alert('Please select a valid order to create shipment');
+      return;
+    }
 
     try {
-      const res = await fetch(`/api/admin/orders/${selectedOrderForShipment.id}/shipments`, {
+      const orderIdentifier = targetOrder.id || targetOrder.orderNumber;
+      const res = await fetch(`/api/admin/orders/${orderIdentifier}/shipments`, {
         method: 'POST',
         headers: getAuthHeaders(),
         credentials: 'include',
@@ -191,6 +223,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         setShipAwb('');
         setShipTrackingNum('');
         fetchShipments();
+        fetchAdminOrders();
         onRefreshData();
       } else {
         const err = await res.json();
@@ -1931,12 +1964,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <h3 className="text-sm font-bold text-slate-200">Customer Orders Control</h3>
 
               <div className="space-y-3">
-                {orders.map((ord) => (
-                  <div key={ord.id} className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 space-y-3">
+                {(adminOrders.length > 0 ? adminOrders : orders).map((ord) => {
+                  const custName = ord.customerName || (ord as any).user?.name || (ord as any).shippingAddress?.fullName || 'Customer';
+                  const custEmail = ord.customerEmail || (ord as any).user?.email || (ord as any).shippingAddress?.email || 'N/A';
+                  return (
+                  <div key={ord.id || ord.orderNumber} className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 space-y-3">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-700 pb-2">
                       <div>
                         <span className="font-bold text-amber-400 text-sm font-mono">{ord.orderNumber}</span>
-                        <span className="text-slate-400 block">Customer: {ord.customerName} ({ord.customerEmail})</span>
+                        <span className="text-slate-400 block">Customer: {custName} ({custEmail})</span>
                       </div>
 
                       <div className="flex items-center space-x-3">
@@ -1974,7 +2010,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </button>
                     </div>
                   </div>
-                ))}
+                ); })}
               </div>
             </div>
           )}
@@ -1996,8 +2032,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={() => {
-                      if (orders.length > 0) {
-                        setSelectedOrderForShipment(orders[0]);
+                      const activeList = adminOrders.length > 0 ? adminOrders : orders;
+                      if (activeList.length > 0) {
+                        setSelectedOrderForShipment(activeList[0]);
                         setShowCreateShipmentModal(true);
                       } else {
                         alert('No orders available to create shipment.');
@@ -2456,18 +2493,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div>
                   <label className="block text-slate-400 font-medium mb-1">Select Order *</label>
                   <select
-                    value={selectedOrderForShipment?.id || ''}
+                    value={selectedOrderForShipment?.id || selectedOrderForShipment?.orderNumber || (adminOrders[0]?.id || orders[0]?.id || '')}
                     onChange={(e) => {
-                      const o = orders.find((ord) => ord.id === e.target.value);
+                      const activeList = adminOrders.length > 0 ? adminOrders : orders;
+                      const o = activeList.find((ord) => ord.id === e.target.value || ord.orderNumber === e.target.value);
                       if (o) setSelectedOrderForShipment(o);
                     }}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono text-xs focus:outline-none focus:border-indigo-500"
                   >
-                    {orders.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.orderNumber} - {o.customerName} (₹{Number(o.totalAmount || 0).toLocaleString('en-IN')})
-                      </option>
-                    ))}
+                    {(adminOrders.length > 0 ? adminOrders : orders).map((o) => {
+                      const displayName = o.customerName || (o as any).user?.name || (o as any).shippingAddress?.fullName || 'Customer';
+                      return (
+                        <option key={o.id || o.orderNumber} value={o.id || o.orderNumber}>
+                          {o.orderNumber} - {displayName} (₹{Number(o.totalAmount || 0).toLocaleString('en-IN')})
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
 
