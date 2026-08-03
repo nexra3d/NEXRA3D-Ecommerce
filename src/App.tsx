@@ -238,6 +238,26 @@ export default function App() {
     }
   };
 
+  // Fetch User Addresses
+  const fetchSavedAddresses = async () => {
+    const addrData = await safeFetchJson('/api/addresses');
+    setSavedAddresses(Array.isArray(addrData) ? addrData : []);
+  };
+
+  // Fetch Orders
+  const fetchOrders = async () => {
+    const ordData = await safeFetchJson('/api/orders');
+    setUserOrders(Array.isArray(ordData) ? ordData : []);
+  };
+
+  // Central refresh for user-specific data
+  const refreshUserData = async () => {
+    await fetchCart();
+    await fetchWishlist();
+    await fetchSavedAddresses();
+    await fetchOrders();
+  };
+
   // Fetch initial data on boot
   const fetchData = async () => {
     try {
@@ -262,19 +282,8 @@ export default function App() {
       const emlData = await safeFetchJson('/api/emails');
       setEmails(Array.isArray(emlData) ? emlData : []);
 
-      // 4. Fetch Cart
-      await fetchCart();
-
-      // 5. Fetch Wishlist
-      await fetchWishlist();
-
-      // 6. Fetch User Addresses
-      const addrData = await safeFetchJson('/api/addresses');
-      setSavedAddresses(Array.isArray(addrData) ? addrData : []);
-
-      // 7. Fetch Orders
-      const ordData = await safeFetchJson('/api/orders');
-      setUserOrders(Array.isArray(ordData) ? ordData : []);
+      // 4. Fetch User Data
+      await refreshUserData();
     } catch (err) {
       console.error('Error initializing app state:', err);
     }
@@ -284,15 +293,20 @@ export default function App() {
   const handleLogout = async () => {
     try {
       await apiFetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
       clearStoredAuth();
       setUser(null);
+      setCartData(null);
+      setCartItems([]);
+      setWishlistData(null);
+      setWishlistProductIds([]);
+      setSavedAddresses([]);
+      setUserOrders([]);
       setIsAdminOpen(false);
       setCurrentView('login');
       showToast('Logged out of account');
-    } catch (err) {
-      console.error('Logout error:', err);
-      clearStoredAuth();
-      setUser(null);
     }
   };
 
@@ -352,6 +366,20 @@ export default function App() {
     window.addEventListener('auth_unauthorized', handleUnauthorized);
     return () => window.removeEventListener('auth_unauthorized', handleUnauthorized);
   }, []);
+
+  // React to user login / logout state changes
+  useEffect(() => {
+    if (user?.id) {
+      refreshUserData();
+    } else {
+      setCartData(null);
+      setCartItems([]);
+      setWishlistData(null);
+      setWishlistProductIds([]);
+      setSavedAddresses([]);
+      setUserOrders([]);
+    }
+  }, [user?.id]);
 
   // Listen for /admin URL route
   useEffect(() => {
@@ -670,8 +698,7 @@ export default function App() {
             const data = await res.json();
             if (data.user) {
               setUser(data.user);
-              await fetchCart();
-              await fetchWishlist();
+              await refreshUserData();
               showToast(`Switched account to ${role} (${data.user.name})`);
             }
           } catch (err) {
@@ -708,8 +735,7 @@ export default function App() {
         <LoginPage
           onLoginSuccess={(loggedUser) => {
             setUser(loggedUser);
-            fetchCart();
-            fetchWishlist();
+            refreshUserData();
             setCurrentView('home');
             showToast(`Welcome back, ${loggedUser.name}!`);
           }}
@@ -722,8 +748,7 @@ export default function App() {
         <RegisterPage
           onRegisterSuccess={(newUser) => {
             setUser(newUser);
-            fetchCart();
-            fetchWishlist();
+            refreshUserData();
             setCurrentView('home');
             showToast(`Account created successfully! Welcome, ${newUser.name}`);
           }}
@@ -830,8 +855,7 @@ export default function App() {
               setUser(loggedUser);
               setIsAdminOpen(true);
               setCurrentView('admin');
-              fetchCart();
-              fetchWishlist();
+              refreshUserData();
               showToast(`Welcome Admin, ${loggedUser.name}!`);
             }}
             onNavigateHome={() => {
@@ -1058,8 +1082,7 @@ export default function App() {
         onClose={() => setIsAuthOpen(false)}
         onLoginSuccess={(u) => {
           setUser(u);
-          fetchCart();
-          fetchWishlist();
+          refreshUserData();
           setIsAuthOpen(false);
           setIsProfileOpen(false);
           showToast(`Welcome back, ${u.name}!`);

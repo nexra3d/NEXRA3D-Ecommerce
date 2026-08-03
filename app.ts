@@ -2065,7 +2065,12 @@ app.get('/api/orders', requireAuthMiddleware, async (req: AuthenticatedRequest, 
   try {
     const whereClause: any = {};
     if (req.user.role !== 'ADMIN') {
-      whereClause.userId = userId;
+      whereClause.OR = [
+        { userId: userId },
+        { user: { email: req.user.email } }
+      ];
+    } else if (req.query.userId) {
+      whereClause.userId = String(req.query.userId);
     }
 
     const orders = await prisma.order.findMany({
@@ -2080,6 +2085,7 @@ app.get('/api/orders', requireAuthMiddleware, async (req: AuthenticatedRequest, 
 
     return res.json(orders);
   } catch (err: any) {
+    console.error('Failed to fetch orders:', err);
     return res.status(500).json({ error: 'Failed to fetch orders' });
   }
 });
@@ -2102,13 +2108,13 @@ app.get('/api/orders/:id', requireAuthMiddleware, async (req: AuthenticatedReque
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    if (order.userId !== req.user.id && req.user.role !== 'ADMIN') {
+    if (order.userId !== req.user.id && order.user?.email !== req.user.email && req.user.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Unauthorized to view this order' });
     }
 
     return res.json(order);
   } catch (err: any) {
-    return res.status(500).json({ error: 'Failed to fetch order' });
+    return res.status(500).json({ error: 'Failed to fetch order details' });
   }
 });
 
@@ -2715,11 +2721,13 @@ app.post('/api/payments/razorpay/fail', requireAuthMiddleware, async (req: Authe
 app.post('/api/orders/:id/retry-payment', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const order = await prisma.order.findUnique({ where: { id } });
+    const order = await prisma.order.findFirst({
+      where: { OR: [{ id }, { orderNumber: id }] }
+    });
     if (!order) return res.status(404).json({ error: 'Order not found' });
     const razorpayOrderId = `order_retry_${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
     await prisma.order.update({
-      where: { id },
+      where: { id: order.id },
       data: { razorpayOrderId, paymentStatus: 'PENDING' }
     });
     return res.json({
@@ -2751,7 +2759,9 @@ app.post('/api/admin/orders/:id/shipments', requireAdminMiddleware, async (req: 
   try {
     const { id } = req.params;
     const { provider = 'Delhivery', trackingNumber, awbNumber } = req.body;
-    const order = await prisma.order.findUnique({ where: { id } });
+    const order = await prisma.order.findFirst({
+      where: { OR: [{ id }, { orderNumber: id }] }
+    });
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
     const shipmentNumber = `SHP-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
@@ -2860,8 +2870,12 @@ app.post('/api/admin/orders/:id/reconcile', requireAdminMiddleware, async (req: 
   try {
     const { id } = req.params;
     const { paymentStatus = 'PAID' } = req.body;
+    const targetOrder = await prisma.order.findFirst({
+      where: { OR: [{ id }, { orderNumber: id }] }
+    });
+    if (!targetOrder) return res.status(404).json({ error: 'Order not found' });
     const order = await prisma.order.update({
-      where: { id },
+      where: { id: targetOrder.id },
       data: {
         paymentStatus,
         status: paymentStatus === 'PAID' ? 'CONFIRMED' : 'PENDING'

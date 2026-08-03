@@ -116,26 +116,34 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
   const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null);
 
   const fetchUserOrders = async () => {
-    if (!user) return;
+    if (!user) {
+      setUserOrders([]);
+      return;
+    }
     setOrdersLoading(true);
     try {
-      const res = await apiFetch(`/api/orders?userId=${user.id}`);
+      const res = await apiFetch('/api/orders');
       if (res.ok) {
         const data = await res.json();
-        setUserOrders(data);
+        setUserOrders(Array.isArray(data) ? data : []);
+      } else {
+        setUserOrders([]);
       }
     } catch (err) {
       console.error('Failed to fetch user orders:', err);
+      setUserOrders([]);
     } finally {
       setOrdersLoading(false);
     }
   };
 
   useEffect(() => {
-    if (currentSubSection === 'orders') {
+    if (user) {
       fetchUserOrders();
+    } else {
+      setUserOrders([]);
     }
-  }, [currentSubSection, user]);
+  }, [currentSubSection, user?.id]);
 
   // Addresses State
   const [userAddresses, setUserAddresses] = useState<Address[]>([]);
