@@ -554,11 +554,8 @@ async function requireAdminMiddleware(req: AuthenticatedRequest, res: Response, 
 
 export const app = express();
 
-if (process.env.NODE_ENV !== "production") {
-  seedInitialDatabase().catch((e) => {
-    console.error("Database seed failed:", e);
-  });
-}
+// Execute DB Seeding
+seedInitialDatabase().catch((e) => console.warn(e));
 
 app.use(express.json());
 app.use(cookieParser());
@@ -744,8 +741,12 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
       user: formattedUser
     });
   } catch (error: any) {
-    console.error('Registration error:', error);
-    return res.status(500).json({ success: false, message: 'Registration failed due to a server error.', error: 'Registration failed due to a server error.' });
+    console.error({
+      name: error?.name,
+      message: error?.message,
+      stack: error?.stack
+    });
+    return res.status(500).json({ success: false, message: 'Registration failed: ' + (error?.message || String(error)), error: error?.message || String(error) });
   }
 });
 
@@ -807,8 +808,12 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
       user: formattedUser
     });
   } catch (error: any) {
-    console.error('Login error:', error);
-    return res.status(500).json({ success: false, message: 'Login failed due to a server error.', error: 'Login failed due to a server error.' });
+    console.error({
+      name: error?.name,
+      message: error?.message,
+      stack: error?.stack
+    });
+    return res.status(500).json({ success: false, message: 'Login failed: ' + (error?.message || String(error)), error: error?.message || String(error) });
   }
 });
 
@@ -821,7 +826,10 @@ app.post('/api/auth/logout', (req: Request, res: Response) => {
 // UPDATE PROFILE
 const handleProfileUpdate = async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user.id;
-  const { name, email, phone, company, gst, avatar, avatarUrl, address, streetAddress, apartment, city, state, postalCode, country } = req.body;
+  const {
+    name, email, phone, company, gst, avatar, avatarUrl,
+    address, streetAddress, addressLine1, apartment, addressLine2, city, state, postalCode, country
+  } = req.body;
 
   try {
     const updatedUser = await prisma.user.update({
@@ -836,7 +844,13 @@ const handleProfileUpdate = async (req: AuthenticatedRequest, res: Response) => 
       }
     });
 
-    const street = streetAddress || address?.streetAddress || address?.street;
+    const street = streetAddress || addressLine1 || address?.streetAddress || address?.street || address?.addressLine1;
+    const apt = apartment || addressLine2 || address?.apartment || address?.addressLine2 || '';
+    const cit = city || address?.city || '';
+    const st = state || address?.state || '';
+    const postCode = postalCode || address?.postalCode || '';
+    const cntry = country || address?.country || 'India';
+
     if (street) {
       const existingDefault = await prisma.address.findFirst({
         where: { userId, isDefault: true }
@@ -849,11 +863,11 @@ const handleProfileUpdate = async (req: AuthenticatedRequest, res: Response) => 
             fullName: name || updatedUser.name,
             phone: phone || updatedUser.phone || '',
             streetAddress: street,
-            apartment: apartment || address?.apartment || '',
-            city: city || address?.city || '',
-            state: state || address?.state || '',
-            postalCode: postalCode || address?.postalCode || '',
-            country: country || address?.country || 'India'
+            apartment: apt,
+            city: cit || existingDefault.city,
+            state: st || existingDefault.state,
+            postalCode: postCode || existingDefault.postalCode,
+            country: cntry
           }
         });
       } else {
@@ -863,11 +877,11 @@ const handleProfileUpdate = async (req: AuthenticatedRequest, res: Response) => 
             fullName: name || updatedUser.name,
             phone: phone || updatedUser.phone || '',
             streetAddress: street,
-            apartment: apartment || address?.apartment || '',
-            city: city || address?.city || '',
-            state: state || address?.state || '',
-            postalCode: postalCode || address?.postalCode || '',
-            country: country || address?.country || 'India',
+            apartment: apt,
+            city: cit || 'N/A',
+            state: st || 'N/A',
+            postalCode: postCode || '000000',
+            country: cntry,
             isDefault: true,
             type: 'HOME'
           }
@@ -883,12 +897,13 @@ const handleProfileUpdate = async (req: AuthenticatedRequest, res: Response) => 
     });
   } catch (err: any) {
     console.error('Update profile error:', err);
-    return res.status(500).json({ error: 'Failed to update profile' });
+    return res.status(500).json({ error: 'Failed to update profile: ' + (err.message || String(err)) });
   }
 };
 
-app.put('/api/auth/profile', requireAuthMiddleware, handleProfileUpdate);
-app.patch('/api/auth/profile', requireAuthMiddleware, handleProfileUpdate);
+app.put(['/api/user/profile', '/api/auth/profile', '/api/profile'], requireAuthMiddleware, handleProfileUpdate);
+app.patch(['/api/user/profile', '/api/auth/profile', '/api/profile'], requireAuthMiddleware, handleProfileUpdate);
+app.post(['/api/user/profile', '/api/auth/profile', '/api/profile'], requireAuthMiddleware, handleProfileUpdate);
 
 // CHANGE PASSWORD
 app.put('/api/auth/password', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
@@ -946,9 +961,15 @@ app.get('/api/address', requireAuthMiddleware, getAddressesHandler);
 
 const createAddressHandler = async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user.id;
-  const { fullName, phone, streetAddress, apartment, city, state, postalCode, country, isDefault, type } = req.body;
+  const {
+    fullName, phone, streetAddress, addressLine1, apartment, addressLine2,
+    city, state, postalCode, country, isDefault, type
+  } = req.body;
 
-  if (!fullName || !streetAddress || !city || !state || !postalCode) {
+  const street = streetAddress || addressLine1;
+  const apt = apartment || addressLine2 || '';
+
+  if (!fullName || !street || !city || !state || !postalCode) {
     return res.status(400).json({ error: 'Full name, street address, city, state, and postal code are required' });
   }
 
@@ -968,8 +989,8 @@ const createAddressHandler = async (req: AuthenticatedRequest, res: Response) =>
         userId,
         fullName,
         phone: phone || req.user.phone || '',
-        streetAddress,
-        apartment: apartment || '',
+        streetAddress: street,
+        apartment: apt,
         city,
         state,
         postalCode,
@@ -981,17 +1002,20 @@ const createAddressHandler = async (req: AuthenticatedRequest, res: Response) =>
 
     return res.status(201).json(newAddress);
   } catch (err: any) {
-    return res.status(500).json({ error: 'Failed to create address' });
+    console.error('Create address error:', err);
+    return res.status(500).json({ error: 'Failed to create address: ' + (err.message || String(err)) });
   }
 };
 
-app.post('/api/addresses', requireAuthMiddleware, createAddressHandler);
-app.post('/api/address', requireAuthMiddleware, createAddressHandler);
+app.post(['/api/addresses', '/api/address'], requireAuthMiddleware, createAddressHandler);
 
 const updateAddressHandler = async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
   const userId = req.user.id;
-  const { fullName, phone, streetAddress, apartment, city, state, postalCode, country, isDefault, type } = req.body;
+  const {
+    fullName, phone, streetAddress, addressLine1, apartment, addressLine2,
+    city, state, postalCode, country, isDefault, type
+  } = req.body;
 
   try {
     const existing = await prisma.address.findUnique({ where: { id } });
@@ -1010,13 +1034,16 @@ const updateAddressHandler = async (req: AuthenticatedRequest, res: Response) =>
       });
     }
 
+    const street = streetAddress || addressLine1 || existing.streetAddress;
+    const apt = apartment !== undefined ? apartment : (addressLine2 !== undefined ? addressLine2 : existing.apartment);
+
     const updated = await prisma.address.update({
       where: { id },
       data: {
         fullName: fullName || existing.fullName,
         phone: phone || existing.phone,
-        streetAddress: streetAddress || existing.streetAddress,
-        apartment: apartment !== undefined ? apartment : existing.apartment,
+        streetAddress: street,
+        apartment: apt,
         city: city || existing.city,
         state: state || existing.state,
         postalCode: postalCode || existing.postalCode,
@@ -1028,12 +1055,13 @@ const updateAddressHandler = async (req: AuthenticatedRequest, res: Response) =>
 
     return res.json(updated);
   } catch (err: any) {
-    return res.status(500).json({ error: 'Failed to update address' });
+    console.error('Update address error:', err);
+    return res.status(500).json({ error: 'Failed to update address: ' + (err.message || String(err)) });
   }
 };
 
-app.put('/api/addresses/:id', requireAuthMiddleware, updateAddressHandler);
-app.put('/api/address/:id', requireAuthMiddleware, updateAddressHandler);
+app.put(['/api/addresses/:id', '/api/address/:id'], requireAuthMiddleware, updateAddressHandler);
+app.patch(['/api/addresses/:id', '/api/address/:id'], requireAuthMiddleware, updateAddressHandler);
 
 const deleteAddressHandler = async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
@@ -1162,28 +1190,12 @@ app.get('/api/products', async (req: Request, res: Response) => {
     const formattedProducts = products.map(formatPrismaProductResponse);
     return res.json(formattedProducts);
   } catch (err: any) {
-    console.error('GET /api/products error:', err);
-    if (INITIAL_PRODUCTS && INITIAL_PRODUCTS.length > 0) {
-      let fallback = [...INITIAL_PRODUCTS];
-      if (category) {
-        fallback = fallback.filter((p: any) => p.categoryId === category || p.category?.slug === category || p.category?.name === category);
-      }
-      if (featured === 'true') {
-        fallback = fallback.filter((p: any) => p.isFeatured);
-      }
-      if (bestSeller === 'true') {
-        fallback = fallback.filter((p: any) => p.isBestSeller);
-      }
-      if (newArrival === 'true') {
-        fallback = fallback.filter((p: any) => p.isNewArrival);
-      }
-      if (search) {
-        const q = String(search).toLowerCase();
-        fallback = fallback.filter((p: any) => p.name?.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q));
-      }
-      return res.json(fallback);
-    }
-    return res.status(500).json({ error: 'Failed to fetch products' });
+    console.error({
+      name: err?.name,
+      message: err?.message,
+      stack: err?.stack
+    });
+    return res.status(500).json({ error: 'Failed to fetch products: ' + (err?.message || String(err)) });
   }
 });
 
@@ -1208,16 +1220,17 @@ app.get('/api/products/:id', async (req: Request, res: Response) => {
     });
 
     if (!product) {
-      const fallback = INITIAL_PRODUCTS.find((p: any) => p.id === id || p.slug === id || p.sku === id);
-      if (fallback) return res.json(fallback);
       return res.status(404).json({ error: 'Product not found' });
     }
 
     return res.json(formatPrismaProductResponse(product));
   } catch (err: any) {
-    const fallback = INITIAL_PRODUCTS.find((p: any) => p.id === id || p.slug === id || p.sku === id);
-    if (fallback) return res.json(fallback);
-    return res.status(500).json({ error: 'Failed to fetch product' });
+    console.error({
+      name: err?.name,
+      message: err?.message,
+      stack: err?.stack
+    });
+    return res.status(500).json({ error: 'Failed to fetch product: ' + (err?.message || String(err)) });
   }
 });
 
@@ -1508,11 +1521,13 @@ app.get('/api/categories', async (req: Request, res: Response) => {
       orderBy: { name: 'asc' }
     });
     return res.json(categories);
-  } catch (err) {
-    if (INITIAL_CATEGORIES && INITIAL_CATEGORIES.length > 0) {
-      return res.json(INITIAL_CATEGORIES);
-    }
-    return res.status(500).json({ error: 'Failed to fetch categories' });
+  } catch (err: any) {
+    console.error({
+      name: err?.name,
+      message: err?.message,
+      stack: err?.stack
+    });
+    return res.status(500).json({ error: 'Failed to fetch categories: ' + (err?.message || String(err)) });
   }
 });
 

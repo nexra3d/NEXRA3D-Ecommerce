@@ -238,15 +238,13 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
 
       let res;
       if (editingAddress) {
-        res = await fetch(`/api/addresses/${editingAddress.id}`, {
+        res = await apiFetch(`/api/addresses/${editingAddress.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
       } else {
-        res = await fetch('/api/addresses', {
+        res = await apiFetch('/api/addresses', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
       }
@@ -268,7 +266,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
   const handleDeleteAddress = async (id: string) => {
     if (!confirm('Are you sure you want to delete this address?')) return;
     try {
-      const res = await fetch(`/api/addresses/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/addresses/${id}`, { method: 'DELETE' });
       if (res.ok) {
         fetchUserAddresses();
       } else {
@@ -281,9 +279,8 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
 
   const handleSetDefaultAddress = async (addr: Address) => {
     try {
-      const res = await fetch(`/api/addresses/${addr.id}`, {
+      const res = await apiFetch(`/api/addresses/${addr.id}/default`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...addr, isDefault: true, userId: user.id })
       });
       if (res.ok) {
