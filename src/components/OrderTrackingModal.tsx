@@ -35,7 +35,15 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
     }
   };
 
-  const currentStageIdx = getCurrentStageIndex(order.orderStatus);
+  const activeStatus = order.orderStatus || order.status || 'PENDING';
+  const currentStageIdx = getCurrentStageIndex(activeStatus);
+
+  const activeShipments = order.shipments && order.shipments.length > 0
+    ? order.shipments
+    : (order.shipment ? [order.shipment] : []);
+
+  const courierPartner = order.courierName || activeShipments[0]?.provider || order.shipment?.provider || 'Blue Dart Industrial Express';
+  const awbTrackingNumber = order.trackingNumber || activeShipments[0]?.awbNumber || activeShipments[0]?.trackingNumber || order.shipment?.awbNumber || order.shipment?.trackingNumber || 'Processing';
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in">
@@ -139,25 +147,25 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
             <div>
               <span className="text-slate-500 font-medium block">Courier Partner</span>
               <strong className="text-slate-800 font-semibold text-xs block mt-0.5">
-                {order.courierName || 'Blue Dart Industrial Express'}
+                {courierPartner}
               </strong>
             </div>
             <div>
               <span className="text-slate-500 font-medium block">AWB / Tracking Number</span>
-              <strong className="text-indigo-600 font-mono text-xs block mt-0.5 truncate" title={order.trackingNumber}>
-                {order.trackingNumber || 'Processing'}
+              <strong className="text-indigo-600 font-mono text-xs block mt-0.5 truncate" title={awbTrackingNumber}>
+                {awbTrackingNumber}
               </strong>
             </div>
           </div>
 
           {/* Active Shipments Detail Block */}
-          {order.shipments && order.shipments.length > 0 && (
+          {activeShipments.length > 0 && (
             <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 space-y-3">
               <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
                 <Truck className="w-4 h-4 text-indigo-600" />
-                <span>Shipment Package ({order.shipments.length})</span>
+                <span>Shipment Package ({activeShipments.length})</span>
               </h3>
-              {order.shipments.map((shp) => (
+              {activeShipments.map((shp) => (
                 <div key={shp.id} className="bg-white p-3.5 rounded-xl border border-indigo-100 text-xs space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
                     <div className="flex items-center gap-2">

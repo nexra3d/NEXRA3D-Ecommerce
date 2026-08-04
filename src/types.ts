@@ -255,6 +255,7 @@ export interface Order {
   couponCode?: string;
   totalAmount: number;
   orderStatus: OrderStatus;
+  status?: OrderStatus;
   paymentStatus: PaymentStatus;
   paymentMethod: PaymentMethod;
   paymentId?: string; // Razorpay payment ID
@@ -268,6 +269,7 @@ export interface Order {
   trackingEvents: OrderTrackingEvent[];
   courierName?: string;
   trackingNumber?: string;
+  shipment?: Shipment;
   shipments?: Shipment[];
   createdAt: string;
   estimatedDeliveryDate: string;

@@ -2085,20 +2085,31 @@ app.get('/api/orders', requireAuthMiddleware, async (req: AuthenticatedRequest, 
       include: {
         items: { include: { product: true } },
         user: true,
-        shipment: true
+        shipment: { include: { statusHistory: true } }
       },
       orderBy: { createdAt: 'desc' }
     });
 
-    const orders = rawOrders.map(o => {
+    const formatOrder = (o: any) => {
       const addr = (o.shippingAddress as any) || {};
+      const shipment = o.shipment;
+      const shipmentsList = shipment ? [{
+        ...shipment,
+        statusHistory: shipment.statusHistory || []
+      }] : [];
       return {
         ...o,
+        orderStatus: o.status,
+        courierName: shipment?.provider || addr.courierName || 'Blue Dart Industrial Express',
+        trackingNumber: shipment?.awbNumber || shipment?.trackingNumber || 'Processing',
+        shipments: shipmentsList,
         customerName: addr.fullName || o.user?.name || 'Customer',
         customerEmail: addr.email || o.user?.email || '',
         customerPhone: addr.phone || o.user?.phone || ''
       };
-    });
+    };
+
+    const orders = rawOrders.map(formatOrder);
 
     return res.json(orders);
   } catch (err: any) {
@@ -2117,7 +2128,7 @@ app.get('/api/orders/:id', requireAuthMiddleware, async (req: AuthenticatedReque
       include: {
         items: { include: { product: true } },
         user: true,
-        shipment: true
+        shipment: { include: { statusHistory: true } }
       }
     });
 
@@ -2129,7 +2140,25 @@ app.get('/api/orders/:id', requireAuthMiddleware, async (req: AuthenticatedReque
       return res.status(403).json({ error: 'Unauthorized to view this order' });
     }
 
-    return res.json(order);
+    const addr = (order.shippingAddress as any) || {};
+    const shipment = order.shipment;
+    const shipmentsList = shipment ? [{
+      ...shipment,
+      statusHistory: shipment.statusHistory || []
+    }] : [];
+
+    const formattedOrder = {
+      ...order,
+      orderStatus: order.status,
+      courierName: shipment?.provider || addr.courierName || 'Blue Dart Industrial Express',
+      trackingNumber: shipment?.awbNumber || shipment?.trackingNumber || 'Processing',
+      shipments: shipmentsList,
+      customerName: addr.fullName || order.user?.name || 'Customer',
+      customerEmail: addr.email || order.user?.email || '',
+      customerPhone: addr.phone || order.user?.phone || ''
+    };
+
+    return res.json(formattedOrder);
   } catch (err: any) {
     return res.status(500).json({ error: 'Failed to fetch order details' });
   }
@@ -2875,6 +2904,27 @@ app.put('/api/admin/shipments/:id/status', requireAdminMiddleware, async (req: R
         }
       }
     });
+
+    let mappedOrderStatus: any = 'PROCESSING';
+    if (['SHIPPED', 'PICKED_UP', 'IN_TRANSIT'].includes(status)) {
+      mappedOrderStatus = 'SHIPPED';
+    } else if (status === 'OUT_FOR_DELIVERY') {
+      mappedOrderStatus = 'OUT_FOR_DELIVERY';
+    } else if (status === 'DELIVERED') {
+      mappedOrderStatus = 'DELIVERED';
+    } else if (['CANCELLED', 'RETURNED', 'FAILED'].includes(status)) {
+      mappedOrderStatus = 'CANCELLED';
+    } else if (status === 'PACKED' || status === 'READY_TO_SHIP') {
+      mappedOrderStatus = 'PROCESSING';
+    }
+
+    if (shipment.orderId) {
+      await prisma.order.update({
+        where: { id: shipment.orderId },
+        data: { status: mappedOrderStatus }
+      });
+    }
+
     return res.json(shipment);
   } catch (err) {
     return res.status(500).json({ error: 'Failed to update shipment status' });
