@@ -61,8 +61,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   coupons = [],
   onRefreshData
 }) => {
-  if (!isOpen) return null;
-
   const [activeTab, setActiveTab] = useState<
     'overview' | 'products' | 'categories' | 'inventory' | 'orders' | 'shipments' | 'coupons' | 'customers' | 'payments' | 'reports' | 'integrations'
   >('overview');
@@ -186,11 +184,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   useEffect(() => {
+    if (!isOpen) return;
     fetchAdminOrders();
     if (activeTab === 'shipments' || activeTab === 'orders' || activeTab === 'overview') {
       fetchShipments();
     }
-  }, [activeTab]);
+  }, [activeTab, isOpen]);
 
   const handleCreateShipmentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -321,6 +320,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [variantError, setVariantError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!isOpen) return;
     fetchAdminOrders();
 
     fetch('/api/admin/analytics', { headers: getAuthHeaders(), credentials: 'include' })
@@ -879,6 +879,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     link.click();
     document.body.removeChild(link);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-6 animate-in fade-in">

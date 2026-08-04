@@ -99,18 +99,18 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
 
   useEffect(() => {
     if (user) {
-      setProfileName(user.name || '');
-      setProfileEmail(user.email || '');
-      setProfilePhone(user.phone || '');
-      setProfileAvatarUrl(user.avatarUrl || '');
-      setProfileAddressLine1(user.addressLine1 || '');
-      setProfileAddressLine2(user.addressLine2 || '');
-      setProfileCity(user.city || '');
-      setProfileState(user.state || '');
-      setProfileCountry(user.country || 'India');
-      setProfilePostalCode(user.postalCode || '');
+      setProfileName(prev => prev || user.name || '');
+      setProfileEmail(prev => prev || user.email || '');
+      if (user.phone) setProfilePhone(user.phone);
+      setProfileAvatarUrl(user.avatarUrl || user.avatar || '');
+      if (user.addressLine1) setProfileAddressLine1(user.addressLine1);
+      if (user.addressLine2) setProfileAddressLine2(user.addressLine2);
+      if (user.city) setProfileCity(user.city);
+      if (user.state) setProfileState(user.state);
+      if (user.country) setProfileCountry(user.country);
+      if (user.postalCode) setProfilePostalCode(user.postalCode);
     }
-  }, [user]);
+  }, [user?.id, user?.updatedAt, user?.phone, user?.addressLine1, user?.email]);
 
   // Orders state
   const [userOrders, setUserOrders] = useState<Order[]>(initialOrders || []);
@@ -124,22 +124,18 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
   }, [initialOrders]);
 
   const fetchUserOrders = async () => {
-    if (!user) {
-      setUserOrders([]);
-      return;
-    }
+    if (!user) return;
     setOrdersLoading(true);
     try {
       const res = await apiFetch('/api/orders');
       if (res.ok) {
         const data = await res.json();
-        setUserOrders(Array.isArray(data) ? data : []);
-      } else {
-        setUserOrders([]);
+        if (Array.isArray(data)) {
+          setUserOrders(data);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch user orders:', err);
-      setUserOrders([]);
     } finally {
       setOrdersLoading(false);
     }
@@ -148,8 +144,6 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
   useEffect(() => {
     if (user) {
       fetchUserOrders();
-    } else {
-      setUserOrders([]);
     }
   }, [currentSubSection, user?.id]);
 
@@ -180,7 +174,9 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
       const res = await apiFetch(`/api/addresses?userId=${user.id}`);
       if (res.ok) {
         const data = await res.json();
-        setUserAddresses(data);
+        if (Array.isArray(data)) {
+          setUserAddresses(data);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch addresses:', err);
@@ -190,10 +186,10 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
   };
 
   useEffect(() => {
-    if (currentSubSection === 'addresses') {
+    if (currentSubSection === 'addresses' && user) {
       fetchUserAddresses();
     }
-  }, [currentSubSection, user]);
+  }, [currentSubSection, user?.id]);
 
   const openAddAddressModal = () => {
     setEditingAddress(null);

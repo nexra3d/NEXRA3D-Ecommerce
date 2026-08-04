@@ -27,11 +27,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   onRemoveCoupon,
   onProceedToCheckout
 }) => {
-  if (!isOpen) return null;
-
   const [couponCodeInput, setCouponCodeInput] = useState('');
   const [couponMsg, setCouponMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isApplying, setIsApplying] = useState(false);
+
+  if (!isOpen) return null;
 
   const subtotal = cartItems.reduce(
     (acc, item) => acc + (item.product.salePrice || item.product.price) * item.quantity,

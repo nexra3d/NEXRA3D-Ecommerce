@@ -106,6 +106,7 @@ export default function App() {
   // Check current session from cookie/JWT
   const checkSession = async () => {
     try {
+      const storedToken = getStoredToken();
       const storedUser = getStoredUser();
 
       const res = await apiFetch('/api/auth/me');
@@ -114,10 +115,11 @@ export default function App() {
         const text = await res.text();
         data = text ? JSON.parse(text) : {};
       } catch {}
+
       if (res.ok && data?.user) {
         setUser(data.user);
-        setStoredAuth(data.token, data.user);
-      } else if (res.status === 401 || (res.ok && !data?.user)) {
+        setStoredAuth(data.token || storedToken, data.user);
+      } else if (res.status === 401) {
         clearStoredAuth();
         setUser(null);
       } else if (storedUser) {

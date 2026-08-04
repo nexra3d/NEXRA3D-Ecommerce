@@ -40,8 +40,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   currentUser,
   onOpenAuth
 }) => {
-  if (!isOpen) return null;
-
   const addressList = Array.isArray(savedAddresses) ? savedAddresses : [];
   const safeCartItems = Array.isArray(cartItems) ? cartItems : [];
 
@@ -61,6 +59,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('RAZORPAY');
   const [isProcessingOrder, setIsProcessingOrder] = useState(false);
   const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [razorpayOrderDetails, setRazorpayOrderDetails] = useState<any | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -93,6 +93,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     }
   }, [isOpen, savedAddresses, currentUser]);
 
+  if (!isOpen) return null;
+
   // Totals
   const subtotal = safeCartItems.reduce(
     (acc, item) => acc + (item.product ? ((item.product.salePrice || item.product.price) * item.quantity) : 0),
@@ -119,11 +121,13 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setShowAddAddressForm(false);
   };
 
-  const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  const [razorpayOrderDetails, setRazorpayOrderDetails] = useState<any | null>(null);
-
   const handleExecuteCheckout = async () => {
     setCheckoutError(null);
+
+    if (safeCartItems.length === 0) {
+      setCheckoutError('Your cart is empty. Please add items to your cart before proceeding to checkout.');
+      return;
+    }
 
     if (!currentUser && !getStoredToken()) {
       setCheckoutError('Authentication required. Please log in.');
@@ -153,7 +157,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             country: 'India'
           },
           paymentMethod,
-          couponCode: appliedCoupon?.code
+          couponCode: appliedCoupon?.code,
+          items: safeCartItems.map((ci) => ({
+            productId: ci.productId || ci.product?.id,
+            quantity: ci.quantity,
+            variantId: ci.variantId
+          }))
         })
       });
 
@@ -170,7 +179,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         onOrderCompleted(orderObj);
         setStep('success');
       } else {
-        const rzpRes = await apiFetch('/api/payments/razorpay/create-order', {
+        const rzpRes = await apiFetch('/api/create-order', {
           method: 'POST',
           body: JSON.stringify({
             orderId: orderObj.id,
@@ -180,13 +189,86 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         });
 
         const rzpData = await rzpRes.json();
-        setRazorpayOrderDetails({
+        if (!rzpRes.ok) {
+          throw new Error(rzpData.error || 'Failed to create Razorpay order');
+        }
+
+        const razorpayOrder = {
           ...rzpData,
           orderId: orderObj.id,
           order: orderObj
-        });
+        };
+        setRazorpayOrderDetails(razorpayOrder);
         setCreatedOrder(orderObj);
-        setStep('razorpay_modal');
+
+        // Open Razorpay Standard Checkout JS Modal if script is available
+        if (typeof (window as any).Razorpay !== 'undefined') {
+          const rzpKey = rzpData.key || (import.meta as any).env?.VITE_RAZORPAY_KEY_ID || 'rzp_test_TLmrZ8JjKdjoRQ';
+          const options = {
+            key: rzpKey,
+            amount: rzpData.amount,
+            currency: rzpData.currency || 'INR',
+            name: 'NEXRA 3D',
+            description: `Payment for Order #${orderObj.orderNumber || orderObj.id}`,
+            order_id: rzpData.id || rzpData.order_id || rzpData.razorpayOrderId,
+            handler: async function (response: any) {
+              setIsProcessingOrder(true);
+              setCheckoutError(null);
+              try {
+                const verifyRes = await apiFetch('/api/verify-payment', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    orderId: orderObj.id,
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_signature: response.razorpay_signature
+                  })
+                });
+                const verifyData = await verifyRes.json();
+                setIsProcessingOrder(false);
+                if (verifyRes.ok && verifyData.success) {
+                  const finalOrder = verifyData.order || orderObj;
+                  setCreatedOrder(finalOrder);
+                  onOrderCompleted(finalOrder);
+                  setStep('success');
+                } else {
+                  setCheckoutError(verifyData.error || 'Payment signature verification failed');
+                  setStep('payment');
+                }
+              } catch (err: any) {
+                console.error('Verify error:', err);
+                setCheckoutError(err.message || 'Payment verification failed');
+                setIsProcessingOrder(false);
+                setStep('payment');
+              }
+            },
+            prefill: {
+              name: chosenAddress?.fullName || currentUser?.name || '',
+              email: currentUser?.email || '',
+              contact: chosenAddress?.phone || currentUser?.phone || ''
+            },
+            theme: {
+              color: '#4f46e5'
+            },
+            modal: {
+              ondismiss: function () {
+                setIsProcessingOrder(false);
+                setStep('payment');
+                setCheckoutError('Payment modal closed by user');
+              }
+            }
+          };
+
+          const rzp = new (window as any).Razorpay(options);
+          rzp.on('payment.failed', function (resp: any) {
+            setIsProcessingOrder(false);
+            setStep('payment');
+            setCheckoutError(resp.error?.description || 'Payment failed. Please try again.');
+          });
+          rzp.open();
+        } else {
+          setStep('razorpay_modal');
+        }
       }
     } catch (err: any) {
       console.error('Checkout error:', err);
@@ -201,11 +283,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setCheckoutError(null);
 
     const rzpPayId = `pay_${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
-    const rzpOrderId = razorpayOrderDetails.razorpayOrderId || razorpayOrderDetails.id;
+    const rzpOrderId = razorpayOrderDetails.razorpayOrderId || razorpayOrderDetails.id || razorpayOrderDetails.order_id;
     const mockSignature = `sig_${Math.random().toString(36).substring(2, 12)}`;
 
     try {
-      const res = await apiFetch('/api/payments/razorpay/verify', {
+      const res = await apiFetch('/api/verify-payment', {
         method: 'POST',
         body: JSON.stringify({
           orderId: razorpayOrderDetails.orderId,

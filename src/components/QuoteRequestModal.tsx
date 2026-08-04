@@ -21,8 +21,6 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
   onQuoteSubmitted,
   onSuccessToast
 }) => {
-  if (!isOpen) return null;
-
   const activePreselected = selectedService || preselectedService || null;
 
   const [name, setName] = useState('');
@@ -42,6 +40,8 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  if (!isOpen) return null;
 
   // Handle File Upload for CAD / Drawings
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

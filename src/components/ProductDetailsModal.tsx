@@ -45,16 +45,14 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   onBuyNow,
   onSelectRelatedProduct
 }) => {
-  if (!product) return null;
-
-  const imagesList = (product.images && product.images.length > 0)
+  const imagesList = (product?.images && product.images.length > 0)
     ? product.images
-    : [product.imageUrl || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&q=80&w=800'];
+    : [product?.imageUrl || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&q=80&w=800'];
 
-  const variantsList: ProductVariant[] = product.variants || product.productVariants || [];
+  const variantsList: ProductVariant[] = product?.variants || product?.productVariants || [];
 
-  const productName = product.name || product.title || 'Product Item';
-  const stockQty = product.stockQuantity ?? product.stock ?? 0;
+  const productName = product?.name || product?.title || 'Product Item';
+  const stockQty = product?.stockQuantity ?? product?.stock ?? 0;
 
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
@@ -70,8 +68,8 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   // Reviews state
   const [reviews, setReviews] = useState<ProductReview[]>([]);
   const [ratingSummary, setRatingSummary] = useState({
-    averageRating: product.rating || 5.0,
-    totalCount: product.reviewCount || 0,
+    averageRating: product?.rating || 5.0,
+    totalCount: product?.reviewCount || 0,
     distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } as Record<number, number>
   });
   const [starFilter, setStarFilter] = useState<number | 'ALL'>('ALL');
@@ -86,10 +84,10 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
 
   // SEO Hook
   useSEO({
-    title: `${productName} | NEXRA 3D`,
-    description: product.shortDescription || product.description || `Buy ${productName} at NEXRA 3D.`,
+    title: product ? `${productName} | NEXRA 3D` : 'NEXRA 3D',
+    description: product?.shortDescription || product?.description || `Buy ${productName} at NEXRA 3D.`,
     image: imagesList[0],
-    productSchema: {
+    productSchema: product ? {
       '@context': 'https://schema.org/',
       '@type': 'Product',
       name: productName,
@@ -106,11 +104,12 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
         price: selectedVariant ? selectedVariant.price : product.price,
         availability: stockQty > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock'
       }
-    }
+    } : undefined
   });
 
   // Track Recently Viewed & Fetch Reviews
   useEffect(() => {
+    if (!product) return;
     setSelectedImageIndex(0);
     setQuantity(1);
     if (variantsList.length > 0) {
@@ -150,7 +149,9 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
         }
       })
       .catch((err) => console.error('Reviews fetch error:', err));
-  }, [product.id]);
+  }, [product?.id]);
+
+  if (!product) return null;
 
   const activePrice = selectedVariant ? selectedVariant.price : Number(product.price || 0);
   const activeMrp = selectedVariant ? selectedVariant.mrp : (product.mrp ? Number(product.mrp) : activePrice);

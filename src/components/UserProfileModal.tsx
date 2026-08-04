@@ -34,20 +34,20 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   onTrackOrder,
   onLogout
 }) => {
-  if (!isOpen || !user) return null;
-
   const safeOrders = Array.isArray(orders) ? orders : [];
   const safeAddresses = Array.isArray(addresses) ? addresses : [];
 
   const [activeTab, setActiveTab] = useState<'orders' | 'addresses' | 'profile'>('orders');
 
   const [showAddAddressForm, setShowAddAddressForm] = useState(false);
-  const [newFullName, setNewFullName] = useState(user.name);
-  const [newPhone, setNewPhone] = useState(user.phone || '');
+  const [newFullName, setNewFullName] = useState(user?.name || '');
+  const [newPhone, setNewPhone] = useState(user?.phone || '');
   const [newStreet, setNewStreet] = useState('');
   const [newCity, setNewCity] = useState('');
   const [newState, setNewState] = useState('');
   const [newPostalCode, setNewPostalCode] = useState('');
+
+  if (!isOpen || !user) return null;
 
   const handleSaveAddress = async (e: React.FormEvent) => {
     e.preventDefault();
