@@ -48,12 +48,12 @@ describe('Products, Categories, Cart, and Wishlist Integration Tests', () => {
     } else {
       const newProd = await prisma.product.create({
         data: {
-          title: 'Test Industrial Machine',
+          name: 'Test Industrial Machine',
           slug: `test-industrial-machine-${Date.now()}`,
           price: 5000,
           stock: 50,
           description: 'A robust industrial test product'
-        }
+        } as any
       });
       productId = newProd.id;
     }

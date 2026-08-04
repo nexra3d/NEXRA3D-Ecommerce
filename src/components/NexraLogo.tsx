@@ -123,13 +123,39 @@ export const NexraLogo: React.FC<NexraLogoProps> = ({
   const companyTextColor = isDarkBg ? 'text-amber-300 font-medium' : 'text-amber-800 font-semibold';
 
   if (variant === 'icon-only') {
-    return <SpiralMark idSuffix="iconOnly" size={size} isDarkBg={isDarkBg} />;
+    // Prefer using an authored JPEG logo when present in the public folder.
+    // Place your `Nexra 3D logo.jpeg` at `public/nexra-logo.jpeg` (lowercase, no spaces)
+    // The fallback is the existing SVG SpiralMark.
+    const imgSrc = '/nexra-logo.jpeg';
+
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={imgSrc}
+        alt="NEXRA 3D"
+        className={`block h-auto w-auto ${size === 'sm' ? 'h-9' : size === 'md' ? 'h-12' : size === 'lg' ? 'h-16' : 'h-24'}`}
+        onError={(e) => {
+          // If the JPEG isn't available, fall back to the SVG mark
+          const target = e.currentTarget as HTMLImageElement;
+          target.replaceWith(SpiralMark({ idSuffix: 'fallback', size, isDarkBg } as any) as any);
+        }}
+      />
+    );
   }
 
   return (
     <div className={`inline-flex items-center gap-3.5 sm:gap-5 select-none ${className}`}>
-      {/* 1. First: Separated Logo Icon Emblem */}
-      <SpiralMark idSuffix={variant} size={size} isDarkBg={isDarkBg} />
+      {/* 1. First: Separated Logo Icon Emblem - prefer authored JPEG, fall back to SVG */}
+      <img
+        src="/nexra-logo.jpeg"
+        alt="NEXRA 3D"
+        className={`shrink-0 select-none drop-shadow-xs ${size === 'sm' ? 'h-9' : size === 'md' ? 'h-12' : size === 'lg' ? 'h-16' : 'h-24'}`}
+        onError={(e) => {
+          const t = e.currentTarget as HTMLImageElement;
+          t.onerror = null;
+          t.src = '/logo.svg';
+        }}
+      />
 
       {/* 2. Then: Separated Header & Company Name */}
       <div className="flex flex-col justify-center">

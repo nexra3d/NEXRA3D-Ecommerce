@@ -79,7 +79,7 @@ describe('10. Admin Orders, 11. Dashboard Analytics & 12. Shipments', () => {
           status: 'PROCESSING',
           paymentStatus: 'PAID',
           totalAmount: 1000
-        }
+        } as any
       });
     }
 

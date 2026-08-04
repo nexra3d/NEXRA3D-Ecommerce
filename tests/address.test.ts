@@ -124,10 +124,9 @@ describe('4. Address CRUD & Checkout Address Selection Priority', () => {
     // Verify order in DB uses customAddressObj, NOT the default address (address1Id)
     const orderId = checkoutRes.body.order.id;
     const dbOrder = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: { shippingAddress: true }
+      where: { id: orderId }
     });
 
-    expect(dbOrder?.shippingAddress?.streetAddress).toBe('789 Custom Selected Site Address');
+    expect((dbOrder?.shippingAddress as any)?.streetAddress).toBe('789 Custom Selected Site Address');
   });
 });
