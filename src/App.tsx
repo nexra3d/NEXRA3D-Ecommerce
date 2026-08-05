@@ -24,6 +24,7 @@ import { ServiceDetailPage } from './components/ServiceDetailPage';
 import { AerospacePage } from './components/AerospacePage';
 import { QuoteRequestModal } from './components/QuoteRequestModal';
 import { Footer } from './components/Footer';
+import { WhatsAppFloatingButton } from './components/WhatsAppFloatingButton';
 
 import { AdminLoginPage } from './components/AdminLoginPage';
 import { ShieldCheck } from 'lucide-react';
@@ -248,8 +249,14 @@ export default function App() {
 
   // Fetch Orders
   const fetchOrders = async () => {
-    const ordData = await safeFetchJson('/api/orders');
-    setUserOrders(Array.isArray(ordData) ? ordData : []);
+    try {
+      const ordData = await safeFetchJson('/api/orders');
+      if (Array.isArray(ordData)) {
+        setUserOrders(ordData);
+      }
+    } catch (err) {
+      console.error('Error fetching orders:', err);
+    }
   };
 
   // Central refresh for user-specific data
@@ -1113,6 +1120,9 @@ export default function App() {
           fetchFilteredProducts();
         }}
       />
+
+      {/* Floating WhatsApp Quick Contact Button */}
+      <WhatsAppFloatingButton />
     </div>
   );
 }

@@ -26,11 +26,11 @@ export const AerospacePage: React.FC<AerospacePageProps> = ({
           </div>
 
           <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white leading-tight">
-            Aerospace & Drone <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">Additive Catalog</span>
+            Aerospace <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">Additive Catalog</span>
           </h1>
 
           <p className="text-slate-300 text-base sm:text-lg leading-relaxed">
-            We are curating our specialized industrial catalog for certified UAV drone frames, ultra-lightweight carbon-fiber structural components, and high-temperature aerospace enclosures.
+            We are curating our specialized industrial catalog for satellite brackets, ultra-lightweight carbon-fiber structural components, and high-temperature aerospace enclosures.
           </p>
 
           <div className="p-4 rounded-2xl bg-slate-800/80 border border-slate-700/60 backdrop-blur-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -39,7 +39,7 @@ export const AerospacePage: React.FC<AerospacePageProps> = ({
                 <Send className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="text-sm font-bold text-white">Need Custom UAV / Aerospace Parts Right Now?</h4>
+                <h4 className="text-sm font-bold text-white">Need Custom Aerospace Parts Right Now?</h4>
                 <p className="text-xs text-slate-400">Our engineering team processes custom CAD models & NDAs immediately.</p>
               </div>
             </div>
@@ -57,9 +57,9 @@ export const AerospacePage: React.FC<AerospacePageProps> = ({
       {/* Planned Capabilities / Preview Grid */}
       <div className="space-y-6">
         <div className="text-center max-w-2xl mx-auto space-y-2">
-          <h2 className="text-2xl font-bold text-slate-900">Upcoming Aerospace & UAV Solutions</h2>
+          <h2 className="text-2xl font-bold text-slate-900">Upcoming Aerospace Solutions</h2>
           <p className="text-slate-600 text-sm">
-            NEXRA 3D provides precision additive manufacturing for mission-critical aerial platforms.
+            NEXRA 3D provides precision additive manufacturing for mission-critical flight & satellite platforms.
           </p>
         </div>
 
@@ -68,9 +68,9 @@ export const AerospacePage: React.FC<AerospacePageProps> = ({
             <div className="w-12 h-12 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center">
               <Plane className="w-6 h-6" />
             </div>
-            <h3 className="font-bold text-slate-900 text-base">Carbon Fiber UAV Frames</h3>
+            <h3 className="font-bold text-slate-900 text-base">Carbon Fiber Structures</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              SLS Nylon 12 + Carbon Fiber composite drone arms, body plates, and motor mounts optimized for weight and impact resistance.
+              SLS Nylon 12 + Carbon Fiber composite structural ribs, brackets, and motor mounts optimized for weight and impact resistance.
             </p>
             <div className="pt-2 text-[11px] font-bold text-cyan-600 flex items-center gap-1">
               <CheckCircle2 className="w-3.5 h-3.5" /> High Strength-to-Weight

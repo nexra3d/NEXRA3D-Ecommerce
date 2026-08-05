@@ -49,7 +49,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
   onNavigateHome,
   onNavigateLogin,
   onSelectOrderToTrack,
-  orders: initialOrders
+  orders = []
 }) => {
   // If user is not logged in, show access prompt
   if (!user) {
@@ -113,39 +113,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
   }, [user?.id, user?.updatedAt, user?.phone, user?.addressLine1, user?.email]);
 
   // Orders state
-  const [userOrders, setUserOrders] = useState<Order[]>(initialOrders || []);
-  const [ordersLoading, setOrdersLoading] = useState(false);
   const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (initialOrders && initialOrders.length > 0) {
-      setUserOrders(initialOrders);
-    }
-  }, [initialOrders]);
-
-  const fetchUserOrders = async () => {
-    if (!user) return;
-    setOrdersLoading(true);
-    try {
-      const res = await apiFetch('/api/orders');
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setUserOrders(data);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to fetch user orders:', err);
-    } finally {
-      setOrdersLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (user) {
-      fetchUserOrders();
-    }
-  }, [currentSubSection, user?.id]);
 
   // Addresses State
   const [userAddresses, setUserAddresses] = useState<Address[]>([]);
@@ -329,7 +297,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
       const verifyData = await verifyRes.json();
       if (verifyData.success) {
         alert(`Payment successful for order ${order.orderNumber}! Status updated.`);
-        fetchUserOrders();
+        window.dispatchEvent(new Event('refresh-user-data'));
       } else {
         alert(`Payment retry verification failed: ${verifyData.error}`);
       }
@@ -950,19 +918,14 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                   </p>
                 </div>
                 <button
-                  onClick={fetchUserOrders}
-                  disabled={ordersLoading}
+                  onClick={() => window.dispatchEvent(new Event('refresh-user-data'))}
                   className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3 py-2 rounded-xl transition-all"
                 >
-                  {ordersLoading ? 'Refreshing...' : 'Refresh List'}
+                  Refresh List
                 </button>
               </div>
 
-              {ordersLoading ? (
-                <div className="text-center py-12 text-xs text-slate-500 font-medium">
-                  Loading your order history...
-                </div>
-              ) : userOrders.length === 0 ? (
+              {orders.length === 0 ? (
                 <div className="text-center py-12 space-y-3">
                   <div className="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto">
                     <ShoppingBag className="w-8 h-8" />
@@ -980,7 +943,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {userOrders.map((order) => (
+                  {orders.map((order) => (
                     <div
                       key={order.id}
                       className="border border-slate-200 rounded-2xl p-5 hover:border-slate-300 transition-all space-y-4 bg-slate-50/50"

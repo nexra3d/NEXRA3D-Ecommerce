@@ -14,7 +14,7 @@ interface SEOProps {
 export function useSEO({
   title = 'NEXRA 3D | Industrial 3D Printers, Filaments & On-Demand Printing Services',
   description = 'India’s premier provider of industrial 3D printers, additive manufacturing materials, engineering filaments, SLA resins, and custom CAD on-demand 3D printing services.',
-  keywords = '3D printing India, Bambu Lab X1C, SLA Resin 3D Printers, Additive Manufacturing, Rapid Prototyping, CAD Quote, VL Technologies',
+  keywords = '3D printing India, Bambu Lab X1C, SLA Resin 3D Printers, Additive Manufacturing, Rapid Prototyping, CAD Quote, NEXRA 3D',
   image = 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=1200',
   url,
   productSchema,
@@ -69,7 +69,7 @@ export function useSEO({
       '@context': 'https://schema.org',
       '@type': 'Organization',
       name: 'NEXRA 3D',
-      legalName: 'VL Technologies Private Limited',
+      legalName: 'NEXRA 3D Technologies',
       url: window.location.origin,
       logo: `${window.location.origin}/logo.png`,
       contactPoint: {

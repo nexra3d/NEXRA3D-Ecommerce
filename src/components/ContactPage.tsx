@@ -14,6 +14,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { FAQ, Service } from '../types';
+import { WhatsAppIcon } from './WhatsAppFloatingButton';
 
 interface ContactPageProps {
   services?: Service[];
@@ -154,7 +155,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({
         <div className="max-w-7xl mx-auto relative z-10">
           <div className="max-w-3xl">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 mb-4">
-              <Sparkles className="w-3.5 h-3.5" /> NEXRA 3D — A brand of VL Technologies Private Limited
+              <Sparkles className="w-3.5 h-3.5" /> NEXRA 3D — Industrial Additive Manufacturing
             </span>
             <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white mb-4">
               Get in Touch with NEXRA 3D
@@ -185,7 +186,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({
                   <div>
                     <h5 className="font-bold text-slate-900">Additive Facility Address</h5>
                     <p className="text-slate-600 mt-0.5 leading-relaxed">
-                      Plot 42, Advanced Manufacturing Zone, Industrial Tech Park, Bengaluru, Karnataka 560066, India
+                      Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500046, Telangana, India
                     </p>
                   </div>
                 </div>
@@ -198,6 +199,28 @@ export const ContactPage: React.FC<ContactPageProps> = ({
                     <h5 className="font-bold text-slate-900">Phone & Mobile Support</h5>
                     <p className="text-slate-600 mt-0.5">+91 88861 49998</p>
                     <p className="text-slate-600 mt-0.5">+91 88861 59998</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 bg-emerald-50/70 p-3 rounded-xl border border-emerald-200/60">
+                  <div className="w-9 h-9 rounded-xl text-white flex items-center justify-center shrink-0 shadow-2xs" style={{ backgroundColor: '#25D366' }}>
+                    <WhatsAppIcon className="w-5 h-5 fill-white" />
+                  </div>
+                  <div className="flex-1">
+                    <h5 className="font-bold text-slate-900 flex items-center justify-between">
+                      WhatsApp Chat
+                      <span className="text-[10px] bg-emerald-600 text-white font-semibold px-2 py-0.5 rounded-full uppercase">Instant</span>
+                    </h5>
+                    <p className="text-xs text-slate-600 mt-0.5 font-medium">+91 8886159998</p>
+                    <a
+                      href="https://wa.me/918886159998?text=Hello%20NEXRA%203D%2C%20I%20have%20an%20inquiry%20regarding%203D%20printing%20services."
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-900 mt-1.5 group"
+                    >
+                      <span>Start WhatsApp Chat</span>
+                      <span className="group-hover:translate-x-0.5 transition-transform">→</span>
+                    </a>
                   </div>
                 </div>
 

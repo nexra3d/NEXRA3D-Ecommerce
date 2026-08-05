@@ -143,13 +143,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return headers;
   };
 
-  const [adminOrders, setAdminOrders] = useState<Order[]>(orders);
-
-  useEffect(() => {
-    if (orders && orders.length > 0 && adminOrders.length === 0) {
-      setAdminOrders(orders);
-    }
-  }, [orders]);
+  const [adminOrders, setAdminOrders] = useState<Order[]>([]);
 
   const fetchAdminOrders = async () => {
     try {
@@ -193,7 +187,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleCreateShipmentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const activeList = adminOrders.length > 0 ? adminOrders : orders;
+    const activeList = adminOrders;
     const targetOrder = selectedOrderForShipment || activeList[0];
     if (!targetOrder) {
       alert('Please select a valid order to create shipment');
@@ -895,7 +889,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   if (!isOpen) return null;
 
-  const displayOrders = adminOrders.length > 0 ? adminOrders : orders;
+  const displayOrders = adminOrders;
   const overviewRevenue = (analytics && typeof analytics.totalRevenue === 'number' && analytics.totalRevenue > 0)
     ? analytics.totalRevenue
     : displayOrders.reduce((acc, o) => acc + Number(o.totalAmount || 0), 0);
@@ -1204,7 +1198,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <label className="block text-slate-400 font-semibold mb-1">Product Name *</label>
                       <input
                         type="text"
-                        placeholder="e.g. Phantom Pro X4 Drone"
+                        placeholder="e.g. Aerospace Carbon Fiber Housing"
                         required
                         value={prodName}
                         onChange={(e) => setProdName(e.target.value)}
@@ -1215,7 +1209,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <label className="block text-slate-400 font-semibold mb-1">SKU *</label>
                       <input
                         type="text"
-                        placeholder="e.g. DRONE-PHANTOM-X4"
+                        placeholder="e.g. AERO-HOUSING-X4"
                         required
                         value={prodSku}
                         onChange={(e) => setProdSku(e.target.value)}
@@ -1797,7 +1791,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <label className="block text-slate-400 font-semibold mb-1">Category Name *</label>
                       <input
                         type="text"
-                        placeholder="e.g. Drones"
+                        placeholder="e.g. Aerospace Parts"
                         required
                         value={catName}
                         onChange={(e) => setCatName(e.target.value)}
@@ -2070,7 +2064,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={() => {
-                      const activeList = adminOrders.length > 0 ? adminOrders : orders;
+                      const activeList = adminOrders;
                       if (activeList.length > 0) {
                         setSelectedOrderForShipment(activeList[0]);
                         setShowCreateShipmentModal(true);
@@ -2376,7 +2370,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {orders.map((o) => (
+                    {displayOrders.map((o) => (
                       <tr key={o.id} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors">
                         <td className="p-3">
                           <span className="font-bold text-slate-200 block">{o.orderNumber}</span>
@@ -2531,15 +2525,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div>
                   <label className="block text-slate-400 font-medium mb-1">Select Order *</label>
                   <select
-                    value={selectedOrderForShipment?.id || selectedOrderForShipment?.orderNumber || (adminOrders[0]?.id || orders[0]?.id || '')}
+                    value={selectedOrderForShipment?.id || selectedOrderForShipment?.orderNumber || (adminOrders[0]?.id || '')}
                     onChange={(e) => {
-                      const activeList = adminOrders.length > 0 ? adminOrders : orders;
+                      const activeList = adminOrders;
                       const o = activeList.find((ord) => ord.id === e.target.value || ord.orderNumber === e.target.value);
                       if (o) setSelectedOrderForShipment(o);
                     }}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono text-xs focus:outline-none focus:border-indigo-500"
                   >
-                    {(adminOrders.length > 0 ? adminOrders : orders).map((o) => {
+                    {displayOrders.map((o) => {
                       const displayName = o.customerName || (o as any).user?.name || (o as any).shippingAddress?.fullName || 'Customer';
                       return (
                         <option key={o.id || o.orderNumber} value={o.id || o.orderNumber}>

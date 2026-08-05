@@ -57,7 +57,7 @@ export const ServicesPage: React.FC<ServicesPageProps> = ({
               Precision 3D Printing & Custom Manufacturing Services
             </h1>
             <p className="text-lg text-slate-300 leading-relaxed mb-8">
-              From micron-accurate SLA prototypes and Class IIa biocompatible dental splints to high-temp carbon fiber engineering jigs and architectural masterplans. Receive engineering quotes in under 4 hours.
+              From micron-accurate SLA prototypes and high-temp carbon fiber engineering jigs to precision assembly tooling, aerospace components, and architectural masterplans. Receive engineering quotes in under 4 hours.
             </p>
             <div className="flex flex-wrap items-center gap-4">
               <button

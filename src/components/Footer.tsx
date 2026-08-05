@@ -1,6 +1,7 @@
 import React from 'react';
 import { NexraLogo } from './NexraLogo';
 import { ShoppingBag, ShieldCheck, Truck, RefreshCw, Mail, Phone, MapPin, Heart, Sparkles, Boxes, Send } from 'lucide-react';
+import { WhatsAppIcon } from './WhatsAppFloatingButton';
 
 interface FooterProps {
   onNavigateHome?: () => void;
@@ -76,11 +77,29 @@ export const Footer: React.FC<FooterProps> = ({
             <div className="space-y-1.5 text-slate-400">
               <div className="flex items-start space-x-2">
                 <MapPin className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                <span>Plot 42, Advanced Manufacturing Zone, Tech Park, Bengaluru, KA 560066</span>
+                <span>Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500046</span>
               </div>
               <div className="flex items-center space-x-2">
-                <Phone className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>+91 88861 49998 / +91 88861 59998</span>
+                <WhatsAppIcon className="w-4 h-4 fill-[#25D366] shrink-0" />
+                <div className="flex items-center gap-2 flex-wrap">
+                  <a
+                    href="https://wa.me/918886159998?text=Hello%20NEXRA%203D%2C%20I%20have%20an%20inquiry%20regarding%203D%20printing%20services."
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-emerald-400 font-medium hover:underline"
+                  >
+                    +91 8886159998
+                  </a>
+                  <span>/</span>
+                  <a
+                    href="https://wa.me/918886149998?text=Hello%20NEXRA%203D%2C%20I%20have%20an%20inquiry%20regarding%203D%20printing%20services."
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-emerald-400 font-medium hover:underline"
+                  >
+                    +91 8886149998
+                  </a>
+                </div>
               </div>
               <div className="flex items-start space-x-2">
                 <Mail className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
@@ -136,7 +155,7 @@ export const Footer: React.FC<FooterProps> = ({
               </li>
               <li>
                 <button onClick={onNavigateServices} className="hover:text-white transition-colors cursor-pointer text-left block">
-                  Class IIa Medical Splints
+                  Precision Tooling & Fixtures
                 </button>
               </li>
               <li>
@@ -180,7 +199,7 @@ export const Footer: React.FC<FooterProps> = ({
 
         {/* Bottom Copyright & Payment Badge Row */}
         <div className="pt-8 border-t border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-500">
-          <p>© 2026 NEXRA 3D — A brand of VL Technologies Private Limited. All rights reserved.</p>
+          <p>© 2026 NEXRA 3D. All rights reserved.</p>
 
           {/* Payment Gateways Badges */}
           <div className="flex items-center space-x-2">

@@ -44,7 +44,7 @@ export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
   const galleryList = Array.isArray(service.gallery) ? service.gallery : [selectedImage];
   const industriesList = Array.isArray(service.industries)
     ? service.industries
-    : ['Aerospace', 'Automotive', 'Medical & Dental', 'Consumer Electronics', 'Industrial Machinery'];
+    : ['Aerospace', 'Automotive', 'Industrial Tooling', 'Consumer Electronics', 'Industrial Machinery'];
 
   return (
     <div className="bg-slate-50 min-h-screen pb-20">

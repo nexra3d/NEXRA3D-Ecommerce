@@ -38,7 +38,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({
         <div className="max-w-7xl mx-auto relative z-10">
           <div className="max-w-3xl">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 mb-4">
-              <Sparkles className="w-3.5 h-3.5" /> NEXRA 3D — A brand of VL Technologies Private Limited
+              <Sparkles className="w-3.5 h-3.5" /> NEXRA 3D — Industrial Additive Manufacturing
             </span>
             <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-white mb-6">
               Pioneering Industrial 3D Printing & Additive Manufacturing
@@ -110,7 +110,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({
               State-of-the-Art Additive Manufacturing Infrastructure
             </h2>
             <p className="text-slate-600 text-sm leading-relaxed">
-              At NEXRA 3D, we operate advanced 4K SLA photopolymer resin systems, high-temperature dual-extruder FDM machines, and SLS powder bed fusion technology. Our cleanroom facilities produce Class IIa certified medical splints, aerospace-grade carbon fiber components, and architectural masterplans.
+              At NEXRA 3D, we operate advanced 4K SLA photopolymer resin systems, high-temperature dual-extruder FDM machines, and SLS powder bed fusion technology. Our cleanroom facilities produce precision industrial tooling, aerospace-grade carbon fiber components, and architectural masterplans.
             </p>
 
             <div className="space-y-3 pt-2">
@@ -174,13 +174,13 @@ export const AboutPage: React.FC<AboutPageProps> = ({
             <div className="bg-white p-6 rounded-2xl border border-slate-200 text-center space-y-2 hover:border-cyan-500 transition-colors">
               <div className="text-3xl font-bold text-cyan-600">Aero</div>
               <h4 className="font-bold text-slate-900 text-sm">Aerospace & Defense</h4>
-              <p className="text-slate-500 text-xs">Lightweight carbon fiber ducting and drone frames.</p>
+              <p className="text-slate-500 text-xs">Lightweight carbon fiber ducting and structural components.</p>
             </div>
 
             <div className="bg-white p-6 rounded-2xl border border-slate-200 text-center space-y-2 hover:border-cyan-500 transition-colors">
-              <div className="text-3xl font-bold text-indigo-600">Med</div>
-              <h4 className="font-bold text-slate-900 text-sm">Medical & Dental</h4>
-              <p className="text-slate-500 text-xs">Biocompatible surgical guides and dental splints.</p>
+              <div className="text-3xl font-bold text-indigo-600">Tool</div>
+              <h4 className="font-bold text-slate-900 text-sm">Industrial Tooling</h4>
+              <p className="text-slate-500 text-xs">Custom assembly jigs, CMM fixtures & inspection gauges.</p>
             </div>
 
             <div className="bg-white p-6 rounded-2xl border border-slate-200 text-center space-y-2 hover:border-cyan-500 transition-colors">

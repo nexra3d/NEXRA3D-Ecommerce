@@ -9,7 +9,16 @@ if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = rawPrisma;
 }
 
-let forceMemoryMode = false;
+const dbUrl = (process.env.DATABASE_URL || '').trim();
+const isPlaceholderDbUrl =
+  !dbUrl ||
+  dbUrl.includes('user:password') ||
+  dbUrl.includes('localhost') ||
+  dbUrl.includes('127.0.0.1') ||
+  dbUrl.startsWith('file:') ||
+  dbUrl.includes('sample');
+
+const hasDatabaseUrl = !isPlaceholderDbUrl;
 
 function createModelProxy(modelName: string) {
   const memoryHandler = memoryStore.createModelHandler(modelName);
@@ -17,7 +26,7 @@ function createModelProxy(modelName: string) {
   return new Proxy({}, {
     get(_target, prop: string) {
       return async (...args: any[]) => {
-        if (forceMemoryMode) {
+        if (!hasDatabaseUrl) {
           const fn = (memoryHandler as any)[prop];
           if (typeof fn === 'function') {
             return fn(...args);
@@ -25,32 +34,39 @@ function createModelProxy(modelName: string) {
           return null;
         }
 
-        try {
-          const rawModel = (rawPrisma as any)[modelName];
-          if (rawModel && typeof rawModel[prop] === 'function') {
+        const rawModel = (rawPrisma as any)[modelName];
+        if (!rawModel || typeof rawModel[prop] !== 'function') {
+          throw new Error(`Method '${prop}' does not exist on Prisma model '${modelName}'.`);
+        }
+
+        const backoffs = [250, 500, 1000];
+        let lastError: any;
+
+        for (let attempt = 0; attempt <= backoffs.length; attempt++) {
+          try {
             return await rawModel[prop](...args);
-          }
-        } catch (err: any) {
-          const msg = String(err?.message || err || '');
-          if (
-            msg.includes('Can\'t reach database server') ||
-            msg.includes('PrismaClientInitializationError') ||
-            msg.includes('P1001') ||
-            msg.includes('P1002') ||
-            msg.includes('ECONNREFUSED')
-          ) {
-            forceMemoryMode = true;
-          }
-          const fn = (memoryHandler as any)[prop];
-          if (typeof fn === 'function') {
-            return fn(...args);
+          } catch (err: any) {
+            lastError = err;
+            const queryName = `${modelName}.${prop}`;
+            const errorMessage = err?.message || String(err);
+            const timestamp = new Date().toISOString();
+
+            if (attempt < backoffs.length) {
+              const retryNumber = attempt + 1;
+              const delay = backoffs[attempt];
+              console.error(
+                `[${timestamp}] Prisma Query Error in ${queryName} | Retry Number: ${retryNumber}/3 | Delay: ${delay}ms | Error: ${errorMessage}`
+              );
+              await new Promise((resolve) => setTimeout(resolve, delay));
+            } else {
+              console.error(
+                `[${timestamp}] Prisma Query Max Retries Reached for ${queryName} | Final Error: ${errorMessage}`
+              );
+            }
           }
         }
-        const fn = (memoryHandler as any)[prop];
-        if (typeof fn === 'function') {
-          return fn(...args);
-        }
-        return null;
+
+        throw lastError;
       };
     }
   });
@@ -63,22 +79,24 @@ export const prisma = new Proxy(rawPrisma, {
     }
     if (prop === '$transaction') {
       return async (cbOrArray: any) => {
-        if (typeof cbOrArray === 'function') {
-          return cbOrArray(prisma);
+        if (!hasDatabaseUrl) {
+          if (typeof cbOrArray === 'function') {
+            return cbOrArray(prisma);
+          }
+          if (Array.isArray(cbOrArray)) {
+            return Promise.all(cbOrArray);
+          }
+          return null;
         }
-        if (Array.isArray(cbOrArray)) {
-          return Promise.all(cbOrArray);
-        }
-        return null;
+        return rawPrisma.$transaction(cbOrArray);
       };
     }
     if (prop in target && typeof (target as any)[prop] === 'function') {
       return (...args: any[]) => {
-        try {
-          return (target as any)[prop](...args);
-        } catch (err) {
+        if (!hasDatabaseUrl) {
           return null;
         }
+        return (target as any)[prop](...args);
       };
     }
     return createModelProxy(prop);

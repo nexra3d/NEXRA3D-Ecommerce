@@ -26,8 +26,11 @@ import {
   Flame,
   Award,
   Sparkle,
-  Plane
+  Plane,
+  MapPin,
+  Phone
 } from 'lucide-react';
+import { WhatsAppIcon } from './WhatsAppFloatingButton';
 import { User, Category } from '../types';
 
 interface NavbarProps {
@@ -105,7 +108,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   });
 
-  const popularSearches = ['Bambu Lab X1C', 'Photopolymer SLA Resin', 'PLA Filament', 'CAD On-Demand Quote', 'Aerospace Drones', 'Industrial SLS'];
+  const popularSearches = ['Bambu Lab X1C', 'Photopolymer SLA Resin', 'PLA Filament', 'CAD On-Demand Quote', 'Aerospace Structural Parts', 'Industrial SLS'];
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -149,6 +152,39 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs font-header relative">
+      {/* Top Contact & Location Announcement Bar */}
+      <div className="bg-slate-900 text-slate-300 text-[11px] py-1 px-4 border-b border-slate-800 hidden sm:block">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4 text-slate-300">
+            <span className="flex items-center gap-1.5">
+              <MapPin className="w-3 h-3 text-cyan-400 shrink-0" />
+              <span>Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500046</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            <a
+              href="https://wa.me/918886159998?text=Hello%20NEXRA%203D%2C%20I%20have%20an%20inquiry%20regarding%203D%20printing%20services."
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-emerald-400 font-bold hover:text-emerald-300 transition-colors"
+            >
+              <WhatsAppIcon className="w-3.5 h-3.5 fill-[#25D366]" />
+              <span>+91 8886159998</span>
+            </a>
+            <span className="text-slate-700">|</span>
+            <a
+              href="https://wa.me/918886149998?text=Hello%20NEXRA%203D%2C%20I%20have%20an%20inquiry%20regarding%203D%20printing%20services."
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-emerald-400 font-bold hover:text-emerald-300 transition-colors"
+            >
+              <WhatsAppIcon className="w-3.5 h-3.5 fill-[#25D366]" />
+              <span>+91 8886149998</span>
+            </a>
+          </div>
+        </div>
+      </div>
+
       {/* Full Header Overlay for Expanded Search */}
       {isSearchExpanded && (
         <div className="absolute top-0 left-0 right-0 z-50 bg-white border-b border-slate-200 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150">
@@ -384,10 +420,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                   else onCategorySelect('cat-aerospace-drones');
                 }}
                 className="px-2.5 py-2 rounded-lg hover:bg-cyan-50 text-cyan-700 hover:text-cyan-900 transition-colors cursor-pointer flex items-center gap-1.5 font-extrabold"
-                title="Aerospace & Drone Additive Solutions"
+                title="Aerospace Additive Solutions"
               >
                 <Plane className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
-                <span>AEROSPACE / DRONES</span>
+                <span>AEROSPACE</span>
               </button>
 
               <button
@@ -608,7 +644,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="w-full text-left px-3 py-2 rounded-lg hover:bg-cyan-50 text-cyan-700 font-extrabold flex items-center gap-2"
               >
                 <Plane className="w-4 h-4 text-cyan-600 shrink-0" />
-                <span>AEROSPACE / DRONES</span>
+                <span>AEROSPACE</span>
               </button>
 
               <button

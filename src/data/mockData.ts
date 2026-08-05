@@ -113,12 +113,12 @@ export const INITIAL_CATEGORIES: Category[] = [
     id: 'cat-resins-materials',
     name: '3D Printing Resins & Filaments',
     slug: 'resins-materials',
-    description: 'Engineering resins, biocompatible dental resins, tough polymers, and carbon fiber filaments',
+    description: 'Engineering resins, high-clarity industrial polymers, tough resins, and carbon fiber filaments',
     imageUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800',
     subcategories: [
       { id: 'sub-resins', categoryId: 'cat-resins-materials', name: 'Engineering Resins', slug: 'engineering-resins' },
       { id: 'sub-filaments', categoryId: 'cat-resins-materials', name: 'High-Performance Filaments', slug: 'filaments' },
-      { id: 'sub-dental-resins', categoryId: 'cat-resins-materials', name: 'Dental & Medical Resins', slug: 'dental-resins' }
+      { id: 'sub-clear-resins', categoryId: 'cat-resins-materials', name: 'High-Clarity Industrial Resins', slug: 'clear-resins' }
     ]
   },
   {
@@ -145,15 +145,15 @@ export const INITIAL_CATEGORIES: Category[] = [
   },
   {
     id: 'cat-aerospace-drones',
-    name: 'Aerospace / Drones',
-    slug: 'aerospace-drones',
-    description: 'Carbon fiber UAV drone frames, aerospace jigs, nacelles, propellers & custom avionics enclosures',
-    imageUrl: 'https://images.unsplash.com/photo-1508614589041-895b88991e3e?auto=format&fit=crop&q=80&w=800',
+    name: 'Aerospace',
+    slug: 'aerospace',
+    description: 'Carbon fiber aerospace structures, satellite brackets, aerospace jigs, nacelles & custom avionics enclosures',
+    imageUrl: 'https://images.unsplash.com/photo-1517976487492-5750f3195933?auto=format&fit=crop&q=80&w=800',
     subcategories: [
-      { id: 'sub-drone-frames', categoryId: 'cat-aerospace-drones', name: 'Drone Frames & Arms', slug: 'drone-frames' },
-      { id: 'sub-uav-components', categoryId: 'cat-aerospace-drones', name: 'UAV Custom Components', slug: 'uav-components' },
+      { id: 'sub-aerospace-structures', categoryId: 'cat-aerospace-drones', name: 'Aerospace Structural Components', slug: 'aerospace-structures' },
+      { id: 'sub-satellite-housings', categoryId: 'cat-aerospace-drones', name: 'Satellite & Avionics Housings', slug: 'satellite-housings' },
       { id: 'sub-aerospace-jigs', categoryId: 'cat-aerospace-drones', name: 'Aerospace Carbon Fiber Jigs', slug: 'aerospace-jigs' },
-      { id: 'sub-avionics-housing', categoryId: 'cat-aerospace-drones', name: 'Avionics Housings & Mounts', slug: 'avionics-housings' }
+      { id: 'sub-avionics-housing', categoryId: 'cat-aerospace-drones', name: 'Engine & Ducting Components', slug: 'engine-ducting' }
     ]
   }
 ];
@@ -288,19 +288,19 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-nx-res-dent',
-    title: 'NEXRA Dental Precision Clear Biocompatible Resin (1kg)',
-    slug: 'nexra-dental-precision-clear-resin',
-    sku: 'NX-RES-DENT',
-    description: 'Class IIa certified biocompatible SLA resin specifically formulated for surgical guides, clear dental splints, aligner models, and orthodontic study models.',
+    title: 'NEXRA High-Clarity Industrial Resin (1kg)',
+    slug: 'nexra-high-clarity-industrial-resin',
+    sku: 'NX-RES-CLR',
+    description: 'Ultra-high clarity SLA resin formulated for optical prototypes, flow-visualization housings, fluid manifolds, and precision lens assemblies.',
     price: 6500,
     mrp: 7500,
     salePrice: 6500,
     categoryId: 'cat-resins-materials',
-    subcategoryId: 'sub-dental-resins',
+    subcategoryId: 'sub-clear-resins',
     stock: 40,
     stockQuantity: 40,
     images: [
-      'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&q=80&w=800'
+      'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800'
     ],
     brand: 'NEXRA 3D',
     rating: 5.0,
@@ -308,12 +308,11 @@ export const INITIAL_PRODUCTS: Product[] = [
     isFeatured: true,
     isTrending: true,
     specifications: {
-      'Certification': 'Biocompatible Class IIa Medical',
-      'Transparency': '99.2% Optical Clarity',
+      'Clarity': '99.2% Optical Transparency',
       'Flexural Strength': '95 MPa',
-      'Application': 'Surgical Guides & Aligners'
+      'Application': 'Flow Manifolds & Lens Housings'
     },
-    tags: ['dental', 'medical', 'resin', 'biocompatible', 'clear'],
+    tags: ['resin', 'industrial', 'clear', 'optical', 'high-precision'],
     createdAt: '2026-02-05'
   },
   {
@@ -659,7 +658,7 @@ export const INITIAL_SERVICES: Service[] = [
       'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800',
       'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800'
     ],
-    industries: ['Aerospace', 'Automotive', 'Consumer Electronics', 'Industrial Automation', 'Medical Devices'],
+    industries: ['Aerospace', 'Automotive', 'Consumer Electronics', 'Industrial Automation', 'Precision Tooling'],
     isActive: true,
     isFeatured: true,
     sortOrder: 1,
@@ -702,20 +701,20 @@ export const INITIAL_SERVICES: Service[] = [
   },
   {
     id: 'srv-medical-dental',
-    name: 'Medical & Dental 3D Solutions',
-    slug: 'medical-dental',
-    shortDescription: 'Class IIa biocompatible surgical guides, dental aligner models, and anatomical pre-op models.',
-    description: 'Precision healthcare manufacturing powered by Class IIa certified biocompatible resins. NEXRA 3D partners with surgeons, dental labs, and medical device innovators to produce patient-specific anatomical models for pre-surgical simulation, custom surgical drill guides, clear aligner thermoforming models, and prosthetic prototypes.',
-    imageUrl: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&q=80&w=800',
+    name: 'Precision Jigs, Fixtures & Tooling',
+    slug: 'precision-jigs-fixtures',
+    shortDescription: 'Industrial assembly jigs, quality inspection fixtures, and ergonomic factory tooling.',
+    description: 'Optimize factory productivity with custom 3D printed assembly jigs, CMM inspection fixtures, and robotic end-of-arm tooling. NEXRA 3D produces durable, lightweight manufacturing aids in ESD-safe materials and carbon-fiber composites with rapid 24-hour turnaround.',
+    imageUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800',
     gallery: [
-      'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&q=80&w=800'
+      'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800'
     ],
-    industries: ['Healthcare & Hospitals', 'Dental Clinics & Labs', 'Biomedical Engineering'],
+    industries: ['Automotive Assembly', 'Electronics Manufacturing', 'Robotics & Automation'],
     isActive: true,
     isFeatured: true,
     sortOrder: 4,
-    seoTitle: 'Medical & Dental 3D Printing Solutions | NEXRA 3D',
-    seoDescription: 'Biocompatible surgical guides, patient anatomical models, and dental clear aligners.'
+    seoTitle: 'Precision Jigs & Tooling 3D Printing | NEXRA 3D',
+    seoDescription: 'Custom 3D printed assembly jigs, inspection fixtures, and ESD-safe factory tooling.'
   },
   {
     id: 'srv-jewelry-fashion',
@@ -799,12 +798,12 @@ export const INITIAL_FAQS: FAQ[] = [
 export const INITIAL_TESTIMONIALS: Testimonial[] = [
   {
     id: 'test-1',
-    clientName: 'Dr. Rajesh Varma',
-    company: 'Apex Healthcare System',
-    designation: 'Chief Biomedical Engineer',
-    avatarUrl: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=200',
+    clientName: 'Suresh Rao',
+    company: 'AeroDynamics Technologies',
+    designation: 'Head of Additive R&D',
+    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
     rating: 5,
-    content: 'NEXRA 3D provided patient-specific 3D printed surgical guides with 100% anatomical accuracy. Their 24-hour turnaround saved critical pre-operative preparation time for a complex cardiac procedure.',
+    content: 'NEXRA 3D provided carbon-fiber composite aerospace ducting and brackets with 100% dimensional accuracy. Their 24-hour turnaround saved critical time during our flight testing validation.',
     isActive: true
   },
   {
@@ -959,11 +958,11 @@ export const INITIAL_ADDRESSES: Address[] = [
     userId: 'usr-customer-1',
     fullName: 'Rahul Sharma',
     phone: '+91 98765 43210',
-    streetAddress: 'Plot 42, Advanced Tech Zone',
-    apartment: 'Industrial Estate Phase 2',
-    city: 'Bengaluru',
-    state: 'Karnataka',
-    postalCode: '560066',
+    streetAddress: 'Plot no 484, TNGOs Colony, Gachibowli',
+    apartment: 'TNGOs Colony',
+    city: 'Hyderabad',
+    state: 'Telangana',
+    postalCode: '500046',
     country: 'India',
     isDefault: true,
     type: 'WORK'
