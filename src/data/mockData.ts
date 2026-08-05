@@ -56,20 +56,6 @@ export const INITIAL_CATEGORIES: Category[] = [
     ]
   },
   {
-    id: 'cat-anime-figures',
-    name: 'Anime Figures',
-    slug: 'anime-figures',
-    description: 'Hand-finished, high-resolution 4K SLA printed anime collectibles from One Piece, Naruto, and Dragon Ball',
-    imageUrl: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&q=80&w=800',
-    subcategories: [
-      { id: 'sub-one-piece', categoryId: 'cat-anime-figures', name: 'One Piece', slug: 'one-piece' },
-      { id: 'sub-naruto', categoryId: 'cat-anime-figures', name: 'Naruto', slug: 'naruto' },
-      { id: 'sub-dragon-ball', categoryId: 'cat-anime-figures', name: 'Dragon Ball', slug: 'dragon-ball' },
-      { id: 'sub-demon-slayer', categoryId: 'cat-anime-figures', name: 'Demon Slayer', slug: 'demon-slayer' },
-      { id: 'sub-other-anime', categoryId: 'cat-anime-figures', name: 'Other Anime', slug: 'other-anime' }
-    ]
-  },
-  {
     id: 'cat-clocks',
     name: 'Clocks',
     slug: 'clocks',
