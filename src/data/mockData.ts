@@ -96,6 +96,7 @@ export const INITIAL_CATEGORIES: Category[] = [
       { id: 'sub-corporate-gifts', categoryId: 'cat-customized', name: 'Corporate Gifts', slug: 'corporate-gifts' }
     ]
   },
+  
 export const INITIAL_PRODUCTS: Product[] = [
     {
     id: 'prod-lithophane-moon-lamp',
