@@ -659,8 +659,7 @@ async function requireAdminMiddleware(req: AuthenticatedRequest, res: Response, 
 export const app = express();
 
 // Execute DB Seeding
-seedInitialDatabase().catch((e) => console.warn(e));
-
+// seedInitialDatabase().catch((e) => console.warn(e));
 app.use(express.json());
 app.use(cookieParser());
 
