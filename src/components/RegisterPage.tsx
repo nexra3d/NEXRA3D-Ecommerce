@@ -46,6 +46,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name,

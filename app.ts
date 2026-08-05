@@ -875,6 +875,15 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
+    // Temporary dev debug logs
+    if (!isProd) {
+      console.log('[Dev Auth Debug - Registration]', {
+        emailReceived: normalizedEmail,
+        userId: newUser.id,
+        passwordHashLength: hashedPassword.length
+      });
+    }
+
     const formattedUser = await formatUserResponse(newUser);
     return res.status(201).json({
       success: true,
@@ -904,12 +913,20 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
   const normalizedEmail = email.toLowerCase().trim();
 
   try {
-    // 1. User MUST exist in users table
+    // 1. User lookup using normalized email
     const user = await prisma.user.findUnique({
       where: { email: normalizedEmail }
     });
 
     if (!user) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Dev Auth Debug - Login]', {
+          emailEntered: normalizedEmail,
+          userFound: false,
+          bcryptCompareResult: false,
+          jwtCreated: false
+        });
+      }
       return res.status(404).json({
         success: false,
         message: 'Please create an account first.',
@@ -918,13 +935,31 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     }
 
     // 2. Validate password with bcrypt
-    const passwordMatches = await bcrypt.compare(password, user.password).catch(() => false);
+    try {
+      const passwordMatches = await bcrypt.compare(password, user.password);
 
-    if (!passwordMatches) {
-      return res.status(401).json({
+      if (!passwordMatches) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Dev Auth Debug - Login]', {
+            emailEntered: normalizedEmail,
+            userFound: true,
+            bcryptCompareResult: false,
+            jwtCreated: false
+          });
+        }
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid email or password',
+          error: 'Invalid email or password'
+        });
+      }
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('bcrypt compare failed', err);
+      }
+      return res.status(500).json({
         success: false,
-        message: 'Invalid email or password',
-        error: 'Invalid email or password'
+        message: 'Authentication error'
       });
     }
 
@@ -942,6 +977,15 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
       sameSite: isProd ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
+
+    if (!isProd) {
+      console.log('[Dev Auth Debug - Login]', {
+        emailEntered: normalizedEmail,
+        userFound: true,
+        bcryptCompareResult: true,
+        jwtCreated: true
+      });
+    }
 
     const formattedUser = await formatUserResponse(user);
     return res.json({
@@ -962,7 +1006,12 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 
 // LOGOUT
 app.post('/api/auth/logout', (req: Request, res: Response) => {
-  res.clearCookie('auth_token', { httpOnly: true, sameSite: 'lax' });
+  const isProd = process.env.NODE_ENV === 'production';
+  res.clearCookie('auth_token', {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax'
+  });
   return res.json({ success: true, message: 'Logged out successfully' });
 });
 
