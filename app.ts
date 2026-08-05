@@ -2844,7 +2844,10 @@ app.get('/api/admin/customers', requireAdminMiddleware, async (req: Request, res
       include: { addresses: true, orders: true },
       orderBy: { createdAt: 'desc' }
     });
-    const formatted = await Promise.all(customers.map((c) => formatUserResponse(c)));
+    const formatted = [];
+    for (const c of customers) {
+      formatted.push(await formatUserResponse(c));
+    }
     return res.json(formatted);
   } catch (err) {
     return res.status(500).json({ error: 'Failed to fetch customers' });
