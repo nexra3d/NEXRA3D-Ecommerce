@@ -56,6 +56,20 @@ export const INITIAL_CATEGORIES: Category[] = [
     ]
   },
   {
+    id: 'cat-anime-figures',
+    name: 'Anime Figures',
+    slug: 'anime-figures',
+    description: 'Hand-finished, high-resolution 4K SLA printed anime collectibles from One Piece, Naruto, and Dragon Ball',
+    imageUrl: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&q=80&w=800',
+    subcategories: [
+      { id: 'sub-one-piece', categoryId: 'cat-anime-figures', name: 'One Piece', slug: 'one-piece' },
+      { id: 'sub-naruto', categoryId: 'cat-anime-figures', name: 'Naruto', slug: 'naruto' },
+      { id: 'sub-dragon-ball', categoryId: 'cat-anime-figures', name: 'Dragon Ball', slug: 'dragon-ball' },
+      { id: 'sub-demon-slayer', categoryId: 'cat-anime-figures', name: 'Demon Slayer', slug: 'demon-slayer' },
+      { id: 'sub-other-anime', categoryId: 'cat-anime-figures', name: 'Other Anime', slug: 'other-anime' }
+    ]
+  },
+  {
     id: 'cat-clocks',
     name: 'Clocks',
     slug: 'clocks',
@@ -82,10 +96,316 @@ export const INITIAL_CATEGORIES: Category[] = [
       { id: 'sub-corporate-gifts', categoryId: 'cat-customized', name: 'Corporate Gifts', slug: 'corporate-gifts' }
     ]
   },
+  {
+    id: 'cat-3d-printers',
+    name: '3D Printers & Hardware',
+    slug: '3d-printers-hardware',
+    description: 'Industrial SLA, SLS, FDM, and Bambu Lab High-Speed 3D Printers for high-precision manufacturing',
+    imageUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800',
+    subcategories: [
+      { id: 'sub-bambu', categoryId: 'cat-3d-printers', name: 'Bambu Lab High-Speed Printers', slug: 'bambu-lab-printers' },
+      { id: 'sub-sla', categoryId: 'cat-3d-printers', name: 'Industrial SLA Printers', slug: 'sla-printers' },
+      { id: 'sub-fdm', categoryId: 'cat-3d-printers', name: 'High-Temp FDM Printers', slug: 'fdm-printers' },
+      { id: 'sub-sls', categoryId: 'cat-3d-printers', name: 'SLS Powder Printers', slug: 'sls-printers' }
+    ]
+  },
+  {
+    id: 'cat-resins-materials',
+    name: '3D Printing Resins & Filaments',
+    slug: 'resins-materials',
+    description: 'Engineering resins, high-clarity industrial polymers, tough resins, and carbon fiber filaments',
+    imageUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800',
+    subcategories: [
+      { id: 'sub-resins', categoryId: 'cat-resins-materials', name: 'Engineering Resins', slug: 'engineering-resins' },
+      { id: 'sub-filaments', categoryId: 'cat-resins-materials', name: 'High-Performance Filaments', slug: 'filaments' },
+      { id: 'sub-clear-resins', categoryId: 'cat-resins-materials', name: 'High-Clarity Industrial Resins', slug: 'clear-resins' }
+    ]
+  },
+  {
+    id: 'cat-post-processing',
+    name: 'Post-Processing & UV Equipment',
+    slug: 'post-processing-equipment',
+    description: 'Automated UV curing chambers, ultrasonic washing stations, and surface finishing equipment',
+    imageUrl: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=800',
+    subcategories: [
+      { id: 'sub-wash-cure', categoryId: 'cat-post-processing', name: 'UV Wash & Cure Units', slug: 'wash-cure' },
+      { id: 'sub-surface-finish', categoryId: 'cat-post-processing', name: 'Surface Finishers', slug: 'surface-finishers' }
+    ]
+  },
+  {
+    id: 'cat-spares-components',
+    name: 'Spares & Consumables',
+    slug: 'spares-components',
+    description: 'High-precision nozzles, FEP films, build plates, optics, and replacement tanks',
+    imageUrl: 'https://images.unsplash.com/photo-1581092335397-9583fe92d232?auto=format&fit=crop&q=80&w=800',
+    subcategories: [
+      { id: 'sub-vats-fep', categoryId: 'cat-spares-components', name: 'Resin Vats & FEP Films', slug: 'resin-vats-fep' },
+      { id: 'sub-nozzles-extruders', categoryId: 'cat-spares-components', name: 'Nozzles & Extruders', slug: 'nozzles-extruders' }
+    ]
+  },
+  {
+    id: 'cat-aerospace-drones',
+    name: 'Aerospace',
+    slug: 'aerospace',
+    description: 'Carbon fiber aerospace structures, satellite brackets, aerospace jigs, nacelles & custom avionics enclosures',
+    imageUrl: 'https://images.unsplash.com/photo-1517976487492-5750f3195933?auto=format&fit=crop&q=80&w=800',
+    subcategories: [
+      { id: 'sub-aerospace-structures', categoryId: 'cat-aerospace-drones', name: 'Aerospace Structural Components', slug: 'aerospace-structures' },
+      { id: 'sub-satellite-housings', categoryId: 'cat-aerospace-drones', name: 'Satellite & Avionics Housings', slug: 'satellite-housings' },
+      { id: 'sub-aerospace-jigs', categoryId: 'cat-aerospace-drones', name: 'Aerospace Carbon Fiber Jigs', slug: 'aerospace-jigs' },
+      { id: 'sub-avionics-housing', categoryId: 'cat-aerospace-drones', name: 'Engine & Ducting Components', slug: 'engine-ducting' }
+    ]
+  }
 ];
 
 export const INITIAL_PRODUCTS: Product[] = [
-    {
+  {
+    id: 'prod-bambu-x1c',
+    title: 'Bambu Lab X1-Carbon Combo High-Speed 3D Printer',
+    slug: 'bambu-lab-x1-carbon-combo',
+    sku: 'BL-X1C-COMBO',
+    description: 'Flagship Bambu Lab X1-Carbon 3D Printer Combo with Automatic Material System (AMS). Features AI lidar inspection, 500 mm/s print speed, active chamber vibration compensation, carbon fiber reinforced printing, and dual auto bed leveling.',
+    price: 145000,
+    mrp: 165000,
+    salePrice: 145000,
+    categoryId: 'cat-3d-printers',
+    subcategoryId: 'sub-bambu',
+    stock: 15,
+    stockQuantity: 15,
+    images: [
+      'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800',
+      'https://images.unsplash.com/photo-1581092335397-9583fe92d232?auto=format&fit=crop&q=80&w=800'
+    ],
+    brand: 'Bambu Lab',
+    rating: 5.0,
+    reviewCount: 98,
+    isFeatured: true,
+    isTrending: true,
+    isBestSeller: true,
+    specifications: {
+      'Build Volume': '256 x 256 x 256 mm',
+      'Max Print Speed': '500 mm/s',
+      'Max Hotend Temp': '300 °C (Hardened Steel)',
+      'Multi-Color AMS': '4-Color Included (Expandable to 16)',
+      'AI Lidar & Camera': 'Micro Lidar + First Layer Inspection Camera',
+      'Supported Filaments': 'PA-CF, PET-CF, PC, ABS, TPU, PLA, PETG'
+    },
+    tags: ['bambu-lab', 'x1-carbon', '3d-printer', 'ams', 'high-speed', 'carbon-fiber'],
+    createdAt: '2026-02-01'
+  },
+  {
+    id: 'prod-nx-sla4k',
+    title: 'NEXRA Pro-SLA 4K Industrial Resin 3D Printer',
+    slug: 'nexra-pro-sla-4k-printer',
+    sku: 'NX-SLA-4K',
+    description: 'Ultra-high precision industrial SLA 3D printer featuring 4K mono-LCD optics, 0.02mm Z-axis repeatability, 219 x 123 x 250 mm build volume, and dynamic UV intensity control for engineering-grade SLA prototyping.',
+    price: 249000,
+    mrp: 280000,
+    salePrice: 249000,
+    categoryId: 'cat-3d-printers',
+    subcategoryId: 'sub-sla',
+    stock: 8,
+    stockQuantity: 8,
+    images: [
+      'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800',
+      'https://images.unsplash.com/photo-1581092335397-9583fe92d232?auto=format&fit=crop&q=80&w=800'
+    ],
+    brand: 'NEXRA 3D',
+    rating: 4.9,
+    reviewCount: 42,
+    isFeatured: true,
+    isTrending: true,
+    isBestSeller: true,
+    specifications: {
+      'Build Volume': '219 x 123 x 250 mm',
+      'XY Resolution': '35 Microns (4K Mono)',
+      'Layer Thickness': '0.01 - 0.15 mm',
+      'Light Source': '405nm Parallel Matrix UV Light Engine',
+      'Warranty': '2 Years Industrial Warranty'
+    },
+    tags: ['sla', '3d-printer', 'industrial', '4k', 'precision'],
+    createdAt: '2026-01-10'
+  },
+  {
+    id: 'prod-nx-fdmx3',
+    title: 'NEXRA High-Temp Dual-Extruder FDM Printer X3',
+    slug: 'nexra-high-temp-fdm-x3',
+    sku: 'NX-FDM-X3',
+    description: 'Industrial dual-extruder FDM 3D printer with actively heated chamber up to 90°C and nozzle temperature up to 350°C. Engineered for Carbon Fiber, PEEK, Nylon, and ABS components.',
+    price: 185000,
+    mrp: 210000,
+    salePrice: 185000,
+    categoryId: 'cat-3d-printers',
+    subcategoryId: 'sub-fdm',
+    stock: 12,
+    stockQuantity: 12,
+    images: [
+      'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800'
+    ],
+    brand: 'NEXRA 3D',
+    rating: 4.8,
+    reviewCount: 29,
+    isFeatured: true,
+    isTrending: false,
+    specifications: {
+      'Build Volume': '300 x 300 x 400 mm',
+      'Max Nozzle Temp': '350°C Dual Extrusions',
+      'Chamber Temp': 'Active Heated 90°C',
+      'Filament Compatibility': 'Carbon Fiber, PEEK, Nylon, ABS, TPU, PLA'
+    },
+    tags: ['fdm', '3d-printer', 'dual-extruder', 'high-temp', 'carbon-fiber'],
+    createdAt: '2026-01-20'
+  },
+  {
+    id: 'prod-nx-res-eng',
+    title: 'NEXRA High-Temp Tough Engineering Resin (1kg)',
+    slug: 'nexra-high-temp-tough-resin-1kg',
+    sku: 'NX-RES-ENG',
+    description: 'Engineering-grade liquid photopolymer resin with 82D Shore hardness and high heat deflection temperature (HDT 120°C). Perfect for functional snap-fit components, enclosures, and automotive prototypes.',
+    price: 4800,
+    mrp: 5500,
+    salePrice: 4800,
+    categoryId: 'cat-resins-materials',
+    subcategoryId: 'sub-resins',
+    stock: 85,
+    stockQuantity: 85,
+    images: [
+      'https://images.unsplash.com/photo-1581092335397-9583fe92d232?auto=format&fit=crop&q=80&w=800'
+    ],
+    brand: 'NEXRA 3D',
+    rating: 4.9,
+    reviewCount: 110,
+    isFeatured: true,
+    isTrending: true,
+    specifications: {
+      'Viscosity': '250 mPa.s at 25°C',
+      'Tensile Strength': '65 MPa',
+      'Heat Deflection Temp': '120°C',
+      'UV Wavelength': '385nm - 405nm'
+    },
+    tags: ['resin', 'tough', 'engineering', 'high-temp', 'sla'],
+    createdAt: '2026-02-01'
+  },
+  {
+    id: 'prod-nx-res-dent',
+    title: 'NEXRA High-Clarity Industrial Resin (1kg)',
+    slug: 'nexra-high-clarity-industrial-resin',
+    sku: 'NX-RES-CLR',
+    description: 'Ultra-high clarity SLA resin formulated for optical prototypes, flow-visualization housings, fluid manifolds, and precision lens assemblies.',
+    price: 6500,
+    mrp: 7500,
+    salePrice: 6500,
+    categoryId: 'cat-resins-materials',
+    subcategoryId: 'sub-clear-resins',
+    stock: 40,
+    stockQuantity: 40,
+    images: [
+      'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800'
+    ],
+    brand: 'NEXRA 3D',
+    rating: 5.0,
+    reviewCount: 38,
+    isFeatured: true,
+    isTrending: true,
+    specifications: {
+      'Clarity': '99.2% Optical Transparency',
+      'Flexural Strength': '95 MPa',
+      'Application': 'Flow Manifolds & Lens Housings'
+    },
+    tags: ['resin', 'industrial', 'clear', 'optical', 'high-precision'],
+    createdAt: '2026-02-05'
+  },
+  {
+    id: 'prod-nx-fil-cf',
+    title: 'NEXRA Carbon Fiber Reinforced Filament 1.75mm (1kg)',
+    slug: 'nexra-carbon-fiber-filament-1kg',
+    sku: 'NX-FIL-CF175',
+    description: 'High-modulus carbon fiber filled Nylon 12 filament offering extreme tensile stiffness, low warp, and high impact resistance for structural end-use components.',
+    price: 5200,
+    mrp: 6000,
+    salePrice: 5200,
+    categoryId: 'cat-resins-materials',
+    subcategoryId: 'sub-filaments',
+    stock: 60,
+    stockQuantity: 60,
+    images: [
+      'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800'
+    ],
+    brand: 'NEXRA 3D',
+    rating: 4.8,
+    reviewCount: 54,
+    isFeatured: false,
+    isTrending: true,
+    specifications: {
+      'Filament Diameter': '1.75mm ±0.02mm',
+      'Carbon Fiber Content': '20% Chop Carbon Fiber',
+      'Print Temperature': '260°C - 290°C',
+      'Bed Temperature': '80°C - 100°C'
+    },
+    tags: ['filament', 'carbon-fiber', 'nylon', 'fdm', 'high-strength'],
+    createdAt: '2026-02-12'
+  },
+  {
+    id: 'prod-nx-cure-pro',
+    title: 'NEXRA Smart Cure & Wash Pro Station',
+    slug: 'nexra-smart-cure-wash-pro-station',
+    sku: 'NX-CURE-PRO',
+    description: 'Dual-function automated post-processing system with 360° rotating UV curing platform (405nm LEDs), heated alcohol washing bath, and automated digital timer preset.',
+    price: 35000,
+    mrp: 40000,
+    salePrice: 35000,
+    categoryId: 'cat-post-processing',
+    subcategoryId: 'sub-wash-cure',
+    stock: 18,
+    stockQuantity: 18,
+    images: [
+      'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=800'
+    ],
+    brand: 'NEXRA 3D',
+    rating: 4.9,
+    reviewCount: 22,
+    isFeatured: false,
+    isTrending: false,
+    specifications: {
+      'Max Wash Size': '200 x 120 x 220 mm',
+      'UV Array': '18 High Power 405nm UV Matrix',
+      'Curing Chamber Temp': 'Controlled up to 60°C',
+      'Timer Modes': '1 to 60 Minutes Touch Controls'
+    },
+    tags: ['uv-cure', 'wash-station', 'post-processing', 'sla-cleaner'],
+    createdAt: '2026-02-20'
+  },
+  {
+    id: 'prod-nx-vat-fep',
+    title: 'NEXRA High-Precision Aluminum SLA Tank & FEP 2.0 Kit',
+    slug: 'nexra-aluminum-sla-tank-fep-kit',
+    sku: 'NX-ACC-VAT',
+    description: 'CNC machined anodized aluminum resin vat equipped with ultra-clear non-stick nFEP 2.0 film pre-installed for effortless print release and crisp feature definition.',
+    price: 3800,
+    mrp: 4500,
+    salePrice: 3800,
+    categoryId: 'cat-spares-components',
+    subcategoryId: 'sub-vats-fep',
+    stock: 50,
+    stockQuantity: 50,
+    images: [
+      'https://images.unsplash.com/photo-1581092335397-9583fe92d232?auto=format&fit=crop&q=80&w=800'
+    ],
+    brand: 'NEXRA 3D',
+    rating: 4.7,
+    reviewCount: 31,
+    isFeatured: false,
+    isTrending: false,
+    specifications: {
+      'Material': 'Anodized 6061 Aluminum + nFEP 2.0 Film',
+      'Film Thickness': '0.15mm Non-Stick High-Tension',
+      'Compatibility': 'NEXRA Pro-SLA Series',
+      'Includes': 'Vat Cover + Silicone Scraper'
+    },
+    tags: ['vat', 'fep-film', 'spare-part', 'sla-accessory'],
+    createdAt: '2026-03-01'
+  },
+  {
     id: 'prod-lithophane-moon-lamp',
     title: 'Personalized 3D Printed Photo Lithophane Moon Lamp',
     slug: 'personalized-3d-photo-lithophane-moon-lamp',
