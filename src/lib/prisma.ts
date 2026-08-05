@@ -1,9 +1,15 @@
 import { PrismaClient } from '@prisma/client';
 import { memoryStore } from './memoryDb.js';
 
-const globalForPrisma = globalThis as unknown as { prisma: any };
+const globalForPrisma = globalThis as unknown as {
+  prisma?: PrismaClient;
+};
 
-const rawPrisma = globalForPrisma.prisma || new PrismaClient();
+const rawPrisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    log: ['error'],
+  });
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = rawPrisma;
