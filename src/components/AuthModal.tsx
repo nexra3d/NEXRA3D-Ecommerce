@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Lock, Mail, User as UserIcon, Phone, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
 import { User } from '../types';
+import { apiFetch } from '../lib/api';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -28,7 +29,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
     const body = mode === 'login' ? { email, password } : { name, email, phone, password };
 
     try {
-      const res = await fetch(endpoint, {
+      const res = await apiFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -59,7 +60,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
     const demoPassword = role === 'ADMIN' ? 'admin123' : 'customer123';
     
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: demoEmail, password: demoPassword })

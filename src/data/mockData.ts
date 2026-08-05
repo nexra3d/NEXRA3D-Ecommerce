@@ -972,7 +972,7 @@ export const INITIAL_ADDRESSES: Address[] = [
 export const INITIAL_ORDERS: Order[] = [
   {
     id: 'ord-1001',
-    orderNumber: 'NX-ORD-882910',
+    orderNumber: 'N3D-882910 25072026',
     userId: 'usr-customer-1',
     customerName: 'Rahul Sharma',
     customerEmail: 'customer@example.com',

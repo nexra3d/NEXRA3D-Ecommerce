@@ -38,6 +38,7 @@ interface AccountDashboardProps {
   onNavigateLogin: () => void;
   onSelectOrderToTrack?: (order: Order) => void;
   orders?: Order[];
+  onAddressesChanged?: () => void;
 }
 
 export const AccountDashboard: React.FC<AccountDashboardProps> = ({
@@ -49,7 +50,8 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
   onNavigateHome,
   onNavigateLogin,
   onSelectOrderToTrack,
-  orders = []
+  orders = [],
+  onAddressesChanged
 }) => {
   // If user is not logged in, show access prompt
   if (!user) {
@@ -144,6 +146,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
         const data = await res.json();
         if (Array.isArray(data)) {
           setUserAddresses(data);
+          onAddressesChanged?.();
         }
       }
     } catch (err) {

@@ -40,13 +40,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   currentUser,
   onOpenAuth
 }) => {
-  const addressList = Array.isArray(savedAddresses) ? savedAddresses : [];
+  const [liveAddresses, setLiveAddresses] = useState<Address[]>(savedAddresses || []);
+  const addressList = Array.isArray(liveAddresses) && liveAddresses.length > 0
+    ? liveAddresses
+    : (Array.isArray(savedAddresses) ? savedAddresses : []);
   const safeCartItems = Array.isArray(cartItems) ? cartItems : [];
 
   const [step, setStep] = useState<'address' | 'payment' | 'razorpay_modal' | 'success'>('address');
-  const [selectedAddressId, setSelectedAddressId] = useState<string>(
-    addressList.find((a) => a.isDefault)?.id || addressList[0]?.id || ''
-  );
+  const [selectedAddressId, setSelectedAddressId] = useState<string>('');
 
   const [showAddAddressForm, setShowAddAddressForm] = useState(addressList.length === 0);
   const [newFullName, setNewFullName] = useState(currentUser?.name || '');
@@ -63,16 +64,44 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [razorpayOrderDetails, setRazorpayOrderDetails] = useState<any | null>(null);
 
   useEffect(() => {
+    if (savedAddresses && savedAddresses.length > 0) {
+      setLiveAddresses(savedAddresses);
+    }
+  }, [savedAddresses]);
+
+  useEffect(() => {
     if (isOpen) {
-      if (savedAddresses && savedAddresses.length > 0) {
-        const defaultAddr = savedAddresses.find((a) => a.isDefault) || savedAddresses[0];
-        if (defaultAddr) {
-          setSelectedAddressId(defaultAddr.id);
+      const syncAddresses = async () => {
+        try {
+          const res = await apiFetch('/api/addresses');
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) {
+              setLiveAddresses(data);
+              const defaultAddr = data.find((a: any) => a.isDefault) || data[0];
+              if (defaultAddr && (!selectedAddressId || !data.some((a: any) => a.id === selectedAddressId))) {
+                setSelectedAddressId(defaultAddr.id);
+              }
+              setShowAddAddressForm(false);
+              return;
+            }
+          }
+        } catch (err) {
+          console.error('Checkout address sync error:', err);
         }
-        setShowAddAddressForm(false);
-      } else {
-        setShowAddAddressForm(true);
-      }
+
+        if (savedAddresses && savedAddresses.length > 0) {
+          const defaultAddr = savedAddresses.find((a) => a.isDefault) || savedAddresses[0];
+          if (defaultAddr && !selectedAddressId) {
+            setSelectedAddressId(defaultAddr.id);
+          }
+          setShowAddAddressForm(false);
+        } else {
+          setShowAddAddressForm(true);
+        }
+      };
+
+      syncAddresses();
 
       if (currentUser) {
         setNewFullName(currentUser.name || '');
@@ -91,7 +120,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         }
       }
     }
-  }, [isOpen, savedAddresses, currentUser]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -117,7 +146,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       country: 'India',
       type: 'HOME'
     });
-    setSelectedAddressId(created.id);
+    if (created && created.id) {
+      setLiveAddresses((prev) => [...prev.filter((a) => a.id !== created.id), created]);
+      setSelectedAddressId(created.id);
+    }
     setShowAddAddressForm(false);
   };
 
@@ -414,7 +446,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
               {/* Saved Addresses Cards */}
               <div className="grid grid-cols-1 gap-3">
-                {savedAddresses.map((addr) => (
+                {addressList.map((addr) => (
                   <label
                     key={addr.id}
                     onClick={() => setSelectedAddressId(addr.id)}

@@ -349,7 +349,7 @@ export default function App() {
         queryParams.append('brands', filters.brands.join(','));
       }
 
-      const res = await fetch(`/api/products?${queryParams.toString()}`);
+      const res = await apiFetch(`/api/products?${queryParams.toString()}`);
       const data = await res.json();
       if (Array.isArray(data)) {
         setProducts(data);
@@ -617,6 +617,7 @@ export default function App() {
       setIsAuthOpen(true);
       return;
     }
+    fetchSavedAddresses();
     setIsCheckoutOpen(true);
   };
 
@@ -699,7 +700,7 @@ export default function App() {
           const targetEmail = role === 'ADMIN' ? 'admin@store.com' : 'alex@example.com';
           const targetPass = role === 'ADMIN' ? 'admin123' : 'customer123';
           try {
-            const res = await fetch('/api/auth/login', {
+            const res = await apiFetch('/api/auth/login', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ email: targetEmail, password: targetPass })
@@ -780,6 +781,7 @@ export default function App() {
           onNavigateLogin={() => setCurrentView('login')}
           onSelectOrderToTrack={(orderToTrack) => setTrackingOrder(orderToTrack)}
           orders={userOrders}
+          onAddressesChanged={fetchSavedAddresses}
         />
       )}
 

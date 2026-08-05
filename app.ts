@@ -319,13 +319,8 @@ async function seedInitialDatabase() {
     const customerHash = await bcrypt.hash('customer123', 10);
 
     const defaultSeedAccounts = [
-      { name: 'NEXRA Administrator', email: 'admin@vltypecertservices.com', password: adminHash, role: 'ADMIN' },
-      { name: 'Store Admin', email: 'admin@store.com', password: adminHash, role: 'ADMIN' },
-      { name: 'NEXRA 3D Owner', email: 'nexra3d@gmail.com', password: adminHash, role: 'ADMIN' },
-      { name: 'Varun Manurani', email: 'varunmanurani@gmail.com', password: varunHash, role: 'ADMIN' },
-      { name: 'Varun Manurani', email: 'varunmanu@gmail.com', password: varunHash, role: 'ADMIN' },
-      { name: 'NEXRA Support Admin', email: 'admin@nexra3d.com', password: adminHash, role: 'ADMIN' },
-      { name: 'Rahul Sharma', email: 'customer@example.com', password: customerHash, role: 'CUSTOMER' },
+      { name: 'NEXRA Administrator', email: 'admin@nexra3d.in', password: adminHash, role: 'ADMIN' },
+      { name: 'Store Admin', email: 'store@nexra3d.in', password: adminHash, role: 'ADMIN' },
       { name: 'Alex Johnson', email: 'alex@example.com', password: customerHash, role: 'CUSTOMER' }
     ];
 
@@ -2162,7 +2157,12 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
     const shippingFee = subtotal > 1000 ? 0 : 100;
     const totalAmount = Math.max(0, subtotal - discountAmount + taxAmount + shippingFee);
 
-    const orderNumber = 'ORD-' + Math.floor(100000 + Math.random() * 900000);
+    const now = new Date();
+    const dd = String(now.getDate()).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    const randNum = Math.floor(100000 + Math.random() * 900000);
+    const orderNumber = `N3D-${randNum} ${dd}${mm}${yyyy}`;
 
     const isCod = paymentMethod === 'COD' || paymentMethod === 'CASH_ON_DELIVERY';
 
@@ -2170,7 +2170,7 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
       data: {
         orderNumber,
         userId,
-        status: (isCod ? 'PROCESSING' : 'PENDING') as any,
+        status: 'PENDING' as any,
         paymentStatus: (isCod ? 'COD' : 'PENDING') as any,
         paymentMethod: isCod ? 'COD' : paymentMethod,
         subtotal,
@@ -2202,13 +2202,68 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
     return res.status(201).json({
       success: true,
       message: 'Order created successfully',
-      order: newOrder
+      order: formatOrder(newOrder)
     });
   } catch (err: any) {
     console.error('Checkout error:', err);
     return res.status(500).json({ error: 'Checkout failed: ' + (err.message || String(err)) });
   }
 });
+
+const formatOrder = (o: any) => {
+  if (!o) return o;
+  const addr = (o.shippingAddress as any) || {};
+  const shipment = o.shipment;
+  const shipmentsList = shipment ? [{
+    ...shipment,
+    statusHistory: shipment.statusHistory || []
+  }] : [];
+  const courierPartnerName = shipment?.courier || shipment?.provider || addr.courierName || (shipment ? 'Standard Courier' : 'Awaiting Dispatch');
+  const trackingNo = shipment?.awbNumber || shipment?.trackingNumber || (shipment ? 'Assigned' : 'Awaiting Dispatch');
+
+  const subtotalValue = Number(o.subtotal ?? 0);
+  const taxValue = Number(o.taxAmount ?? o.tax ?? Math.round(subtotalValue * 0.18));
+  const totalAmountValue = Number(o.totalAmount ?? o.total ?? (subtotalValue + taxValue));
+  const discountValue = Number(o.discountAmount ?? o.discount ?? 0);
+  const shippingFeeValue = Number(o.shippingFee ?? o.shippingCharge ?? 0);
+
+  const items = (o.items || []).map((it: any) => {
+    const p = it.product || {};
+    const price = Number(it.price ?? p.price ?? 0);
+    const qty = Number(it.quantity ?? 1);
+    const itemTot = Number(it.totalPrice ?? it.total ?? it.subtotal ?? (price * qty));
+    const img = it.imageUrl || it.productImage || p.imageUrl || (p.images && p.images[0]?.url) || '';
+    const title = it.productTitle || p.name || p.title || 'Product';
+    return {
+      ...it,
+      productTitle: title,
+      productImage: img,
+      imageUrl: img,
+      price,
+      quantity: qty,
+      totalPrice: itemTot,
+      total: itemTot
+    };
+  });
+
+  return {
+    ...o,
+    subtotal: subtotalValue,
+    tax: taxValue,
+    taxAmount: taxValue,
+    totalAmount: totalAmountValue,
+    discountAmount: discountValue,
+    shippingFee: shippingFeeValue,
+    items,
+    orderStatus: o.status,
+    courierName: courierPartnerName,
+    trackingNumber: trackingNo,
+    shipments: shipmentsList,
+    customerName: addr.fullName || o.user?.name || 'Customer',
+    customerEmail: addr.email || o.user?.email || '',
+    customerPhone: addr.phone || o.user?.phone || ''
+  };
+};
 
 app.get('/api/orders', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user.id;
@@ -2240,25 +2295,6 @@ app.get('/api/orders', requireAuthMiddleware, async (req: AuthenticatedRequest, 
       orderBy: { createdAt: 'desc' }
     });
 
-    const formatOrder = (o: any) => {
-      const addr = (o.shippingAddress as any) || {};
-      const shipment = o.shipment;
-      const shipmentsList = shipment ? [{
-        ...shipment,
-        statusHistory: shipment.statusHistory || []
-      }] : [];
-      return {
-        ...o,
-        orderStatus: o.status,
-        courierName: shipment?.provider || addr.courierName || 'Blue Dart Industrial Express',
-        trackingNumber: shipment?.awbNumber || shipment?.trackingNumber || 'Processing',
-        shipments: shipmentsList,
-        customerName: addr.fullName || o.user?.name || 'Customer',
-        customerEmail: addr.email || o.user?.email || '',
-        customerPhone: addr.phone || o.user?.phone || ''
-      };
-    };
-
     const orders = rawOrders.map(formatOrder);
 
     return res.json(orders);
@@ -2270,10 +2306,15 @@ app.get('/api/orders', requireAuthMiddleware, async (req: AuthenticatedRequest, 
 
 app.get('/api/orders/:id', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
+  const decodedId = decodeURIComponent(id || '').trim();
   try {
     const order = await prisma.order.findFirst({
       where: {
-        OR: [{ id }, { orderNumber: id }]
+        OR: [
+          { id: decodedId },
+          { orderNumber: decodedId },
+          { orderNumber: { equals: decodedId, mode: 'insensitive' } }
+        ]
       },
       include: {
         items: { include: { product: true } },
@@ -2290,25 +2331,7 @@ app.get('/api/orders/:id', requireAuthMiddleware, async (req: AuthenticatedReque
       return res.status(403).json({ error: 'Unauthorized to view this order' });
     }
 
-    const addr = (order.shippingAddress as any) || {};
-    const shipment = order.shipment;
-    const shipmentsList = shipment ? [{
-      ...shipment,
-      statusHistory: shipment.statusHistory || []
-    }] : [];
-
-    const formattedOrder = {
-      ...order,
-      orderStatus: order.status,
-      courierName: shipment?.provider || addr.courierName || 'Blue Dart Industrial Express',
-      trackingNumber: shipment?.awbNumber || shipment?.trackingNumber || 'Processing',
-      shipments: shipmentsList,
-      customerName: addr.fullName || order.user?.name || 'Customer',
-      customerEmail: addr.email || order.user?.email || '',
-      customerPhone: addr.phone || order.user?.phone || ''
-    };
-
-    return res.json(formattedOrder);
+    return res.json(formatOrder(order));
   } catch (err: any) {
     return res.status(500).json({ error: 'Failed to fetch order details' });
   }
@@ -3094,6 +3117,16 @@ app.post('/api/admin/orders/:id/shipments', requireAdminMiddleware, async (req: 
       });
     }
 
+    const providerNameMap: Record<string, string> = {
+      'BLUE_DART': 'Blue Dart Express',
+      'DELHIVERY': 'Delhivery Surface',
+      'SHIPROCKET': 'Shiprocket Hub',
+      'DTDC': 'DTDC Air Express',
+      'FEDEX': 'FedEx Industrial',
+      'MANUAL': 'Manual Logistics Partner'
+    };
+    const providerLabel = providerNameMap[provider] || provider || 'Standard Courier';
+
     const shipmentNumber = `SHP-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
     const awb = awbNumber || trackingNumber || `AWB${Math.floor(100000000 + Math.random() * 900000000)}`;
 
@@ -3102,7 +3135,8 @@ app.post('/api/admin/orders/:id/shipments', requireAdminMiddleware, async (req: 
         orderId: order.id,
         orderNumber: order.orderNumber,
         shipmentNumber,
-        provider,
+        provider: providerLabel,
+        courier: providerLabel,
         awbNumber: awb,
         trackingNumber: awb,
         trackingUrl: `https://${provider.toLowerCase()}.com/track/${awb}`,
@@ -3111,7 +3145,7 @@ app.post('/api/admin/orders/:id/shipments', requireAdminMiddleware, async (req: 
         statusHistory: {
           create: {
             status: 'SHIPPED',
-            description: `Shipment created with ${provider}`,
+            description: `Shipment created with ${providerLabel}`,
             location: 'Warehouse, New Delhi'
           }
         }

@@ -42,8 +42,8 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
     ? order.shipments
     : (order.shipment ? [order.shipment] : []);
 
-  const courierPartner = order.courierName || activeShipments[0]?.provider || order.shipment?.provider || 'Blue Dart Industrial Express';
-  const awbTrackingNumber = order.trackingNumber || activeShipments[0]?.awbNumber || activeShipments[0]?.trackingNumber || order.shipment?.awbNumber || order.shipment?.trackingNumber || 'Processing';
+  const courierPartner = activeShipments[0]?.courier || activeShipments[0]?.provider || order.shipment?.courier || order.shipment?.provider || order.courierName || 'Awaiting Dispatch';
+  const awbTrackingNumber = activeShipments[0]?.awbNumber || activeShipments[0]?.trackingNumber || order.shipment?.awbNumber || order.shipment?.trackingNumber || order.trackingNumber || 'Awaiting Dispatch';
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in">
@@ -242,18 +242,32 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
           <div className="space-y-3 border-t border-slate-200 pt-4">
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Itemized Bill</h3>
             <div className="space-y-2">
-              {(order.items || []).map((item) => (
-                <div key={item.id} className="flex items-center justify-between text-xs py-1 border-b border-slate-100 last:border-none">
-                  <div className="flex items-center space-x-3">
-                    <img src={item.productImage} alt={item.productTitle} className="w-10 h-10 rounded-lg object-cover bg-slate-100" />
-                    <div>
-                      <span className="font-bold text-slate-900 block">{item.productTitle}</span>
-                      <span className="text-[11px] text-slate-500">Qty: {item.quantity} × ₹{Number(item.price || 0).toLocaleString('en-IN')}</span>
+              {(order.items || []).map((item) => {
+                const itemImg = item.productImage || (item as any).imageUrl || (item as any).product?.imageUrl || '';
+                const itemTitle = item.productTitle || (item as any).product?.name || (item as any).product?.title || 'Product';
+                const itemPrice = Number(item.price || (item as any).product?.price || 0);
+                const itemQty = Number(item.quantity || 1);
+                const lineTotal = Number(item.totalPrice ?? (item as any).total ?? (item as any).subtotal ?? (itemPrice * itemQty));
+
+                return (
+                  <div key={item.id} className="flex items-center justify-between text-xs py-1 border-b border-slate-100 last:border-none">
+                    <div className="flex items-center space-x-3">
+                      {itemImg ? (
+                        <img src={itemImg} alt={itemTitle} className="w-10 h-10 rounded-lg object-cover bg-slate-100 shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 font-bold flex items-center justify-center shrink-0">
+                          3D
+                        </div>
+                      )}
+                      <div>
+                        <span className="font-bold text-slate-900 block">{itemTitle}</span>
+                        <span className="text-[11px] text-slate-500">Qty: {itemQty} × ₹{itemPrice.toLocaleString('en-IN')}</span>
+                      </div>
                     </div>
+                    <span className="font-bold text-slate-900">₹{lineTotal.toLocaleString('en-IN')}</span>
                   </div>
-                  <span className="font-bold text-slate-900">₹{Number(item.totalPrice || 0).toLocaleString('en-IN')}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="bg-slate-50 p-3 rounded-xl text-xs space-y-1 pt-2">
@@ -262,10 +276,10 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
                 <span>₹{Number(order.subtotal || 0).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between text-slate-600">
-                <span>Tax (GST)</span>
-                <span>₹{Number(order.tax || 0).toLocaleString('en-IN')}</span>
+                <span>Tax (GST 18%)</span>
+                <span>₹{Number(order.tax ?? (order as any).taxAmount ?? Math.round(Number(order.subtotal || 0) * 0.18)).toLocaleString('en-IN')}</span>
               </div>
-              {order.discountAmount > 0 && (
+              {Number(order.discountAmount || 0) > 0 && (
                 <div className="flex justify-between text-emerald-600 font-semibold">
                   <span>Discount</span>
                   <span>-₹{Number(order.discountAmount || 0).toLocaleString('en-IN')}</span>
@@ -273,7 +287,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
               )}
               <div className="flex justify-between font-black text-sm text-slate-900 pt-1 border-t border-slate-200">
                 <span>Total Paid</span>
-                <span className="text-indigo-600">₹{Number(order.totalAmount || 0).toLocaleString('en-IN')}</span>
+                <span className="text-indigo-600">₹{Number(order.totalAmount ?? (order as any).total ?? 0).toLocaleString('en-IN')}</span>
               </div>
             </div>
           </div>
