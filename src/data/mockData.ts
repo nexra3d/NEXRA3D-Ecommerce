@@ -82,66 +82,6 @@ export const INITIAL_CATEGORIES: Category[] = [
       { id: 'sub-corporate-gifts', categoryId: 'cat-customized', name: 'Corporate Gifts', slug: 'corporate-gifts' }
     ]
   },
-  {
-    id: 'cat-3d-printers',
-    name: '3D Printers & Hardware',
-    slug: '3d-printers-hardware',
-    description: 'Industrial SLA, SLS, FDM, and Bambu Lab High-Speed 3D Printers for high-precision manufacturing',
-    imageUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800',
-    subcategories: [
-      { id: 'sub-bambu', categoryId: 'cat-3d-printers', name: 'Bambu Lab High-Speed Printers', slug: 'bambu-lab-printers' },
-      { id: 'sub-sla', categoryId: 'cat-3d-printers', name: 'Industrial SLA Printers', slug: 'sla-printers' },
-      { id: 'sub-fdm', categoryId: 'cat-3d-printers', name: 'High-Temp FDM Printers', slug: 'fdm-printers' },
-      { id: 'sub-sls', categoryId: 'cat-3d-printers', name: 'SLS Powder Printers', slug: 'sls-printers' }
-    ]
-  },
-  {
-    id: 'cat-resins-materials',
-    name: '3D Printing Resins & Filaments',
-    slug: 'resins-materials',
-    description: 'Engineering resins, high-clarity industrial polymers, tough resins, and carbon fiber filaments',
-    imageUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=800',
-    subcategories: [
-      { id: 'sub-resins', categoryId: 'cat-resins-materials', name: 'Engineering Resins', slug: 'engineering-resins' },
-      { id: 'sub-filaments', categoryId: 'cat-resins-materials', name: 'High-Performance Filaments', slug: 'filaments' },
-      { id: 'sub-clear-resins', categoryId: 'cat-resins-materials', name: 'High-Clarity Industrial Resins', slug: 'clear-resins' }
-    ]
-  },
-  {
-    id: 'cat-post-processing',
-    name: 'Post-Processing & UV Equipment',
-    slug: 'post-processing-equipment',
-    description: 'Automated UV curing chambers, ultrasonic washing stations, and surface finishing equipment',
-    imageUrl: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=800',
-    subcategories: [
-      { id: 'sub-wash-cure', categoryId: 'cat-post-processing', name: 'UV Wash & Cure Units', slug: 'wash-cure' },
-      { id: 'sub-surface-finish', categoryId: 'cat-post-processing', name: 'Surface Finishers', slug: 'surface-finishers' }
-    ]
-  },
-  {
-    id: 'cat-spares-components',
-    name: 'Spares & Consumables',
-    slug: 'spares-components',
-    description: 'High-precision nozzles, FEP films, build plates, optics, and replacement tanks',
-    imageUrl: 'https://images.unsplash.com/photo-1581092335397-9583fe92d232?auto=format&fit=crop&q=80&w=800',
-    subcategories: [
-      { id: 'sub-vats-fep', categoryId: 'cat-spares-components', name: 'Resin Vats & FEP Films', slug: 'resin-vats-fep' },
-      { id: 'sub-nozzles-extruders', categoryId: 'cat-spares-components', name: 'Nozzles & Extruders', slug: 'nozzles-extruders' }
-    ]
-  },
-  {
-    id: 'cat-aerospace-drones',
-    name: 'Aerospace',
-    slug: 'aerospace',
-    description: 'Carbon fiber aerospace structures, satellite brackets, aerospace jigs, nacelles & custom avionics enclosures',
-    imageUrl: 'https://images.unsplash.com/photo-1517976487492-5750f3195933?auto=format&fit=crop&q=80&w=800',
-    subcategories: [
-      { id: 'sub-aerospace-structures', categoryId: 'cat-aerospace-drones', name: 'Aerospace Structural Components', slug: 'aerospace-structures' },
-      { id: 'sub-satellite-housings', categoryId: 'cat-aerospace-drones', name: 'Satellite & Avionics Housings', slug: 'satellite-housings' },
-      { id: 'sub-aerospace-jigs', categoryId: 'cat-aerospace-drones', name: 'Aerospace Carbon Fiber Jigs', slug: 'aerospace-jigs' },
-      { id: 'sub-avionics-housing', categoryId: 'cat-aerospace-drones', name: 'Engine & Ducting Components', slug: 'engine-ducting' }
-    ]
-  }
 ];
 
 export const INITIAL_PRODUCTS: Product[] = [
