@@ -84,6 +84,12 @@ function formatPrismaProductResponse(p: any) {
   const priceNum = Number(p.price) || 0;
   const mrpNum = Number(p.mrp) || priceNum;
 
+  const reviewList = p.reviews || [];
+  const reviewCount = reviewList.length;
+  const avgRating = reviewCount > 0
+    ? Number((reviewList.reduce((acc: number, r: any) => acc + Number(r.rating || 5), 0) / reviewCount).toFixed(1))
+    : 5.0;
+
   return {
     id: p.id,
     name: p.name,
@@ -103,6 +109,9 @@ function formatPrismaProductResponse(p: any) {
     specifications: p.specifications || {},
     imageUrl: p.imageUrl || imageList[0] || '',
     images: imageList,
+    rating: avgRating,
+    reviewCount: reviewCount,
+    reviews: reviewList,
     isActive: p.isActive ?? true,
     isFeatured: p.isFeatured ?? false,
     isNewArrival: p.isNewArrival ?? false,
@@ -1494,7 +1503,8 @@ app.get('/api/products', async (req: Request, res: Response) => {
       include: {
         category: true,
         images: { orderBy: { sortOrder: 'asc' } },
-        variants: { where: { isActive: true } }
+        variants: { where: { isActive: true } },
+        reviews: true
       },
       orderBy: { createdAt: 'desc' },
       take: limit ? parseInt(String(limit), 10) : undefined,
@@ -3135,9 +3145,21 @@ app.get('/api/products/:id/reviews', async (req: Request, res: Response) => {
       where: { productId: id },
       orderBy: { createdAt: 'desc' }
     });
-    return res.json(reviews);
+
+    const totalReviews = reviews.length;
+    const averageRating = totalReviews > 0
+      ? Number((reviews.reduce((sum, r) => sum + r.rating, 0) / totalReviews).toFixed(1))
+      : 5.0;
+
+    return res.json({
+      reviews,
+      summary: {
+        averageRating,
+        totalReviews
+      }
+    });
   } catch (err) {
-    return res.json([]);
+    return res.json({ reviews: [], summary: { averageRating: 5.0, totalReviews: 0 } });
   }
 });
 

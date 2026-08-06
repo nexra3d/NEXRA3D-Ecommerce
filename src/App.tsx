@@ -476,8 +476,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('nexra_current_view', currentView);
     const targetPath = getPathForView(currentView);
+    const search = window.location.search;
     if (window.location.pathname !== targetPath && currentView !== 'service-detail') {
-      window.history.pushState(null, '', targetPath);
+      window.history.pushState(null, '', targetPath + search);
     }
   }, [currentView]);
 
@@ -498,18 +499,21 @@ export default function App() {
       const searchParams = new URLSearchParams(window.location.search);
       const targetProductId = searchParams.get('product') || searchParams.get('productId');
       if (targetProductId) {
-        let match = allProducts.find((p) => p.id === targetProductId);
+        let match = allProducts.find(
+          (p) => p.id === targetProductId || p.slug === targetProductId || p.sku === targetProductId
+        );
         if (!match) {
           try {
             const fetched = await safeFetchJson(`/api/products/${targetProductId}`);
-            if (fetched && fetched.id) {
+            if (fetched && (fetched.id || fetched.slug)) {
               match = fetched;
             }
-          } catch (e) {}
+          } catch (e) {
+            console.error('Deep link product fetch error:', e);
+          }
         }
         if (match) {
           setQuickViewProduct(match);
-          setCurrentView('shop');
         }
       }
     };

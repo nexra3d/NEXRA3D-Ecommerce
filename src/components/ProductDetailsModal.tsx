@@ -118,6 +118,13 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
       setSelectedVariant(null);
     }
 
+    // Reset reviews state immediately for new product
+    setReviews([]);
+    setRatingSummary({
+      averageRating: Number(product.rating || 5.0),
+      totalReviews: product.reviewCount || 0
+    });
+
     // Save to localStorage recently viewed
     try {
       const stored = localStorage.getItem('nexra_recently_viewed');
@@ -143,9 +150,17 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     fetch(`/api/products/${product.id}/reviews`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data && data.reviews) {
-          setReviews(data.reviews);
-          if (data.summary) setRatingSummary(data.summary);
+        if (data) {
+          const revs = Array.isArray(data) ? data : (data.reviews || []);
+          setReviews(revs);
+          if (data.summary) {
+            setRatingSummary(data.summary);
+          } else if (revs.length > 0) {
+            const avg = Number((revs.reduce((acc: number, r: any) => acc + (r.rating || 5), 0) / revs.length).toFixed(1));
+            setRatingSummary({ averageRating: avg, totalReviews: revs.length });
+          } else {
+            setRatingSummary({ averageRating: Number(product.rating || 5.0), totalReviews: 0 });
+          }
         }
       })
       .catch((err) => console.error('Reviews fetch error:', err));
@@ -211,7 +226,13 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
       const data = await res.json();
       const createdReview = data.review || (data.id ? data : null);
       if (res.ok && createdReview) {
-        setReviews([createdReview, ...reviews]);
+        const updatedRevs = [createdReview, ...reviews];
+        setReviews(updatedRevs);
+        const newAvg = Number((updatedRevs.reduce((acc, r) => acc + (r.rating || 5), 0) / updatedRevs.length).toFixed(1));
+        setRatingSummary({
+          averageRating: newAvg,
+          totalReviews: updatedRevs.length
+        });
         setNewReviewName('');
         setNewReviewTitle('');
         setNewReviewComment('');
