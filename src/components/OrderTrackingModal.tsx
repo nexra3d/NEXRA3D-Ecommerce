@@ -276,8 +276,8 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
                 <span>₹{Number(order.subtotal || 0).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between text-slate-600">
-                <span>Tax (GST 18%)</span>
-                <span>₹{Number(order.tax ?? (order as any).taxAmount ?? Math.round(Number(order.subtotal || 0) * 0.18)).toLocaleString('en-IN')}</span>
+                <span>Tax (GST)</span>
+                <span>₹{Number(order.tax ?? (order as any).taxAmount ?? 0).toLocaleString('en-IN')}</span>
               </div>
               {Number(order.discountAmount || 0) > 0 && (
                 <div className="flex justify-between text-emerald-600 font-semibold">

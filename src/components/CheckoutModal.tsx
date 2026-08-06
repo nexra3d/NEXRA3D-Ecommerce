@@ -19,6 +19,12 @@ interface CheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
   cartItems: CartItem[];
+  cartSummary?: {
+    subtotal?: number;
+    tax?: number;
+    shippingFee?: number;
+    totalAmount?: number;
+  } | null;
   savedAddresses: Address[];
   appliedCoupon: Coupon | null;
   discountAmount: number;
@@ -32,6 +38,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   isOpen,
   onClose,
   cartItems = [],
+  cartSummary,
   savedAddresses = [],
   appliedCoupon,
   discountAmount = 0,
@@ -125,12 +132,19 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   if (!isOpen) return null;
 
   // Totals
-  const subtotal = safeCartItems.reduce(
+  const subtotal = cartSummary?.subtotal ?? safeCartItems.reduce(
     (acc, item) => acc + (item.product ? ((item.product.salePrice || item.product.price) * item.quantity) : 0),
     0
   );
-  const tax = Math.round(subtotal * 0.18);
-  const shippingFee = subtotal > 999 || safeCartItems.length === 0 ? 0 : 99;
+  const tax = cartSummary?.tax ?? Math.round(
+    safeCartItems.reduce((total, item) => {
+      return (
+        total +
+        ((item.product?.salePrice || item.product?.price || 0) * item.quantity * (item.taxPercentage ?? item.product?.taxPercentage ?? 0)) / 100
+      );
+    }, 0)
+  );
+  const shippingFee = cartSummary?.shippingFee ?? (subtotal > 999 || safeCartItems.length === 0 ? 0 : 99);
   const grandTotal = Math.max(0, subtotal + tax + shippingFee - discountAmount);
 
   const handleSaveAddress = async (e: React.FormEvent) => {

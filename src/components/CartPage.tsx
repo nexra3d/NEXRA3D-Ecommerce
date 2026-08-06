@@ -36,6 +36,7 @@ interface CartItemData {
     imageUrl: string;
     isActive: boolean;
     category?: { id: string; name: string; slug: string } | null;
+    taxPercentage?: number;
   };
   variant?: {
     id: string;
@@ -55,6 +56,8 @@ interface CartResponse {
   items: CartItemData[];
   totalItems: number;
   subtotal: number;
+  tax?: number;
+  shippingFee?: number;
   totalAmount: number;
 }
 
@@ -120,8 +123,15 @@ export const CartPage: React.FC<CartPageProps> = ({
   const items = cartData?.items || [];
   const hasOutofStockItems = items.some((item) => !item.isStockSufficient);
   const subtotal = cartData?.subtotal || 0;
-  const tax = Math.round(subtotal * 0.18);
-  const shippingFee = subtotal > 999 || items.length === 0 ? 0 : 99;
+  const tax = cartData?.tax ?? Math.round(
+    items.reduce((total, item) => {
+      return (
+        total +
+        ((item.product?.price || 0) * item.quantity * (item.product?.taxPercentage ?? 0)) / 100
+      );
+    }, 0)
+  );
+  const shippingFee = cartData?.shippingFee ?? (subtotal > 999 || items.length === 0 ? 0 : 99);
   const grandTotal = subtotal + tax + shippingFee;
 
   const handleQtyChange = async (itemId: string, newQty: number) => {
@@ -369,7 +379,7 @@ export const CartPage: React.FC<CartPageProps> = ({
               </div>
 
               <div className="flex justify-between">
-                <span>Estimated GST Tax (18%)</span>
+                <span>Estimated GST Tax</span>
                 <span className="font-bold text-slate-900">₹{Number(tax || 0).toLocaleString('en-IN')}</span>
               </div>
 

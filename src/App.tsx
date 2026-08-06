@@ -163,10 +163,10 @@ export default function App() {
         },
         quantity: i.quantity,
         variantId: i.variantId,
-        variant: i.variant
+        variant: i.variant,
+        taxPercentage: Number(i.taxPercentage ?? p.taxPercentage ?? 0)
       };
     });
-  };
 
   const fetchCart = async () => {
     setIsCartLoading(true);
@@ -1032,6 +1032,7 @@ export default function App() {
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
         cartItems={cartItems}
+        cartSummary={cartData}
         onUpdateQuantity={handleUpdateCartQuantity}
         onRemoveItem={handleRemoveCartItem}
         appliedCoupon={appliedCoupon}
@@ -1046,6 +1047,7 @@ export default function App() {
         isOpen={isCheckoutOpen}
         onClose={() => setIsCheckoutOpen(false)}
         cartItems={cartItems}
+        cartSummary={cartData}
         savedAddresses={savedAddresses}
         appliedCoupon={appliedCoupon}
         discountAmount={discountAmount}

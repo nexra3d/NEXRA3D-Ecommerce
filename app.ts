@@ -207,6 +207,7 @@ async function getFormattedCart(userId: string) {
     const img = (p?.images && p.images[0]?.url) || p?.imageUrl || '';
 
     const formattedProduct: any = p ? formatPrismaProductResponse(p) : null;
+    const itemTaxPercentage = formattedProduct?.taxPercentage ?? Number(p?.taxPercentage ?? 0);
     if (formattedProduct) {
       formattedProduct.price = itemPrice || formattedProduct.price;
       formattedProduct.salePrice = itemPrice || formattedProduct.price;
@@ -234,6 +235,7 @@ async function getFormattedCart(userId: string) {
       isStockSufficient,
       stockIssue,
       imageUrl: img,
+      taxPercentage: itemTaxPercentage,
       product: formattedProduct || {
         id: ci.productId,
         name: p?.name || 'Product',
@@ -244,7 +246,8 @@ async function getFormattedCart(userId: string) {
         stock: availableStock,
         stockQuantity: availableStock,
         imageUrl: img,
-        images: [img]
+        images: [img],
+        taxPercentage: itemTaxPercentage
       },
       variant: v ? {
         id: v.id,
@@ -257,13 +260,23 @@ async function getFormattedCart(userId: string) {
     };
   });
 
+  const tax = Math.round(
+    items.reduce((total: number, item: any) => {
+      return total + ((item.price || 0) * item.quantity * (item.taxPercentage ?? item.product?.taxPercentage ?? 0)) / 100;
+    }, 0)
+  );
+  const shippingFee = subtotal > 999 || items.length === 0 ? 0 : 99;
+  const totalAmount = Math.max(0, subtotal + tax + shippingFee);
+
   return {
     id: cart.id,
     userId: cart.userId,
     items,
     totalItems: items.reduce((acc, item) => acc + item.quantity, 0),
     subtotal,
-    totalAmount: subtotal,
+    tax,
+    shippingFee,
+    totalAmount,
     updatedAt: safeToISOString(cart.updatedAt)
   };
 }
@@ -2209,9 +2222,17 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
       discountAmount = Math.round(subtotal * 0.1);
     }
 
-    const taxAmount = Math.round((subtotal - discountAmount) * 0.18);
-    const shippingFee = subtotal > 1000 ? 0 : 100;
-    const totalAmount = Math.max(0, subtotal - discountAmount + taxAmount + shippingFee);
+    const taxAmount = Math.round(
+      cart.items.reduce((total: number, ci: any) => {
+        const p = ci.product;
+        if (!p) return total;
+        const price = ci.variant ? Number(ci.variant.price) : Number(p.price);
+        const taxRate = Number(p.taxPercentage ?? 0);
+        return total + (price * ci.quantity * taxRate) / 100;
+      }, 0)
+    );
+    const shippingFee = subtotal > 999 ? 0 : 99;
+    const totalAmount = Math.max(0, subtotal + taxAmount + shippingFee - discountAmount);
 
     const now = new Date();
     const dd = String(now.getDate()).padStart(2, '0');
@@ -2278,7 +2299,7 @@ const formatOrder = (o: any) => {
   const trackingNo = shipment?.awbNumber || shipment?.trackingNumber || (shipment ? 'Assigned' : 'Awaiting Dispatch');
 
   const subtotalValue = Number(o.subtotal ?? 0);
-  const taxValue = Number(o.taxAmount ?? o.tax ?? Math.round(subtotalValue * 0.18));
+  const taxValue = Number(o.taxAmount ?? o.tax ?? 0);
   const totalAmountValue = Number(o.totalAmount ?? o.total ?? (subtotalValue + taxValue));
   const discountValue = Number(o.discountAmount ?? o.discount ?? 0);
   const shippingFeeValue = Number(o.shippingFee ?? o.shippingCharge ?? 0);

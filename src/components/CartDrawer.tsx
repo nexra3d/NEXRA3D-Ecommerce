@@ -6,6 +6,12 @@ interface CartDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   cartItems: CartItem[];
+  cartSummary?: {
+    subtotal?: number;
+    tax?: number;
+    shippingFee?: number;
+    totalAmount?: number;
+  } | null;
   onUpdateQuantity: (productId: string, qty: number) => void;
   onRemoveItem: (productId: string) => void;
   appliedCoupon: Coupon | null;
@@ -19,6 +25,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   isOpen,
   onClose,
   cartItems,
+  cartSummary,
   onUpdateQuantity,
   onRemoveItem,
   appliedCoupon,
@@ -33,13 +40,21 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
   if (!isOpen) return null;
 
-  const subtotal = cartItems.reduce(
+  const subtotal = cartSummary?.subtotal ?? cartItems.reduce(
     (acc, item) => acc + (item.product.salePrice || item.product.price) * item.quantity,
     0
   );
 
-  const tax = Math.round(subtotal * 0.18); // 18% GST standard
-  const shippingFee = subtotal > 999 || cartItems.length === 0 ? 0 : 99;
+  const tax = cartSummary?.tax ?? Math.round(
+    cartItems.reduce((total, item) => {
+      return (
+        total +
+        ((item.product.salePrice || item.product.price) * item.quantity * (item.taxPercentage ?? item.product?.taxPercentage ?? 0)) / 100
+      );
+    }, 0)
+  );
+
+  const shippingFee = cartSummary?.shippingFee ?? (subtotal > 999 || cartItems.length === 0 ? 0 : 99);
   const grandTotal = Math.max(0, subtotal + tax + shippingFee - discountAmount);
 
   const handleCouponSubmit = async (e: React.FormEvent) => {
@@ -210,7 +225,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 <span className="font-bold text-slate-800">₹{Number(subtotal || 0).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between">
-                <span>Estimated GST Tax (18%)</span>
+                <span>Estimated GST Tax</span>
                 <span className="font-bold text-slate-800">₹{Number(tax || 0).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between">

@@ -143,6 +143,7 @@ export interface CartItem {
   product: Product;
   quantity: number;
   selectedVariant?: string;
+  taxPercentage?: number;
 }
 
 export interface Coupon {
