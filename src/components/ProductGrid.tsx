@@ -13,6 +13,7 @@ interface ProductGridProps {
   onToggleWishlist: (p: Product) => void;
   onAddToCart: (p: Product) => void;
   onQuickView: (p: Product) => void;
+  isLoading?: boolean;
 }
 
 export const ProductGrid: React.FC<ProductGridProps> = ({
@@ -23,7 +24,8 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
   wishlistProductIds,
   onToggleWishlist,
   onAddToCart,
-  onQuickView
+  onQuickView,
+  isLoading = false
 }) => {
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
 
@@ -155,17 +157,20 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
                 >
                   All Categories
                 </button>
-                {displayCategories.map((c, idx) => (
-                  <button
-                    key={c.id ? `cat-${c.id}-${idx}` : `cat-${idx}`}
-                    onClick={() => onFilterChange({ ...filters, categoryId: c.id, subcategoryId: undefined })}
-                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                      filters.categoryId === c.id ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    {c.name}
-                  </button>
-                ))}
+                {displayCategories.map((c, idx) => {
+                  const isSelected = filters.categoryId === c.id || filters.categoryId === c.slug;
+                  return (
+                    <button
+                      key={c.id ? `cat-${c.id}-${idx}` : `cat-${idx}`}
+                      onClick={() => onFilterChange({ ...filters, categoryId: c.id, subcategoryId: undefined })}
+                      className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                        isSelected ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {c.name}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -279,7 +284,19 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
 
         {/* Product Cards Grid Area */}
         <div className="lg:col-span-3">
-          {safeProducts.length > 0 ? (
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+              {[1, 2, 3, 4, 5, 6].map((idx) => (
+                <div key={`skel-${idx}`} className="bg-white border border-slate-200/80 rounded-2xl p-4 space-y-4 animate-pulse">
+                  <div className="w-full h-52 bg-slate-200/80 rounded-xl" />
+                  <div className="h-4 bg-slate-200/80 rounded w-1/3" />
+                  <div className="h-5 bg-slate-200/80 rounded w-3/4" />
+                  <div className="h-4 bg-slate-200/80 rounded w-1/4" />
+                  <div className="h-10 bg-slate-200/80 rounded-xl w-full mt-2" />
+                </div>
+              ))}
+            </div>
+          ) : safeProducts.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
               {safeProducts.map((p, idx) => (
                 <ProductCard

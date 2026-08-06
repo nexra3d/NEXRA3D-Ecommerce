@@ -29,6 +29,7 @@ import { WhatsAppFloatingButton } from './components/WhatsAppFloatingButton';
 import { AdminLoginPage } from './components/AdminLoginPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
+import { INITIAL_CATEGORIES } from './data/mockData';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { ShieldCheck } from 'lucide-react';
 import { apiFetch, getStoredToken, getStoredUser, clearStoredAuth, setStoredAuth } from './lib/api';
@@ -143,11 +144,26 @@ export default function App() {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [emails, setEmails] = useState<EmailNotification[]>([]);
 
+  // Loading States
+  const [isProductsLoading, setIsProductsLoading] = useState(true);
+
   // Filter State
-  const [filters, setFilters] = useState<ProductFilterState>({
-    sortBy: 'popular',
-    inStockOnly: false,
-    onSaleOnly: false
+  const [filters, setFilters] = useState<ProductFilterState>(() => {
+    if (typeof window === 'undefined') {
+      return { sortBy: 'popular', inStockOnly: false, onSaleOnly: false };
+    }
+    const params = new URLSearchParams(window.location.search);
+    const catParam = params.get('category');
+    const subcatParam = params.get('subcategory');
+    const searchParam = params.get('search') || params.get('q');
+    return {
+      categoryId: catParam || undefined,
+      subcategoryId: subcatParam || undefined,
+      searchQuery: searchParam || '',
+      sortBy: 'popular',
+      inStockOnly: false,
+      onSaleOnly: false
+    };
   });
 
   // Modal / Drawer Toggles
@@ -350,7 +366,7 @@ export default function App() {
 
       // 1. Fetch Categories
       const catData = await safeFetchJson('/api/categories');
-      setCategories(Array.isArray(catData) ? catData : []);
+      setCategories(Array.isArray(catData) && catData.length > 0 ? catData : INITIAL_CATEGORIES);
 
       // 1a. Fetch All Products
       await fetchAllProducts();
@@ -416,6 +432,7 @@ export default function App() {
 
   // Fetch Products whenever filters change
   const fetchFilteredProducts = async () => {
+    setIsProductsLoading(true);
     try {
       const queryParams = new URLSearchParams();
       queryParams.append('limit', '500');
@@ -443,6 +460,8 @@ export default function App() {
     } catch (err) {
       console.error('Error fetching products:', err);
       setProducts([]);
+    } finally {
+      setIsProductsLoading(false);
     }
   };
 
@@ -1170,6 +1189,7 @@ export default function App() {
             onToggleWishlist={handleToggleWishlist}
             onAddToCart={handleAddToCart}
             onQuickView={(p) => setQuickViewProduct(p)}
+            isLoading={isProductsLoading}
           />
         </main>
       )}
