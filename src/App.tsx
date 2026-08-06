@@ -167,6 +167,7 @@ export default function App() {
         taxPercentage: Number(i.taxPercentage ?? p.taxPercentage ?? 0)
       };
     });
+  };
 
   const fetchCart = async () => {
     setIsCartLoading(true);

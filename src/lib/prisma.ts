@@ -5,11 +5,17 @@ const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };
 
-const rawPrisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log: ['error'],
-  });
+let rawPrisma: any;
+try {
+  rawPrisma =
+    globalForPrisma.prisma ??
+    new PrismaClient({
+      log: ['error'],
+    });
+} catch (e) {
+  console.warn('[AI Studio] PrismaClient initialization warning:', e);
+  rawPrisma = {};
+}
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = rawPrisma;
