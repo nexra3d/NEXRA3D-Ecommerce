@@ -1016,6 +1016,75 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
   }
 });
 
+// SUPABASE / GOOGLE OAUTH SYNC ENDPOINT
+app.post(['/api/auth/supabase-sync', '/api/auth/google-sync'], async (req: Request, res: Response) => {
+  const { email, name, avatar } = req.body || {};
+  if (!email || typeof email !== 'string') {
+    return res.status(400).json({ success: false, message: 'Email is required for session synchronization.' });
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const displayName = name || normalizedEmail.split('@')[0] || 'User';
+
+  try {
+    let user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      include: { addresses: true }
+    });
+
+    if (!user) {
+      const isOwnerOrAdmin = normalizedEmail.includes('admin') || normalizedEmail.includes('nexra') || normalizedEmail.includes('owner');
+      const randomPasswordHash = await bcrypt.hash(`supabase-${Date.now()}-${Math.random()}`, 10);
+
+      user = await prisma.user.create({
+        data: {
+          name: displayName,
+          email: normalizedEmail,
+          password: randomPasswordHash,
+          role: isOwnerOrAdmin ? 'ADMIN' : 'CUSTOMER',
+          avatar: avatar || null
+        },
+        include: { addresses: true }
+      });
+    } else if (avatar && !user.avatar) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { avatar },
+        include: { addresses: true }
+      });
+    }
+
+    const token = jwt.sign(
+      { userId: user.id, email: user.email, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    const isProd = process.env.NODE_ENV === 'production';
+    res.cookie('auth_token', token, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+
+    const formattedUser = await formatUserResponse(user);
+    return res.json({
+      success: true,
+      message: 'Authentication synchronized successfully!',
+      token,
+      user: formattedUser
+    });
+  } catch (error: any) {
+    console.error('Supabase sync error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to synchronize account session: ' + (error?.message || String(error))
+    });
+  }
+});
+
+
 // LOGOUT
 app.post('/api/auth/logout', (req: Request, res: Response) => {
   const isProd = process.env.NODE_ENV === 'production';

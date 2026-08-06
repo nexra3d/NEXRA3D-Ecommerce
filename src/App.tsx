@@ -27,6 +27,9 @@ import { Footer } from './components/Footer';
 import { WhatsAppFloatingButton } from './components/WhatsAppFloatingButton';
 
 import { AdminLoginPage } from './components/AdminLoginPage';
+import { ForgotPasswordPage } from './components/ForgotPasswordPage';
+import { ResetPasswordPage } from './components/ResetPasswordPage';
+import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { ShieldCheck } from 'lucide-react';
 import { apiFetch, getStoredToken, getStoredUser, clearStoredAuth, setStoredAuth } from './lib/api';
 import {
@@ -42,12 +45,84 @@ import {
   Service
 } from './types';
 
+type ViewType =
+  | 'home'
+  | 'shop'
+  | 'aerospace'
+  | 'services'
+  | 'service-detail'
+  | 'about'
+  | 'contact'
+  | 'login'
+  | 'register'
+  | 'forgot-password'
+  | 'reset-password'
+  | 'account'
+  | 'unauthorized'
+  | 'cart'
+  | 'wishlist'
+  | 'admin';
+
+const viewToPathMap: Record<ViewType, string> = {
+  home: '/',
+  shop: '/shop',
+  aerospace: '/aerospace',
+  services: '/services',
+  'service-detail': '/services',
+  about: '/about',
+  contact: '/contact',
+  login: '/login',
+  register: '/register',
+  'forgot-password': '/forgot-password',
+  'reset-password': '/reset-password',
+  account: '/account',
+  unauthorized: '/unauthorized',
+  cart: '/cart',
+  wishlist: '/wishlist',
+  admin: '/admin'
+};
+
+const getPathForView = (view: ViewType): string => {
+  return viewToPathMap[view] || '/';
+};
+
+const getViewFromPath = (pathname: string, hash: string = ''): ViewType => {
+  if (hash.includes('type=recovery') || hash.includes('type=recovery_token')) {
+    return 'reset-password';
+  }
+  const cleanPath = pathname.toLowerCase().trim().replace(/\/$/, '') || '/';
+
+  if (cleanPath === '/admin') return 'admin';
+  if (cleanPath === '/shop') return 'shop';
+  if (cleanPath === '/aerospace') return 'aerospace';
+  if (cleanPath === '/services') return 'services';
+  if (cleanPath === '/about') return 'about';
+  if (cleanPath === '/contact') return 'contact';
+  if (cleanPath === '/login') return 'login';
+  if (cleanPath === '/register') return 'register';
+  if (cleanPath === '/forgot-password') return 'forgot-password';
+  if (cleanPath === '/reset-password') return 'reset-password';
+  if (cleanPath === '/account') return 'account';
+  if (cleanPath === '/unauthorized') return 'unauthorized';
+  if (cleanPath === '/cart') return 'cart';
+  if (cleanPath === '/wishlist') return 'wishlist';
+
+  // Fallback to saved view if path is home
+  const savedView = localStorage.getItem('nexra_current_view') as ViewType;
+  if (savedView && viewToPathMap[savedView] && cleanPath === '/') {
+    return savedView;
+  }
+
+  return 'home';
+};
+
 export default function App() {
-  // Navigation / View Router State
-  const [currentView, setCurrentView] = useState<
-    'home' | 'shop' | 'aerospace' | 'services' | 'service-detail' | 'about' | 'contact' | 'login' | 'register' | 'account' | 'unauthorized' | 'cart' | 'wishlist' | 'admin'
-  >('home');
+  // Navigation / View Router State (persisted across refreshes and deep link URLs)
+  const [currentView, setCurrentView] = useState<ViewType>(() =>
+    getViewFromPath(window.location.pathname, window.location.hash)
+  );
   const [accountSubSection, setAccountSubSection] = useState<'overview' | 'profile' | 'password' | 'orders' | 'wishlist' | 'addresses'>('overview');
+
 
   // Global App State
   const [user, setUser] = useState<User | null>(null);
@@ -302,6 +377,9 @@ export default function App() {
   // Handle Logout
   const handleLogout = async () => {
     try {
+      if (supabase && isSupabaseConfigured) {
+        await supabase.auth.signOut();
+      }
       await apiFetch('/api/auth/logout', { method: 'POST' });
     } catch (err) {
       console.error('Logout error:', err);
@@ -315,7 +393,10 @@ export default function App() {
       setSavedAddresses([]);
       setUserOrders([]);
       setIsAdminOpen(false);
-      setCurrentView('login');
+      setCurrentView('home');
+      if (window.location.pathname !== '/') {
+        window.history.pushState(null, '', '/');
+      }
       showToast('Logged out of account');
     }
   };
@@ -391,18 +472,76 @@ export default function App() {
     }
   }, [user?.id]);
 
-  // Listen for /admin URL route
+  // URL persistence synchronization (Sync currentView -> address bar and localStorage)
+  useEffect(() => {
+    localStorage.setItem('nexra_current_view', currentView);
+    const targetPath = getPathForView(currentView);
+    if (window.location.pathname !== targetPath && currentView !== 'service-detail') {
+      window.history.pushState(null, '', targetPath);
+    }
+  }, [currentView]);
+
+  // Global popstate / URL deep link router listener
   useEffect(() => {
     const handleUrlRoute = () => {
-      const path = window.location.pathname.toLowerCase();
-      if (path === '/admin' || path === '/admin/' || path.startsWith('/admin')) {
-        setCurrentView('admin');
-      }
+      const nextView = getViewFromPath(window.location.pathname, window.location.hash);
+      setCurrentView(nextView);
     };
 
-    handleUrlRoute();
     window.addEventListener('popstate', handleUrlRoute);
     return () => window.removeEventListener('popstate', handleUrlRoute);
+  }, []);
+
+  // Supabase Auth listener (Google OAuth & Password Recovery handling)
+  useEffect(() => {
+    if (!supabase || !isSupabaseConfigured) return;
+
+    // Check URL hash/query for recovery token
+    const checkRecovery = () => {
+      const hash = window.location.hash;
+      const search = window.location.search;
+      if (hash.includes('type=recovery') || search.includes('type=recovery')) {
+        setCurrentView('reset-password');
+        window.history.pushState(null, '', '/reset-password');
+      }
+    };
+    checkRecovery();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setCurrentView('reset-password');
+        window.history.pushState(null, '', '/reset-password');
+      } else if (session?.user?.email) {
+        try {
+          const syncRes = await fetch('/api/auth/supabase-sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: session.user.email,
+              name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email.split('@')[0],
+              avatar: session.user.user_metadata?.avatar_url
+            })
+          });
+          const syncData = await syncRes.json();
+          if (syncRes.ok && syncData.user) {
+            setStoredAuth(syncData.token, syncData.user);
+            setUser(syncData.user);
+            await refreshUserData();
+            const path = window.location.pathname;
+            if (path === '/login' || path === '/register' || path === '/forgot-password') {
+              setCurrentView('home');
+              window.history.pushState(null, '', '/');
+            }
+          }
+        } catch (err) {
+          console.error('Failed to sync Supabase auth user:', err);
+        }
+      }
+    });
+
+    return () => {
+      authListener?.subscription.unsubscribe();
+    };
   }, []);
 
   // Ensure Admin Dashboard opens ONLY when user is authenticated as ADMIN on /admin view
@@ -417,6 +556,7 @@ export default function App() {
       setIsAdminOpen(false);
     }
   }, [currentView, user]);
+
 
   useEffect(() => {
     fetchFilteredProducts();
@@ -752,6 +892,7 @@ export default function App() {
           }}
           onNavigateRegister={() => setCurrentView('register')}
           onNavigateHome={() => setCurrentView('home')}
+          onNavigateForgotPassword={() => setCurrentView('forgot-password')}
         />
       )}
 
@@ -767,6 +908,21 @@ export default function App() {
           onNavigateHome={() => setCurrentView('home')}
         />
       )}
+
+      {currentView === 'forgot-password' && (
+        <ForgotPasswordPage
+          onNavigateLogin={() => setCurrentView('login')}
+          onNavigateHome={() => setCurrentView('home')}
+        />
+      )}
+
+      {currentView === 'reset-password' && (
+        <ResetPasswordPage
+          onNavigateLogin={() => setCurrentView('login')}
+          onNavigateHome={() => setCurrentView('home')}
+        />
+      )}
+
 
       {currentView === 'account' && (
         <AccountDashboard
@@ -1102,7 +1258,12 @@ export default function App() {
           setIsProfileOpen(false);
           showToast(`Welcome back, ${u.name}!`);
         }}
+        onNavigateForgotPassword={() => {
+          setIsAuthOpen(false);
+          setCurrentView('forgot-password');
+        }}
       />
+
 
       {/* 8. Resend Email Logs Inspector Modal */}
       <EmailInboxModal
