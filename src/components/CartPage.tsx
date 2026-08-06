@@ -9,7 +9,10 @@ import {
   Tag,
   ShieldCheck,
   RefreshCw,
-  Info
+  Info,
+  Truck,
+  Store,
+  MapPin
 } from 'lucide-react';
 import { User } from '../types';
 
@@ -87,6 +90,7 @@ export const CartPage: React.FC<CartPageProps> = ({
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
   const [isClearing, setIsClearing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [shippingMethod, setShippingMethod] = useState<'standard' | 'pickup'>('standard');
 
   if (!currentUser) {
     return (
@@ -131,7 +135,8 @@ export const CartPage: React.FC<CartPageProps> = ({
       );
     }, 0)
   );
-  const shippingFee = cartData?.shippingFee ?? (subtotal > 999 || items.length === 0 ? 0 : 99);
+  const baseShippingFee = cartData?.shippingFee ?? (subtotal > 999 || items.length === 0 ? 0 : 99);
+  const shippingFee = shippingMethod === 'pickup' ? 0 : baseShippingFee;
   const grandTotal = subtotal + tax + shippingFee;
 
   const handleQtyChange = async (itemId: string, newQty: number) => {
@@ -383,8 +388,103 @@ export const CartPage: React.FC<CartPageProps> = ({
                 <span className="font-bold text-slate-900">₹{Number(tax || 0).toLocaleString('en-IN')}</span>
               </div>
 
-              <div className="flex justify-between">
-                <span>Delivery Shipping Fee</span>
+              {/* Shipping Method Selector */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <label className="text-[11px] font-black text-slate-900 uppercase tracking-wider block">
+                  Select Shipping Method
+                </label>
+                <div className="space-y-2">
+                  {/* Standard Shipping */}
+                  <div
+                    onClick={() => setShippingMethod('standard')}
+                    className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-start justify-between ${
+                      shippingMethod === 'standard'
+                        ? 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-200'
+                        : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-start space-x-2.5">
+                      <input
+                        type="radio"
+                        name="shippingMethodCartPage"
+                        checked={shippingMethod === 'standard'}
+                        onChange={() => setShippingMethod('standard')}
+                        className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <div>
+                        <div className="flex items-center space-x-1.5">
+                          <Truck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                          <span className="font-extrabold text-slate-900 text-xs">Standard Shipping</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          Doorstep courier delivery
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-xs font-black text-slate-900 block">
+                        {baseShippingFee === 0 ? (
+                          <span className="text-emerald-600 font-extrabold">FREE</span>
+                        ) : (
+                          `₹${baseShippingFee}`
+                        )}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Pickup from Store */}
+                  <div
+                    onClick={() => setShippingMethod('pickup')}
+                    className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-start justify-between ${
+                      shippingMethod === 'pickup'
+                        ? 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-200'
+                        : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-start space-x-2.5">
+                      <input
+                        type="radio"
+                        name="shippingMethodCartPage"
+                        checked={shippingMethod === 'pickup'}
+                        onChange={() => setShippingMethod('pickup')}
+                        className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <div>
+                        <div className="flex items-center space-x-1.5">
+                          <Store className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="font-extrabold text-slate-900 text-xs">Pickup from Store</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          Collect from Gachibowli store
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-[11px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md block">
+                        FREE (₹0)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {shippingMethod === 'pickup' && (
+                  <div className="bg-emerald-50 text-emerald-900 p-2.5 rounded-xl text-[11px] font-medium flex items-start gap-1.5 border border-emerald-200/80 mt-1">
+                    <MapPin className="w-3.5 h-3.5 shrink-0 text-emerald-600 mt-0.5" />
+                    <div>
+                      <span className="font-extrabold block text-emerald-950">Store Pickup Address:</span>
+                      <span>Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500046</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-between pt-2 border-t border-slate-100">
+                <span className="flex items-center gap-1.5">
+                  <span>Delivery Shipping Fee</span>
+                  <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold">
+                    {shippingMethod === 'pickup' ? 'Store Pickup' : 'Standard Delivery'}
+                  </span>
+                </span>
                 <span className="font-bold text-slate-900">
                   {shippingFee === 0 ? (
                     <span className="text-emerald-600 font-extrabold">FREE</span>
@@ -394,10 +494,10 @@ export const CartPage: React.FC<CartPageProps> = ({
                 </span>
               </div>
 
-              {shippingFee > 0 && (
+              {shippingMethod === 'standard' && shippingFee > 0 && (
                 <div className="bg-indigo-50 text-indigo-800 p-2.5 rounded-xl text-[11px] font-semibold flex items-center gap-1.5">
                   <Info className="w-3.5 h-3.5 shrink-0 text-indigo-600" />
-                  <span>Add ₹{Number(1000 - subtotal || 0).toLocaleString('en-IN')} more for FREE shipping!</span>
+                  <span>Add ₹{Number(1000 - subtotal || 0).toLocaleString('en-IN')} more for FREE standard shipping!</span>
                 </div>
               )}
 

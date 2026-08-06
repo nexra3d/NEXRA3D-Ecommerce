@@ -262,11 +262,11 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* Left Column: Image Gallery with Controls & Zoom */}
             <div className="space-y-4">
-              <div className="relative aspect-4/3 bg-slate-50 rounded-2xl overflow-hidden border border-slate-200/80 group">
+              <div className="relative aspect-4/3 bg-slate-50 rounded-2xl overflow-hidden border border-slate-200/80 group flex items-center justify-center p-2">
                 <img
                   src={imagesList[selectedImageIndex] || imagesList[0]}
                   alt={productName}
-                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  className="max-w-full max-h-full object-contain transition-transform duration-300 group-hover:scale-105"
                 />
 
                 {/* Discount Badge */}
@@ -315,7 +315,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                         selectedImageIndex === idx ? 'border-indigo-600 ring-2 ring-indigo-200' : 'border-slate-200 opacity-60 hover:opacity-100'
                       }`}
                     >
-                      <img src={imgUrl} alt="Thumbnail" className="w-full h-full object-cover" />
+                      <img src={imgUrl} alt="Thumbnail" className="w-full h-full object-contain p-1" />
                     </button>
                   ))}
                 </div>
@@ -340,7 +340,11 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
               <div className="flex items-center space-x-3 text-sm">
                 <div className="flex items-center text-amber-400 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200/60">
                   <Star className="w-4 h-4 fill-amber-400 mr-1" />
-                  <span className="font-extrabold text-slate-900">{product.rating || 4.8}</span>
+                  <span className="font-extrabold text-slate-900">
+                    {reviews.length > 0
+                      ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
+                      : (product.reviewCount && product.reviewCount > 0 ? (product.rating || 0).toFixed(1) : '0.0')}
+                  </span>
                 </div>
                 <span className="text-xs text-slate-500 font-medium">({reviews.length} Verified Customer Reviews)</span>
               </div>
@@ -479,26 +483,6 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                   </div>
                 </div>
               </div>
-
-              {/* Key Highlights */}
-              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 border-t border-slate-100 pt-4">
-                <div className="flex items-center space-x-1.5">
-                  <Truck className="w-4 h-4 text-indigo-600" />
-                  <span>Free Express Delivery</span>
-                </div>
-                <div className="flex items-center space-x-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>100% Genuine Warranty</span>
-                </div>
-                <div className="flex items-center space-x-1.5">
-                  <RefreshCw className="w-4 h-4 text-amber-600" />
-                  <span>10 Days Easy Returns</span>
-                </div>
-                <div className="flex items-center space-x-1.5">
-                  <Sparkles className="w-4 h-4 text-purple-600" />
-                  <span>Verified Store Item</span>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -568,26 +552,33 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
                   <div className="text-center md:border-r md:border-slate-200 pr-2">
                     <span className="text-4xl font-black text-slate-900 block tracking-tight">
-                      {ratingSummary.averageRating}
+                      {reviews.length > 0
+                        ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
+                        : (product.reviewCount && product.reviewCount > 0 ? (product.rating || 0).toFixed(1) : '0.0')}
                     </span>
                     <div className="flex justify-center text-amber-400 my-1">
-                      {Array.from({ length: 5 }).map((_, idx) => (
-                        <Star
-                          key={idx}
-                          className={`w-4 h-4 ${idx < Math.round(ratingSummary.averageRating) ? 'fill-amber-400' : 'text-slate-300'}`}
-                        />
-                      ))}
+                      {Array.from({ length: 5 }).map((_, idx) => {
+                        const avgVal = reviews.length > 0
+                          ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length)
+                          : (product.reviewCount && product.reviewCount > 0 ? (product.rating || 0) : 0);
+                        return (
+                          <Star
+                            key={idx}
+                            className={`w-4 h-4 ${idx < Math.round(avgVal) ? 'fill-amber-400' : 'text-slate-300'}`}
+                          />
+                        );
+                      })}
                     </div>
                     <span className="text-xs font-semibold text-slate-500">
-                      Based on {ratingSummary.totalCount} verified reviews
+                      Based on {reviews.length} verified reviews
                     </span>
                   </div>
 
                   {/* Rating Bars Breakdown */}
                   <div className="space-y-1.5 md:col-span-2">
                     {[5, 4, 3, 2, 1].map((star) => {
-                      const count = ratingSummary.distribution[star] || 0;
-                      const percent = ratingSummary.totalCount > 0 ? Math.round((count / ratingSummary.totalCount) * 100) : (star === 5 ? 80 : 5);
+                      const count = reviews.filter((r) => r.rating === star).length;
+                      const percent = reviews.length > 0 ? Math.round((count / reviews.length) * 100) : 0;
                       return (
                         <div key={star} className="flex items-center text-xs space-x-2">
                           <span className="w-12 font-bold text-slate-600">{star} Stars</span>
@@ -804,11 +795,11 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                       }}
                       className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 space-y-2 hover:border-indigo-300 transition-all cursor-pointer group"
                     >
-                      <div className="aspect-4/3 bg-white rounded-xl overflow-hidden border border-slate-100">
+                      <div className="aspect-4/3 bg-white rounded-xl overflow-hidden border border-slate-100 flex items-center justify-center p-1">
                         <img
                           src={relImg}
                           alt={relProd.name || relProd.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                          className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform duration-200"
                         />
                       </div>
                       <div>

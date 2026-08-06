@@ -857,7 +857,10 @@ export default function App() {
           }
         }}
         onNavigateHome={() => setCurrentView('home')}
-        onNavigateShop={() => setCurrentView('shop')}
+        onNavigateShop={() => {
+          setFilters({ ...filters, categoryId: undefined, subcategoryId: undefined });
+          setCurrentView('shop');
+        }}
         onNavigateServices={() => setCurrentView('services')}
         onNavigateAerospace={() => {
           setFilters({ ...filters, categoryId: 'cat-aerospace-drones', subcategoryId: undefined });
@@ -1110,7 +1113,7 @@ export default function App() {
       )}
 
       {/* Aerospace / Drones View */}
-      {(currentView === 'aerospace' || (currentView === 'shop' && filters.categoryId === 'cat-aerospace-drones')) && (
+      {currentView === 'aerospace' && (
         <main className="flex-1 w-full">
           <AerospacePage
             onRequestQuote={() => {
@@ -1118,7 +1121,7 @@ export default function App() {
               setIsQuoteModalOpen(true);
             }}
             onNavigateShop={() => {
-              setFilters({ ...filters, categoryId: undefined });
+              setFilters({ ...filters, categoryId: undefined, subcategoryId: undefined });
               setCurrentView('shop');
             }}
             onNavigateContact={() => setCurrentView('contact')}
@@ -1127,7 +1130,7 @@ export default function App() {
       )}
 
       {/* Shop View */}
-      {currentView === 'shop' && filters.categoryId !== 'cat-aerospace-drones' && (
+      {currentView === 'shop' && (
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex-1 w-full">
           <ProductGrid
             products={products}

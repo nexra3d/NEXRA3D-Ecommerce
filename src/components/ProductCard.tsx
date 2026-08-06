@@ -45,12 +45,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     <div className="group bg-white rounded-2xl border border-slate-200/90 hover:border-indigo-300 transition-all hover:shadow-xl flex flex-col justify-between overflow-hidden relative">
       <div>
         {/* Product Image Thumbnail */}
-        <div className="relative aspect-4/3 bg-slate-50 overflow-hidden cursor-pointer" onClick={() => onQuickView(product)}>
+        <div className="relative aspect-4/3 bg-slate-50 overflow-hidden cursor-pointer flex items-center justify-center p-2" onClick={() => onQuickView(product)}>
           <img
             src={primaryImg}
             alt={productName}
             loading="lazy"
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
           />
 
           {/* Badges Overlay */}
@@ -138,8 +138,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <div className="flex items-center text-amber-400">
               <Star className="w-3.5 h-3.5 fill-amber-400" />
             </div>
-            <span className="text-xs font-bold text-slate-800">{product.rating || 4.8}</span>
-            <span className="text-[11px] text-slate-400">({product.reviewCount || 24})</span>
+            <span className="text-xs font-bold text-slate-800">
+              {product.reviewCount && product.reviewCount > 0
+                ? (product.rating || 0).toFixed(1)
+                : (product.rating ? product.rating.toFixed(1) : '0.0')}
+            </span>
+            <span className="text-[11px] text-slate-400">({product.reviewCount ?? 0})</span>
           </div>
         </div>
       </div>

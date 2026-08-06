@@ -48,7 +48,7 @@ export const WishlistModal: React.FC<WishlistModalProps> = ({
                   <img
                     src={p.images[0]}
                     alt={p.title}
-                    className="w-14 h-14 object-cover rounded-xl border border-slate-200 bg-white shrink-0"
+                    className="w-14 h-14 object-contain p-1 rounded-xl border border-slate-200 bg-white shrink-0"
                   />
                   <div className="min-w-0">
                     <span className="text-[10px] font-bold text-indigo-600 uppercase block">{p.brand}</span>

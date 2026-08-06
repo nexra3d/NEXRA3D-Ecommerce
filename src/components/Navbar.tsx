@@ -347,7 +347,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                             <button
                               onClick={() => {
                                 onCategorySelect(cat.id);
-                                if (onNavigateShop) onNavigateShop();
                                 setIsMegaMenuOpen(false);
                               }}
                               className="font-extrabold text-slate-900 hover:text-cyan-600 text-sm flex items-center justify-between w-full text-left group"
@@ -362,7 +361,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                                     <button
                                       onClick={() => {
                                         onCategorySelect(cat.id);
-                                        if (onNavigateShop) onNavigateShop();
                                         setIsMegaMenuOpen(false);
                                       }}
                                       className="text-[11px] text-slate-500 hover:text-slate-900 transition-colors text-left block w-full py-0.5"

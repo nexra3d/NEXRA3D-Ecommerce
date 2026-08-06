@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import Razorpay from 'razorpay';
 import multer from 'multer';
 import { prisma } from './src/lib/prisma.js';
+import { sendEmail } from './src/lib/resend.js';
 import { uploadImageToCloudinary, deleteImageFromCloudinary } from './src/lib/cloudinary.js';
 import {
   INITIAL_CATEGORIES,
@@ -2813,6 +2814,69 @@ app.post('/api/quote-requests', async (req: Request, res: Response) => {
         additionalNotes: data.additionalNotes || null
       }
     });
+
+    // Send email notification to nexra3d@gmail.com
+    await sendEmail({
+      to: 'nexra3d@gmail.com',
+      subject: `New Contact / Quote Request from ${data.name} (${data.serviceName || 'General Inquiry'})`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
+          <div style="background-color: #0f172a; padding: 24px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 20px; font-weight: bold;">NEXRA 3D — New Contact Inquiry</h1>
+          </div>
+          <div style="padding: 24px; color: #334155; line-height: 1.6;">
+            <p style="font-size: 15px; margin-top: 0;">You have received a new contact / quote submission from your website form:</p>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 16px; margin-bottom: 24px;">
+              <tr>
+                <td style="padding: 8px 12px; font-weight: bold; width: 140px; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">Full Name:</td>
+                <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;">${data.name}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 12px; font-weight: bold; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">Email Address:</td>
+                <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><a href="mailto:${data.email}" style="color: #0284c7; font-weight: bold;">${data.email}</a></td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 12px; font-weight: bold; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">Phone Number:</td>
+                <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;">${data.phone || 'N/A'}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 12px; font-weight: bold; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">Company Name:</td>
+                <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;">${data.company || 'N/A'}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 12px; font-weight: bold; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">Service Required:</td>
+                <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;">${data.serviceName || 'General Inquiry'}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 12px; font-weight: bold; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">Estimated Quantity:</td>
+                <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;">${data.quantity || 1}</td>
+              </tr>
+              ${data.materialPreference ? `
+              <tr>
+                <td style="padding: 8px 12px; font-weight: bold; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">Material Preference:</td>
+                <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;">${data.materialPreference}</td>
+              </tr>
+              ` : ''}
+              ${data.fileUrl ? `
+              <tr>
+                <td style="padding: 8px 12px; font-weight: bold; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">CAD / Drawing File:</td>
+                <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;"><a href="${data.fileUrl}" target="_blank" style="color: #0284c7; font-weight: bold; text-decoration: underline;">View Attachment</a></td>
+              </tr>
+              ` : ''}
+            </table>
+            
+            <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 16px;">
+              <h3 style="margin-top: 0; font-size: 14px; font-weight: bold; color: #0f172a;">Project Message / Description:</h3>
+              <p style="margin-bottom: 0; white-space: pre-wrap; font-size: 14px;">${data.projectDescription}</p>
+            </div>
+          </div>
+          <div style="background-color: #f1f5f9; padding: 12px 24px; text-align: center; font-size: 12px; color: #64748b;">
+            Sent automatically from NEXRA 3D Contact & Quote Request system to <strong>nexra3d@gmail.com</strong>
+          </div>
+        </div>
+      `
+    }).catch((e) => console.error('[Quote Request] Failed to send email notification:', e));
+
     return res.status(201).json({ success: true, message: 'Quote request submitted successfully', quote });
   } catch (err: any) {
     return res.status(500).json({ error: 'Failed to submit quote request' });

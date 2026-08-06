@@ -257,11 +257,11 @@ export const WishlistPage: React.FC<WishlistPageProps> = ({
 
                 <div>
                   {/* Image banner */}
-                  <div className="aspect-square bg-slate-100 relative overflow-hidden">
+                  <div className="aspect-square bg-slate-100 relative overflow-hidden flex items-center justify-center p-2">
                     <img
                       src={product.imageUrl || '/placeholder.jpg'}
                       alt={product.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
                     />
                     {isOutOfStock && (
                       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center p-2 text-center">

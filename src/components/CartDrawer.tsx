@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ShoppingBag, Trash2, Tag, ArrowRight, ShieldCheck, CheckCircle, Sparkles } from 'lucide-react';
+import { X, ShoppingBag, Trash2, Tag, ArrowRight, ShieldCheck, CheckCircle, Sparkles, Truck, Store, MapPin } from 'lucide-react';
 import { CartItem, Coupon } from '../types';
 
 interface CartDrawerProps {
@@ -37,6 +37,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const [couponCodeInput, setCouponCodeInput] = useState('');
   const [couponMsg, setCouponMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isApplying, setIsApplying] = useState(false);
+  const [shippingMethod, setShippingMethod] = useState<'standard' | 'pickup'>('standard');
 
   if (!isOpen) return null;
 
@@ -54,7 +55,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     }, 0)
   );
 
-  const shippingFee = cartSummary?.shippingFee ?? (subtotal > 999 || cartItems.length === 0 ? 0 : 99);
+  const baseShippingFee = cartSummary?.shippingFee ?? (subtotal > 999 || cartItems.length === 0 ? 0 : 99);
+  const shippingFee = shippingMethod === 'pickup' ? 0 : baseShippingFee;
   const grandTotal = Math.max(0, subtotal + tax + shippingFee - discountAmount);
 
   const handleCouponSubmit = async (e: React.FormEvent) => {
@@ -111,7 +113,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   <img
                     src={item.product.images[0]}
                     alt={item.product.title}
-                    className="w-16 h-16 object-cover rounded-xl border border-slate-200 shrink-0 bg-white"
+                    className="w-16 h-16 object-contain p-1 rounded-xl border border-slate-200 shrink-0 bg-white"
                   />
 
                   <div className="flex-1 min-w-0 space-y-1">
@@ -215,6 +217,57 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                     </p>
                   )}
                 </form>
+              )}
+            </div>
+
+            {/* Shipping Method Selector */}
+            <div className="space-y-2 border-t border-slate-200/80 pt-3">
+              <label className="text-[11px] font-black text-slate-900 uppercase tracking-wider block">
+                Select Shipping Method
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {/* Standard Shipping */}
+                <div
+                  onClick={() => setShippingMethod('standard')}
+                  className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
+                    shippingMethod === 'standard'
+                      ? 'border-indigo-600 bg-indigo-50/70 ring-1 ring-indigo-300'
+                      : 'border-slate-200 bg-white hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center space-x-1.5">
+                    <Truck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <span className="font-extrabold text-slate-900 text-[11px]">Standard</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-700 block mt-1">
+                    {baseShippingFee === 0 ? <span className="text-emerald-600">FREE</span> : `₹${baseShippingFee}`}
+                  </span>
+                </div>
+
+                {/* Pickup from Store */}
+                <div
+                  onClick={() => setShippingMethod('pickup')}
+                  className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
+                    shippingMethod === 'pickup'
+                      ? 'border-indigo-600 bg-indigo-50/70 ring-1 ring-indigo-300'
+                      : 'border-slate-200 bg-white hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center space-x-1.5">
+                    <Store className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span className="font-extrabold text-slate-900 text-[11px]">Store Pickup</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-700 block mt-1">
+                    FREE (₹0)
+                  </span>
+                </div>
+              </div>
+
+              {shippingMethod === 'pickup' && (
+                <p className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 p-2 rounded-lg flex items-center gap-1 font-medium">
+                  <MapPin className="w-3 h-3 text-emerald-600 shrink-0" />
+                  <span>Pickup: Gachibowli, Hyderabad - 500046</span>
+                </p>
               )}
             </div>
 
