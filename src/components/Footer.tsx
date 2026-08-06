@@ -207,7 +207,6 @@ export const Footer: React.FC<FooterProps> = ({
             <span className="bg-blue-600 text-white font-black px-2 py-0.5 rounded text-[10px]">RAZORPAY</span>
             <span className="bg-slate-800 text-slate-200 font-bold px-2 py-0.5 rounded text-[10px]">UPI</span>
             <span className="bg-slate-800 text-slate-200 font-bold px-2 py-0.5 rounded text-[10px]">VISA</span>
-            <span className="bg-slate-800 text-slate-200 font-bold px-2 py-0.5 rounded text-[10px]">GST INVOICE</span>
           </div>
         </div>
       </div>

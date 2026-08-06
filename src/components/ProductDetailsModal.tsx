@@ -151,6 +151,16 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
       .catch((err) => console.error('Reviews fetch error:', err));
   }, [product?.id]);
 
+  useEffect(() => {
+    if (product) {
+      const currentUrl = new URL(window.location.href);
+      if (currentUrl.searchParams.get('product') !== product.id) {
+        currentUrl.searchParams.set('product', product.id);
+        window.history.replaceState(null, '', currentUrl.toString());
+      }
+    }
+  }, [product?.id]);
+
   if (!product) return null;
 
   const activePrice = selectedVariant ? selectedVariant.price : Number(product.price || 0);
@@ -169,12 +179,15 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     setSelectedImageIndex((prev) => (prev === 0 ? imagesList.length - 1 : prev - 1));
   };
 
+  const shareUrl = typeof window !== 'undefined' && product ? `${window.location.origin}/?product=${product.id}` : '';
+
   const handleNextImage = () => {
     setSelectedImageIndex((prev) => (prev === imagesList.length - 1 ? 0 : prev + 1));
   };
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(window.location.href);
+    const urlToCopy = shareUrl || window.location.href;
+    navigator.clipboard.writeText(urlToCopy);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
   };
@@ -196,8 +209,9 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
       });
 
       const data = await res.json();
-      if (res.ok && data.review) {
-        setReviews([data.review, ...reviews]);
+      const createdReview = data.review || (data.id ? data : null);
+      if (res.ok && createdReview) {
+        setReviews([createdReview, ...reviews]);
         setNewReviewName('');
         setNewReviewTitle('');
         setNewReviewComment('');

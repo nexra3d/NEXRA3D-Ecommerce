@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Address, CartItem, Coupon, Order, PaymentMethod, User } from '../types';
 import { apiFetch, getStoredToken } from '../lib/api';
+import { INDIAN_STATES, lookupPincode } from '../lib/pincode';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -526,31 +527,52 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
                   />
 
-                  <div className="grid grid-cols-3 gap-3">
-                    <input
-                      type="text"
-                      placeholder="City"
-                      required
-                      value={newCity}
-                      onChange={(e) => setNewCity(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
-                    />
-                    <input
-                      type="text"
-                      placeholder="State"
-                      required
-                      value={newState}
-                      onChange={(e) => setNewState(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
-                    />
-                    <input
-                      type="text"
-                      placeholder="PIN Code"
-                      required
-                      value={newPostalCode}
-                      onChange={(e) => setNewPostalCode(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="PIN Code (6 digits)"
+                        required
+                        value={newPostalCode}
+                        onChange={async (e) => {
+                          const val = e.target.value;
+                          setNewPostalCode(val);
+                          const clean = val.replace(/\D/g, '');
+                          if (clean.length === 6) {
+                            const res = await lookupPincode(clean);
+                            if (res) {
+                              if (res.city) setNewCity(res.city);
+                              if (res.state) setNewState(res.state);
+                            }
+                          }
+                        }}
+                        className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <span className="text-[10px] text-slate-400 mt-0.5 block">Auto-fetches City & State</span>
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="City"
+                        required
+                        value={newCity}
+                        onChange={(e) => setNewCity(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <select
+                        required
+                        value={newState}
+                        onChange={(e) => setNewState(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 font-medium"
+                      >
+                        <option value="">Select State</option>
+                        {INDIAN_STATES.map((st) => (
+                          <option key={st} value={st}>{st}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   <button

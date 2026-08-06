@@ -492,6 +492,31 @@ export default function App() {
     return () => window.removeEventListener('popstate', handleUrlRoute);
   }, []);
 
+  // Deep link router for ?product=ID URL parameter
+  useEffect(() => {
+    const checkProductUrl = async () => {
+      const searchParams = new URLSearchParams(window.location.search);
+      const targetProductId = searchParams.get('product') || searchParams.get('productId');
+      if (targetProductId) {
+        let match = allProducts.find((p) => p.id === targetProductId);
+        if (!match) {
+          try {
+            const fetched = await safeFetchJson(`/api/products/${targetProductId}`);
+            if (fetched && fetched.id) {
+              match = fetched;
+            }
+          } catch (e) {}
+        }
+        if (match) {
+          setQuickViewProduct(match);
+          setCurrentView('shop');
+        }
+      }
+    };
+
+    checkProductUrl();
+  }, [allProducts]);
+
   // Supabase Auth listener (Google OAuth & Password Recovery handling)
   useEffect(() => {
     if (!supabase || !isSupabaseConfigured) return;
@@ -1176,7 +1201,15 @@ export default function App() {
       {/* 1. Product Quick View Details Modal */}
       <ProductDetailsModal
         product={quickViewProduct}
-        onClose={() => setQuickViewProduct(null)}
+        onClose={() => {
+          setQuickViewProduct(null);
+          if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('product');
+            url.searchParams.delete('productId');
+            window.history.replaceState(null, '', url.pathname + (url.search ? url.search : ''));
+          }
+        }}
         isWishlisted={quickViewProduct ? wishlistProductIds.includes(quickViewProduct.id) : false}
         onToggleWishlist={handleToggleWishlist}
         onAddToCart={(p, qty) => handleAddToCart(p, qty)}

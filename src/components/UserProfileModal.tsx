@@ -12,6 +12,7 @@ import {
   LogOut
 } from 'lucide-react';
 import { User, Address, Order } from '../types';
+import { INDIAN_STATES, lookupPincode } from '../lib/pincode';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -229,7 +230,26 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     onChange={(e) => setNewStreet(e.target.value)}
                     className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs"
                   />
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <input
+                      type="text"
+                      placeholder="PIN Code"
+                      required
+                      value={newPostalCode}
+                      onChange={async (e) => {
+                        const val = e.target.value;
+                        setNewPostalCode(val);
+                        const clean = val.replace(/\D/g, '');
+                        if (clean.length === 6) {
+                          const res = await lookupPincode(clean);
+                          if (res) {
+                            if (res.city) setNewCity(res.city);
+                            if (res.state) setNewState(res.state);
+                          }
+                        }
+                      }}
+                      className="bg-white border border-slate-200 rounded-xl p-2 text-xs"
+                    />
                     <input
                       type="text"
                       placeholder="City"
@@ -238,22 +258,17 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       onChange={(e) => setNewCity(e.target.value)}
                       className="bg-white border border-slate-200 rounded-xl p-2 text-xs"
                     />
-                    <input
-                      type="text"
-                      placeholder="State"
+                    <select
                       required
                       value={newState}
                       onChange={(e) => setNewState(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-xl p-2 text-xs"
-                    />
-                    <input
-                      type="text"
-                      placeholder="PIN Code"
-                      required
-                      value={newPostalCode}
-                      onChange={(e) => setNewPostalCode(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-xl p-2 text-xs"
-                    />
+                      className="bg-white border border-slate-200 rounded-xl p-2 text-xs font-medium"
+                    >
+                      <option value="">Select State</option>
+                      {INDIAN_STATES.map((st) => (
+                        <option key={st} value={st}>{st}</option>
+                      ))}
+                    </select>
                   </div>
                   <button type="submit" className="bg-indigo-600 text-white font-bold text-xs px-4 py-2 rounded-xl">
                     Save Address

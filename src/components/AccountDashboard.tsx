@@ -27,6 +27,7 @@ import {
 import { updateProfileSchema, changePasswordSchema } from '../lib/validation';
 import { User, Order, Address } from '../types';
 import { apiFetch, setStoredAuth } from '../lib/api';
+import { INDIAN_STATES, lookupPincode } from '../lib/pincode';
 
 interface AccountDashboardProps {
   user: User | null;
@@ -755,13 +756,16 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                         <label className="block text-[11px] font-bold text-slate-600 mb-1">
                           State
                         </label>
-                        <input
-                          type="text"
-                          placeholder="Karnataka"
+                        <select
                           value={profileState}
                           onChange={(e) => setProfileState(e.target.value)}
                           className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl px-4 py-2.5 text-xs text-slate-900 font-medium transition-all focus:outline-hidden"
-                        />
+                        >
+                          <option value="">Select State</option>
+                          {INDIAN_STATES.map((st) => (
+                            <option key={st} value={st}>{st}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 
@@ -774,7 +778,18 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                           type="text"
                           placeholder="560001"
                           value={profilePostalCode}
-                          onChange={(e) => setProfilePostalCode(e.target.value)}
+                          onChange={async (e) => {
+                            const val = e.target.value;
+                            setProfilePostalCode(val);
+                            const clean = val.replace(/\D/g, '');
+                            if (clean.length === 6) {
+                              const res = await lookupPincode(clean);
+                              if (res) {
+                                if (res.city) setProfileCity(res.city);
+                                if (res.state) setProfileState(res.state);
+                              }
+                            }
+                          }}
                           className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl px-4 py-2.5 text-xs text-slate-900 font-medium transition-all focus:outline-hidden"
                         />
                       </div>
@@ -1296,14 +1311,17 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                           <label className="block font-extrabold text-slate-700 mb-1">
                             State *
                           </label>
-                          <input
-                            type="text"
+                          <select
                             required
                             value={addrState}
                             onChange={(e) => setAddrState(e.target.value)}
-                            placeholder="Karnataka"
                             className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-medium transition-all focus:outline-hidden"
-                          />
+                          >
+                            <option value="">Select State</option>
+                            {INDIAN_STATES.map((st) => (
+                              <option key={st} value={st}>{st}</option>
+                            ))}
+                          </select>
                         </div>
 
                         <div>
@@ -1314,7 +1332,18 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                             type="text"
                             required
                             value={addrPostalCode}
-                            onChange={(e) => setAddrPostalCode(e.target.value)}
+                            onChange={async (e) => {
+                              const val = e.target.value;
+                              setAddrPostalCode(val);
+                              const clean = val.replace(/\D/g, '');
+                              if (clean.length === 6) {
+                                const res = await lookupPincode(clean);
+                                if (res) {
+                                  if (res.city) setAddrCity(res.city);
+                                  if (res.state) setAddrState(res.state);
+                                }
+                              }
+                            }}
                             placeholder="560001"
                             className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-medium transition-all focus:outline-hidden"
                           />

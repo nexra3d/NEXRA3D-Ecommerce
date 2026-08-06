@@ -3141,23 +3141,59 @@ app.get('/api/products/:id/reviews', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/products/:id/reviews', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+app.post('/api/products/:id/reviews', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { rating, title, comment, userName } = req.body;
+
+    let userId: string | null = null;
+    let reviewerName = userName || 'Verified Customer';
+
+    const token = req.cookies?.token || (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.split(' ')[1] : null);
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        if (decoded?.id) {
+          userId = decoded.id;
+          if (!userName && decoded.name) reviewerName = decoded.name;
+        }
+      } catch (e) {
+        // Proceed as guest
+      }
+    }
+
+    if (!userId) {
+      let guestUser = await prisma.user.findFirst({
+        where: { email: 'guest@nexra3d.com' }
+      });
+      if (!guestUser) {
+        guestUser = await prisma.user.create({
+          data: {
+            email: 'guest@nexra3d.com',
+            password: 'guest_password_protected_review_account',
+            name: 'Guest Customer',
+            role: 'CUSTOMER'
+          }
+        });
+      }
+      userId = guestUser.id;
+    }
+
     const review = await prisma.review.create({
       data: {
         productId: id,
-        userId: req.user.id,
-        userName: userName || req.user.name || 'Anonymous',
+        userId: userId,
+        userName: reviewerName,
         rating: Number(rating || 5),
-        title: title || 'Review',
+        title: title || 'Customer Review',
         comment: comment || '',
         verifiedPurchase: true
       }
     });
-    return res.status(201).json(review);
-  } catch (err) {
+
+    return res.status(201).json({ success: true, review });
+  } catch (err: any) {
+    console.error('Failed to create review:', err);
     return res.status(500).json({ error: 'Failed to create review' });
   }
 });
