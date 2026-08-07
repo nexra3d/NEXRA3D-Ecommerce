@@ -12,10 +12,10 @@ export const EmailInboxModal: React.FC<EmailInboxModalProps> = ({ isOpen, onClos
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in">
-      <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden relative max-h-[85vh] flex flex-col">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in">
+      <div className="bg-white w-full max-w-2xl max-h-[88vh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 overflow-hidden relative">
         {/* Header */}
-        <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+        <div className="p-5 sm:p-6 bg-slate-900 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-2">
             <Mail className="w-5 h-5 text-amber-400" />
             <div>
@@ -32,7 +32,7 @@ export const EmailInboxModal: React.FC<EmailInboxModalProps> = ({ isOpen, onClos
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto space-y-3">
+        <div className="p-5 sm:p-6 overflow-y-auto flex-1 min-h-0 space-y-3">
           {emails.length > 0 ? (
             emails.map((eml) => (
               <div key={eml.id} className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-2 text-xs">

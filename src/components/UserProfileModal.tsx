@@ -67,10 +67,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in">
-      <div className="bg-white w-full max-w-3xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden relative max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in">
+      <div className="bg-white w-full max-w-3xl max-h-[90vh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 overflow-hidden relative">
         {/* Header */}
-        <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+        <div className="p-5 sm:p-6 bg-slate-900 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-3">
             <img
               src={user.avatarUrl || 'https://api.dicebear.com/7.x/avataaars/svg?seed=user'}
@@ -97,7 +97,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex space-x-2 border-b border-slate-200 px-6 pt-4 bg-slate-50">
+        <div className="flex space-x-2 border-b border-slate-200 px-5 sm:px-6 pt-4 bg-slate-50 shrink-0">
           <button
             onClick={() => setActiveTab('orders')}
             className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition-colors cursor-pointer border-b-2 ${
@@ -131,7 +131,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         </div>
 
         {/* Main Tab Content */}
-        <div className="p-6 overflow-y-auto space-y-4">
+        <div className="p-5 sm:p-6 overflow-y-auto flex-1 min-h-0 space-y-4">
           {/* ORDERS TAB */}
           {activeTab === 'orders' && (
             <div className="space-y-4">
