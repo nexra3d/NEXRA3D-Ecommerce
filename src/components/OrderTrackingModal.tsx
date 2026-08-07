@@ -1,6 +1,8 @@
 import React from 'react';
 import { X, Package, Truck, CheckCircle2, Clock, MapPin, Printer, ExternalLink, ShieldCheck } from 'lucide-react';
 import { Order, OrderStatus } from '../types';
+import { TrackingTimeline } from './shipping/TrackingTimeline';
+import { CourierCard } from './shipping/CourierCard';
 
 interface OrderTrackingModalProps {
   order: Order | null;
@@ -84,45 +86,26 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
         </div>
 
         <div className="p-6 space-y-8 overflow-y-auto max-h-[80vh]">
-          {/* Visual Step Timeline */}
-          <div className="space-y-3">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Live Delivery Status</h3>
+          {/* Delhivery Express Carrier Information */}
+          <CourierCard
+            provider={order.shippingProvider || 'Delhivery'}
+            awbNumber={order.awbNumber || awbTrackingNumber}
+            trackingNumber={order.trackingNumber || awbTrackingNumber}
+            trackingUrl={order.trackingUrl}
+            labelUrl={order.labelUrl}
+            manifestUrl={order.manifestUrl}
+            estimatedDelivery={order.estimatedDelivery ? new Date(order.estimatedDelivery).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : '3-5 Business Days'}
+            shipmentStatus={order.shipmentStatus || (order.awbNumber ? 'IN_TRANSIT' : 'CREATED')}
+            pickupRequested={order.pickupRequested}
+          />
 
-            <div className="relative flex items-center justify-between">
-              {/* Connector Bar */}
-              <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 bg-slate-200 z-0" />
-              <div
-                className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-indigo-600 z-0 transition-all duration-500"
-                style={{ width: `${(currentStageIdx / (STATUS_STAGES.length - 1)) * 100}%` }}
-              />
-
-              {STATUS_STAGES.map((stage, idx) => {
-                const isCompleted = idx <= currentStageIdx;
-                const isCurrent = idx === currentStageIdx;
-
-                return (
-                  <div key={stage.status} className="relative z-10 flex flex-col items-center group">
-                    <div
-                      className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs transition-all ${
-                        isCompleted
-                          ? 'bg-indigo-600 text-white shadow-md'
-                          : 'bg-slate-200 text-slate-500'
-                      } ${isCurrent ? 'ring-4 ring-indigo-200 scale-110' : ''}`}
-                    >
-                      {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : idx + 1}
-                    </div>
-                    <span
-                      className={`text-[10px] font-bold mt-2 text-center max-w-[70px] ${
-                        isCurrent ? 'text-indigo-600 font-extrabold' : isCompleted ? 'text-slate-800' : 'text-slate-400'
-                      }`}
-                    >
-                      {stage.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          {/* Delhivery Interactive Tracking Milestone Timeline */}
+          <TrackingTimeline
+            currentStatus={order.shipmentStatus || order.orderStatus || order.status}
+            awbNumber={order.awbNumber || awbTrackingNumber}
+            expectedDelivery={order.estimatedDelivery ? new Date(order.estimatedDelivery).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' }) : '3-5 Business Days'}
+            trackingHistory={order.trackingHistory || []}
+          />
 
           {/* Courier & AWB & Payment Details Box */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-xs">

@@ -10,7 +10,10 @@ import {
   Plus,
   Lock,
   Sparkles,
-  Smartphone
+  Smartphone,
+  Truck,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import { Address, CartItem, Coupon, Order, PaymentMethod, User } from '../types';
 import { apiFetch, getStoredToken } from '../lib/api';
@@ -64,6 +67,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [newCity, setNewCity] = useState('');
   const [newState, setNewState] = useState('');
   const [newPostalCode, setNewPostalCode] = useState('');
+
+  // Live Delhivery Shipping State
+  const [shippingEstimate, setShippingEstimate] = useState<any | null>(null);
+  const [shippingLoading, setShippingLoading] = useState<boolean>(false);
+  const [shippingError, setShippingError] = useState<string | null>(null);
+  const [selectedShippingOptionId, setSelectedShippingOptionId] = useState<string>('delhivery-surface');
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('RAZORPAY');
   const [isProcessingOrder, setIsProcessingOrder] = useState(false);
@@ -130,6 +139,78 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     }
   }, [isOpen]);
 
+  // Active Pincode & Cart Weight
+  const selectedAddress = addressList.find((a) => a.id === selectedAddressId);
+  const activePincode = (selectedAddress?.postalCode || newPostalCode || '').replace(/\D/g, '').trim();
+  const cartWeightGrams = safeCartItems.reduce((acc, item) => acc + (item.quantity * 250), 500);
+
+  // Auto-Fetch Delhivery Shipping Estimate whenever pincode, address, or cart items change
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (activePincode.length !== 6) {
+      setShippingEstimate(null);
+      setShippingError(null);
+      return;
+    }
+
+    let isMounted = true;
+    const fetchShippingEstimate = async () => {
+      setShippingLoading(true);
+      setShippingError(null);
+
+      try {
+        const res = await apiFetch('/api/shipping/estimate', {
+          method: 'POST',
+          body: JSON.stringify({
+            destinationPincode: activePincode,
+            orderValue: subtotal,
+            paymentType: paymentMethod === 'COD' ? 'COD' : 'Pre-paid',
+            items: safeCartItems.map((item) => ({
+              productId: item.productId || item.product?.id,
+              quantity: item.quantity,
+              weight: item.product?.weight ? Number(item.product.weight) : undefined
+            }))
+          })
+        });
+
+        const data = await res.json();
+        if (!isMounted) return;
+
+        if (!res.ok) {
+          setShippingEstimate(null);
+          setShippingError(data.error || data.details || 'Delhivery shipping estimation failed.');
+        } else if (!data.serviceable) {
+          setShippingEstimate(null);
+          const realError = data.error || data.remarks || 'This delivery address is not serviceable.';
+          setShippingError(realError);
+        } else {
+          setShippingEstimate(data);
+          setShippingError(null);
+          if (data.options && data.options.length > 0) {
+            const currentValid = data.options.some((o: any) => o.id === selectedShippingOptionId);
+            if (!currentValid) {
+              setSelectedShippingOptionId(data.options[0].id);
+            }
+          }
+        }
+      } catch (err: any) {
+        if (!isMounted) return;
+        console.error('Delhivery live estimation error:', err);
+        setShippingError(err.message || 'Error checking Delhivery shipping rates.');
+        setShippingEstimate(null);
+      } finally {
+        if (isMounted) setShippingLoading(false);
+      }
+    };
+
+    fetchShippingEstimate();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activePincode, cartWeightGrams, isOpen]);
+
   if (!isOpen) return null;
 
   // Totals
@@ -145,7 +226,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       );
     }, 0)
   );
-  const shippingFee = cartSummary?.shippingFee ?? (subtotal > 999 || safeCartItems.length === 0 ? 0 : 99);
+
+  const availableShippingOptions = shippingEstimate?.options || [];
+  const selectedShippingOption = availableShippingOptions.find((o: any) => o.id === selectedShippingOptionId) || availableShippingOptions[0];
+  const shippingFee = (shippingEstimate && shippingEstimate.serviceable && !shippingError && selectedShippingOption) ? selectedShippingOption.charge : 0;
   const grandTotal = Math.max(0, subtotal + tax + shippingFee - discountAmount);
 
   const handleSaveAddress = async (e: React.FormEvent) => {
@@ -205,6 +289,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           },
           paymentMethod,
           couponCode: appliedCoupon?.code,
+          shippingFee,
+          shippingProvider: selectedShippingOption?.provider || 'Delhivery',
+          courierName: selectedShippingOption?.name || 'Delhivery Surface',
+          estimatedDeliveryDate: shippingEstimate?.estimatedDeliveryDate,
           items: safeCartItems.map((ci) => ({
             productId: ci.productId || ci.product?.id,
             quantity: ci.quantity,
@@ -584,10 +672,141 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 </form>
               )}
 
+              {/* Live Delhivery Shipping Rate & Serviceability Panel */}
+              {activePincode && activePincode.length === 6 && (
+                <div className="space-y-3 pt-2">
+                  {shippingLoading && (
+                    <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-2xl p-4 flex items-center justify-center space-x-3 text-xs font-bold text-indigo-700">
+                      <Loader2 className="w-4 h-4 animate-spin text-indigo-600 shrink-0" />
+                      <span>Checking delivery availability & live shipping rates...</span>
+                    </div>
+                  )}
+
+                  {!shippingLoading && shippingError && (
+                    <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex items-center space-x-3 text-xs font-bold text-rose-700">
+                      <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                      <div>
+                        <span className="block font-extrabold text-rose-900">{shippingError}</span>
+                        <p className="text-[11px] font-normal text-rose-600 mt-0.5">
+                          {shippingError.toLowerCase().includes('not serviceable')
+                            ? 'Please select another delivery address or pincode.'
+                            : 'Please check your Delhivery API configuration or credentials.'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {!shippingLoading && shippingEstimate && shippingEstimate.serviceable && (
+                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3 text-xs">
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                        <div className="flex items-center space-x-2 text-emerald-700 font-extrabold">
+                          <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
+                          <span>
+                            Delivery Available {shippingEstimate.city ? `to ${shippingEstimate.city}, ${shippingEstimate.state}` : `(PIN: ${activePincode})`}
+                          </span>
+                        </div>
+                        {shippingEstimate.codAvailable && (
+                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded">
+                            COD Available
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Shipping Options Selector */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                            <Truck className="w-3.5 h-3.5 text-indigo-600" />
+                            Select Shipping Option
+                          </span>
+                        </div>
+
+                        <div className="space-y-2">
+                          {availableShippingOptions.map((opt: any) => (
+                            <label
+                              key={opt.id}
+                              onClick={() => setSelectedShippingOptionId(opt.id)}
+                              className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                                selectedShippingOptionId === opt.id
+                                  ? 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-200'
+                                  : 'border-slate-200 bg-white hover:bg-slate-100'
+                              }`}
+                            >
+                              <div className="flex items-center space-x-3">
+                                <input
+                                  type="radio"
+                                  name="checkout_shipping_option"
+                                  checked={selectedShippingOptionId === opt.id}
+                                  onChange={() => setSelectedShippingOptionId(opt.id)}
+                                  className="text-indigo-600 focus:ring-indigo-500"
+                                />
+                                <div>
+                                  <span className="font-extrabold text-slate-900 text-xs block">{opt.name}</span>
+                                  <span className="text-[10px] text-slate-500">{opt.description || opt.etaText}</span>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <span className="font-black text-slate-900 text-xs block">
+                                  {opt.charge === 0 ? <span className="text-emerald-600 font-extrabold">FREE</span> : `₹${opt.charge}`}
+                                </span>
+                                <span className="text-[10px] font-semibold text-slate-500">{opt.etaText}</span>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Order Summary Breakdown Box */}
+              <div className="bg-slate-100/80 p-4 rounded-2xl border border-slate-200 space-y-2 text-xs">
+                <div className="flex justify-between text-slate-600">
+                  <span>Subtotal</span>
+                  <span className="font-semibold text-slate-800">₹{subtotal.toLocaleString('en-IN')}</span>
+                </div>
+                {discountAmount > 0 && (
+                  <div className="flex justify-between text-emerald-600 font-medium">
+                    <span>Discount {appliedCoupon ? `(${appliedCoupon.code})` : ''}</span>
+                    <span>-₹{discountAmount.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-slate-600">
+                  <span>Estimated GST Tax</span>
+                  <span className="font-semibold text-slate-800">₹{tax.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex justify-between text-slate-600 items-center">
+                  <span className="flex items-center gap-1">
+                    <span>Delhivery Shipping</span>
+                    {selectedShippingOption && (
+                      <span className="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-1.5 py-0.5 rounded">
+                        {selectedShippingOption.name}
+                      </span>
+                    )}
+                  </span>
+                  <span className="font-bold text-slate-900">
+                    {shippingLoading ? (
+                      <span className="text-slate-400 italic">Calculating...</span>
+                    ) : shippingError ? (
+                      <span className="text-rose-600 font-bold">Unserviceable</span>
+                    ) : shippingFee === 0 ? (
+                      <span className="text-emerald-600 uppercase font-black">FREE</span>
+                    ) : (
+                      `₹${shippingFee}`
+                    )}
+                  </span>
+                </div>
+                <div className="pt-2 border-t border-slate-200 flex justify-between items-center text-sm font-black text-slate-900">
+                  <span>Grand Total</span>
+                  <span className="text-indigo-600 text-base">₹{grandTotal.toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+
               <button
-                disabled={!selectedAddressId}
+                disabled={!selectedAddressId && !showAddAddressForm || shippingLoading || Boolean(shippingError) || (activePincode.length === 6 && !shippingEstimate?.serviceable)}
                 onClick={() => setStep('payment')}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm py-3.5 rounded-2xl flex items-center justify-center space-x-2 transition-all shadow-md cursor-pointer disabled:opacity-50"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm py-3.5 rounded-2xl flex items-center justify-center space-x-2 transition-all shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span>Continue to Payment</span>
                 <ArrowRight className="w-4 h-4" />

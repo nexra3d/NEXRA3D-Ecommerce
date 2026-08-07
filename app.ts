@@ -41,6 +41,7 @@ import {
   testimonialCreateSchema,
   bannerCreateSchema
 } from './src/lib/validation.js';
+import * as delhiveryService from './src/lib/shipping/delhivery.js';
 
 export interface AuthenticatedRequest extends Request {
   user?: any;
@@ -275,7 +276,7 @@ async function getFormattedCart(userId: string) {
       return total + ((item.price || 0) * item.quantity * (item.taxPercentage ?? item.product?.taxPercentage ?? 0)) / 100;
     }, 0)
   );
-  const shippingFee = subtotal > 999 || items.length === 0 ? 0 : 99;
+  const shippingFee = 0;
   const totalAmount = Math.max(0, subtotal + tax + shippingFee);
 
   return {
@@ -2311,7 +2312,13 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
         return total + (price * ci.quantity * taxRate) / 100;
       }, 0)
     );
-    const shippingFee = subtotal > 999 ? 0 : 99;
+    const providedShippingFee = req.body.shippingFee !== undefined
+      ? Number(req.body.shippingFee)
+      : (req.body.shippingCharge !== undefined ? Number(req.body.shippingCharge) : null);
+    const shippingFee = providedShippingFee !== null && !isNaN(providedShippingFee)
+      ? providedShippingFee
+      : 0;
+
     const totalAmount = Math.max(0, subtotal + taxAmount + shippingFee - discountAmount);
 
     const now = new Date();
@@ -2356,16 +2363,128 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
       where: { cartId: cart.id }
     });
 
+    // Auto-create shipment if COD order
+    if (isCod) {
+      await autoProcessDelhiveryShipment(newOrder.id);
+    }
+
+    const finalCreatedOrder = await prisma.order.findUnique({
+      where: { id: newOrder.id },
+      include: { items: { include: { product: true } }, user: true, shipment: true }
+    });
+
     return res.status(201).json({
       success: true,
       message: 'Order created successfully',
-      order: formatOrder(newOrder)
+      order: formatOrder(finalCreatedOrder || newOrder)
     });
   } catch (err: any) {
     console.error('Checkout error:', err);
     return res.status(500).json({ error: 'Checkout failed: ' + (err.message || String(err)) });
   }
 });
+
+async function autoProcessDelhiveryShipment(orderId: string) {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: { items: { include: { product: true } }, user: true, shipment: true }
+    });
+    if (!order) return null;
+
+    if (order.awbNumber) {
+      return order;
+    }
+
+    const res = await delhiveryService.createShipment({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      shippingAddress: order.shippingAddress,
+      items: order.items,
+      totalAmount: Number(order.totalAmount),
+      paymentMethod: order.paymentMethod,
+      weightInGrams: 500
+    });
+
+    const updatedOrder = await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        shippingProvider: 'Delhivery',
+        awbNumber: res.awbNumber,
+        trackingNumber: res.trackingNumber,
+        shipmentId: res.shipmentId,
+        shippingCharge: order.shippingFee || 0,
+        estimatedDelivery: res.estimatedDelivery ? new Date(res.estimatedDelivery) : null,
+        shipmentStatus: 'CREATED',
+        pickupRequested: false,
+        labelUrl: res.labelUrl,
+        trackingUrl: res.trackingUrl,
+        manifestUrl: res.manifestUrl,
+        lastTrackingUpdate: new Date(),
+        trackingHistory: [
+          {
+            date: new Date().toISOString(),
+            status: 'Shipment Created',
+            location: 'NEXRA Fulfillment Hub',
+            remark: 'Shipment manifest generated via Delhivery'
+          }
+        ]
+      },
+      include: { items: { include: { product: true } }, user: true, shipment: true }
+    });
+
+    // Also sync to Shipment model
+    await prisma.shipment.upsert({
+      where: { orderId: order.id },
+      create: {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        shipmentNumber: res.shipmentId,
+        provider: 'Delhivery',
+        courier: 'Delhivery Surface & Express',
+        awbNumber: res.awbNumber,
+        trackingNumber: res.trackingNumber,
+        trackingUrl: res.trackingUrl,
+        status: 'CREATED',
+        labelUrl: res.labelUrl,
+        shippingCost: order.shippingFee || 0,
+        estimatedDelivery: res.estimatedDelivery ? new Date(res.estimatedDelivery) : null
+      },
+      update: {
+        provider: 'Delhivery',
+        courier: 'Delhivery Surface & Express',
+        awbNumber: res.awbNumber,
+        trackingNumber: res.trackingNumber,
+        trackingUrl: res.trackingUrl,
+        status: 'CREATED',
+        labelUrl: res.labelUrl
+      }
+    }).catch(() => {});
+
+    // Try sending email if resend is configured
+    try {
+      const custEmail = (order.shippingAddress as any)?.email || order.user?.email;
+      if (custEmail) {
+        await sendEmail({
+          to: custEmail,
+          subject: `Shipment Dispatched - Order #${order.orderNumber} (Delhivery AWB: ${res.awbNumber})`,
+          html: `<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+            <h2 style="color: #4f46e5;">Order #${order.orderNumber} Dispatched via Delhivery!</h2>
+            <p>Your order has been handed over to <strong>Delhivery Express</strong>.</p>
+            <p><strong>AWB Number:</strong> ${res.awbNumber}</p>
+            <p><strong>Estimated Delivery:</strong> ${res.estimatedDelivery}</p>
+            <p style="margin-top: 16px;"><a href="${res.trackingUrl}" style="background-color: #4f46e5; color: white; padding: 10px 18px; text-decoration: none; border-radius: 8px; display: inline-block;">Track Your Shipment</a></p>
+          </div>`
+        });
+      }
+    } catch (e) {}
+
+    return updatedOrder;
+  } catch (err) {
+    console.error('Error auto processing Delhivery shipment:', err);
+    return null;
+  }
+}
 
 const formatOrder = (o: any) => {
   if (!o) return o;
@@ -2375,8 +2494,11 @@ const formatOrder = (o: any) => {
     ...shipment,
     statusHistory: shipment.statusHistory || []
   }] : [];
-  const courierPartnerName = shipment?.courier || shipment?.provider || addr.courierName || (shipment ? 'Standard Courier' : 'Awaiting Dispatch');
-  const trackingNo = shipment?.awbNumber || shipment?.trackingNumber || (shipment ? 'Assigned' : 'Awaiting Dispatch');
+  
+  const shippingProvider = o.shippingProvider || shipment?.provider || 'Delhivery';
+  const courierPartnerName = shipment?.courier || `${shippingProvider} Express`;
+  const awb = o.awbNumber || shipment?.awbNumber || o.trackingNumber || shipment?.trackingNumber;
+  const trackingNo = awb || (shipment ? 'Assigned' : 'Awaiting Dispatch');
 
   const subtotalValue = Number(o.subtotal ?? 0);
   const taxValue = Number(o.taxAmount ?? o.tax ?? 0);
@@ -2411,10 +2533,22 @@ const formatOrder = (o: any) => {
     totalAmount: totalAmountValue,
     discountAmount: discountValue,
     shippingFee: shippingFeeValue,
+    shippingCharge: shippingFeeValue,
     items,
     orderStatus: o.status,
+    shippingProvider,
+    awbNumber: awb || null,
     courierName: courierPartnerName,
     trackingNumber: trackingNo,
+    shipmentId: o.shipmentId || shipment?.id || shipment?.shipmentNumber,
+    estimatedDelivery: o.estimatedDelivery || shipment?.estimatedDelivery,
+    shipmentStatus: o.shipmentStatus || shipment?.status || (awb ? 'IN_TRANSIT' : 'CREATED'),
+    pickupRequested: o.pickupRequested ?? false,
+    labelUrl: o.labelUrl || shipment?.labelUrl || (awb ? `/api/shipping/label/${awb}` : null),
+    trackingUrl: o.trackingUrl || shipment?.trackingUrl || (awb ? `https://track.delhivery.com/track/package/${awb}` : null),
+    manifestUrl: o.manifestUrl || (awb ? `/api/shipping/manifest/${awb}` : null),
+    lastTrackingUpdate: o.lastTrackingUpdate || o.updatedAt,
+    trackingHistory: o.trackingHistory || [],
     shipments: shipmentsList,
     customerName: addr.fullName || o.user?.name || 'Customer',
     customerEmail: addr.email || o.user?.email || '',
@@ -2674,6 +2808,11 @@ const handleRazorpayVerifyPayment = async (req: AuthenticatedRequest, res: Respo
         }
         return null;
       });
+
+      if (updatedOrder) {
+        const processed = await autoProcessDelhiveryShipment(updatedOrder.id);
+        if (processed) updatedOrder = processed;
+      }
     }
 
     return res.json({
@@ -3540,6 +3679,389 @@ app.post('/api/admin/orders/:id/reconcile', requireAdminMiddleware, async (req: 
     return res.json(order);
   } catch (err) {
     return res.status(500).json({ error: 'Failed to reconcile order' });
+  }
+});
+
+// ==========================================
+// DELHIVERY SHIPPING REST APIs
+// ==========================================
+
+// 1. Pincode Serviceability Check
+app.get('/api/shipping/pincode/:pincode', async (req: Request, res: Response) => {
+  try {
+    const { pincode } = req.params;
+    const result = await delhiveryService.checkServiceability(pincode);
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to check serviceability', details: err.message });
+  }
+});
+
+// 2. Shipping Cost Estimation
+app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
+  try {
+    const { originPincode, destinationPincode, weight, dimensions, orderValue, paymentType, items } = req.body;
+    if (!destinationPincode) {
+      return res.status(400).json({ error: 'destinationPincode is required' });
+    }
+
+    let calculatedWeightGrams = 0;
+    let maxLength = 15;
+    let maxWidth = 15;
+    let totalHeight = 0;
+
+    if (Array.isArray(items) && items.length > 0) {
+      const productIds = items.map((i: any) => i.productId || i.id).filter(Boolean);
+      let dbProductsMap = new Map();
+      if (productIds.length > 0) {
+        const dbProducts = await prisma.product.findMany({
+          where: { id: { in: productIds } },
+          select: { id: true, weight: true, specifications: true }
+        });
+        dbProducts.forEach(p => dbProductsMap.set(p.id, p));
+      }
+
+      for (const item of items) {
+        const qty = Math.max(1, Number(item.quantity) || 1);
+        const dbP = dbProductsMap.get(item.productId || item.id);
+
+        let itemWeightGrams = 250;
+        const rawWeight = item.weight ?? (dbP?.weight ? Number(dbP.weight) : null);
+        if (rawWeight && rawWeight > 0) {
+          itemWeightGrams = rawWeight <= 20 ? Math.round(rawWeight * 1000) : Math.round(rawWeight);
+        }
+        calculatedWeightGrams += itemWeightGrams * qty;
+
+        const specs = (dbP?.specifications as any) || {};
+        const l = item.dimensions?.length || specs.length || specs.dimensions?.length || 15;
+        const w = item.dimensions?.width || specs.width || specs.dimensions?.width || 15;
+        const h = item.dimensions?.height || specs.height || specs.dimensions?.height || 5;
+
+        maxLength = Math.max(maxLength, Number(l) || 15);
+        maxWidth = Math.max(maxWidth, Number(w) || 15);
+        totalHeight += (Number(h) || 5) * qty;
+      }
+    }
+
+    const finalWeightGrams = calculatedWeightGrams > 0 ? calculatedWeightGrams : (Number(weight) || 500);
+    const finalDimensions = dimensions || {
+      length: maxLength,
+      width: maxWidth,
+      height: Math.max(5, totalHeight)
+    };
+
+    const effectiveOriginPin = originPincode || process.env.DELHIVERY_ORIGIN_PINCODE || '500032';
+
+    console.log('[API /api/shipping/estimate] Request parameters:', {
+      originPincode: effectiveOriginPin,
+      destinationPincode,
+      weightGrams: finalWeightGrams,
+      dimensions: finalDimensions,
+      orderValue: Number(orderValue) || 0,
+      paymentType: paymentType || 'Pre-paid',
+      itemCount: Array.isArray(items) ? items.length : 0
+    });
+
+    const result = await delhiveryService.calculateShipping(
+      effectiveOriginPin,
+      destinationPincode,
+      finalWeightGrams,
+      finalDimensions,
+      Number(orderValue) || 0,
+      paymentType || 'Pre-paid'
+    );
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to calculate shipping estimate', details: err.message });
+  }
+});
+
+// 3. Create Shipment
+app.post('/api/shipping/create', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { orderId, weightInGrams } = req.body;
+    if (!orderId) {
+      return res.status(400).json({ error: 'orderId is required' });
+    }
+
+    const order = await prisma.order.findFirst({
+      where: { OR: [{ id: orderId }, { orderNumber: orderId }] },
+      include: { items: { include: { product: true } }, user: true, shipment: true }
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const shipmentResult = await delhiveryService.createShipment({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      shippingAddress: order.shippingAddress,
+      items: order.items,
+      totalAmount: Number(order.totalAmount),
+      paymentMethod: order.paymentMethod,
+      weightInGrams: weightInGrams || 500
+    });
+
+    const updatedOrder = await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        shippingProvider: 'Delhivery',
+        awbNumber: shipmentResult.awbNumber,
+        trackingNumber: shipmentResult.trackingNumber,
+        shipmentId: shipmentResult.shipmentId,
+        shippingCharge: order.shippingFee || 0,
+        estimatedDelivery: shipmentResult.estimatedDelivery ? new Date(shipmentResult.estimatedDelivery) : null,
+        shipmentStatus: shipmentResult.status || 'CREATED',
+        labelUrl: shipmentResult.labelUrl,
+        trackingUrl: shipmentResult.trackingUrl,
+        manifestUrl: shipmentResult.manifestUrl,
+        lastTrackingUpdate: new Date(),
+        trackingHistory: [
+          {
+            date: new Date().toISOString(),
+            status: 'Shipment Created',
+            location: 'Delhivery Warehouse Hub',
+            remark: 'Shipment generated via Delhivery API'
+          }
+        ]
+      },
+      include: { items: { include: { product: true } }, user: true, shipment: true }
+    });
+
+    await prisma.shipment.upsert({
+      where: { orderId: order.id },
+      create: {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        shipmentNumber: shipmentResult.shipmentId,
+        provider: 'Delhivery',
+        courier: 'Delhivery Surface & Express',
+        awbNumber: shipmentResult.awbNumber,
+        trackingNumber: shipmentResult.trackingNumber,
+        trackingUrl: shipmentResult.trackingUrl,
+        status: 'CREATED',
+        labelUrl: shipmentResult.labelUrl,
+        shippingCost: order.shippingFee || 0,
+        estimatedDelivery: shipmentResult.estimatedDelivery ? new Date(shipmentResult.estimatedDelivery) : null
+      },
+      update: {
+        provider: 'Delhivery',
+        courier: 'Delhivery Surface & Express',
+        awbNumber: shipmentResult.awbNumber,
+        trackingNumber: shipmentResult.trackingNumber,
+        trackingUrl: shipmentResult.trackingUrl,
+        status: 'CREATED',
+        labelUrl: shipmentResult.labelUrl
+      }
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      awb: shipmentResult.awbNumber,
+      awbNumber: shipmentResult.awbNumber,
+      trackingUrl: shipmentResult.trackingUrl,
+      shipmentId: shipmentResult.shipmentId,
+      order: formatOrder(updatedOrder)
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to create shipment', details: err.message });
+  }
+});
+
+// 4. Track Shipment
+app.get('/api/shipping/track/:awb', async (req: Request, res: Response) => {
+  try {
+    const { awb } = req.params;
+    const tracking = await delhiveryService.trackShipment(awb);
+
+    const existingOrder = await prisma.order.findFirst({
+      where: { OR: [{ awbNumber: awb }, { trackingNumber: awb }, { shipmentId: awb }] }
+    });
+
+    if (existingOrder) {
+      await prisma.order.update({
+        where: { id: existingOrder.id },
+        data: {
+          shipmentStatus: tracking.status,
+          lastTrackingUpdate: new Date(),
+          trackingHistory: tracking.scans as any
+        }
+      }).catch(() => {});
+    }
+
+    return res.json(tracking);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to track shipment', details: err.message });
+  }
+});
+
+// 5. Schedule Pickup
+app.post('/api/shipping/pickup', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { orderId, awbNumber, pickupDate, pickupTime, packageCount, warehouseName } = req.body;
+    const result = await delhiveryService.requestPickup({ pickupDate, pickupTime, packageCount, warehouseName });
+
+    if (orderId || awbNumber) {
+      const existing = await prisma.order.findFirst({
+        where: { OR: [{ id: orderId || '' }, { orderNumber: orderId || '' }, { awbNumber: awbNumber || '' }] }
+      });
+      if (existing) {
+        await prisma.order.update({
+          where: { id: existing.id },
+          data: {
+            pickupRequested: true,
+            shipmentStatus: 'PICKUP_SCHEDULED',
+            lastTrackingUpdate: new Date()
+          }
+        }).catch(() => {});
+      }
+    }
+
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to schedule pickup', details: err.message });
+  }
+});
+
+// 6. Generate Printable Label
+app.get('/api/shipping/label/:awb', async (req: Request, res: Response) => {
+  const { awb } = req.params;
+  const labelHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Delhivery Shipping Label - ${awb}</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; background: #f8fafc; text-align: center; }
+    .label-box { width: 380px; margin: 0 auto; background: #fff; border: 3px solid #0f172a; padding: 20px; border-radius: 12px; text-align: left; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .logo { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: #0f172a; }
+    .badge { background: #4f46e5; color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .awb-barcode { background: #0f172a; color: #fff; text-align: center; padding: 14px; font-size: 20px; font-weight: 800; letter-spacing: 4px; margin: 14px 0; border-radius: 8px; font-family: monospace; }
+    .address-section { font-size: 12px; line-height: 1.6; margin-bottom: 12px; color: #334155; }
+    .footer { border-top: 1px dashed #cbd5e1; padding-top: 10px; font-size: 11px; text-align: center; color: #64748b; margin-top: 14px; }
+    @media print { body { background: #fff; padding: 0; } button { display: none; } .label-box { box-shadow: none; border-color: #000; } }
+  </style>
+</head>
+<body>
+  <button onclick="window.print()" style="margin-bottom: 20px; padding: 10px 24px; font-size: 14px; font-weight: 600; cursor: pointer; background: #4f46e5; color: #fff; border: none; border-radius: 8px;">Print Shipping Label</button>
+  <div class="label-box">
+    <div class="header">
+      <div class="logo">DELHIVERY EXPRESS</div>
+      <div class="badge">SURFACE AIR</div>
+    </div>
+    <div class="awb-barcode">${awb}</div>
+    <div class="address-section">
+      <strong style="color: #0f172a;">SHIP TO (RECIPIENT):</strong><br/>
+      VALUED CUSTOMER<br/>
+      DELIVERY ADDRESS ON FILE<br/>
+      PIN: 500032 - HYDERABAD, TELANGANA<br/>
+      PHONE: +91 98765 43210
+    </div>
+    <div class="address-section" style="border-top: 1px solid #e2e8f0; padding-top: 10px;">
+      <strong style="color: #0f172a;">RETURN / SHIPPER:</strong><br/>
+      NEXRA 3D Printing Hub, Plot 42, Gachibowli, Hyderabad - 500032
+    </div>
+    <div class="footer">
+      Routing: HYD/HUB/DELHIVERY | Package Weight: 0.50 kg | Prepaid
+    </div>
+  </div>
+</body>
+</html>`;
+  res.setHeader('Content-Type', 'text/html');
+  return res.send(labelHtml);
+});
+
+// 7. Generate Manifest
+app.get('/api/shipping/manifest/:awb', async (req: Request, res: Response) => {
+  const { awb } = req.params;
+  const manifestHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Delhivery Pickup Manifest - ${awb}</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 30px; background: #f8fafc; color: #0f172a; }
+    .container { max-width: 800px; margin: 0 auto; background: #fff; border: 1px solid #e2e8f0; padding: 32px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    table { width: 100%; border-collapse: collapse; margin-top: 24px; }
+    th, td { border: 1px solid #cbd5e1; padding: 12px; text-align: left; font-size: 13px; }
+    th { background: #f1f5f9; font-weight: 700; }
+    @media print { body { background: #fff; padding: 0; } button { display: none; } .container { box-shadow: none; border: none; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 16px;">
+      <div>
+        <h2 style="margin: 0; color: #4f46e5;">DELHIVERY HANDOVER MANIFEST</h2>
+        <p style="margin: 4px 0 0 0; color: #64748b; font-size: 13px;">Official Pickup & Dispatch Receipt</p>
+      </div>
+      <button onclick="window.print()" style="padding: 10px 20px; background: #0284c7; color: #fff; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;">Print Manifest</button>
+    </div>
+    <div style="margin-top: 20px; font-size: 14px; line-height: 1.6;">
+      <p><strong>Manifest Date:</strong> ${new Date().toLocaleDateString('en-IN')}</p>
+      <p><strong>Pickup Warehouse:</strong> NEXRA 3D Primary Hub (Gachibowli, PIN: 500032)</p>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>AWB / Waybill Number</th>
+          <th>Payment Mode</th>
+          <th>Destination PIN</th>
+          <th>Weight</th>
+          <th>Executive Signature</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td><strong>${awb}</strong></td>
+          <td>Pre-Paid</td>
+          <td>500032</td>
+          <td>0.50 kg</td>
+          <td>___________________</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="margin-top: 40px; display: flex; justify-content: space-between; font-size: 13px; color: #475569;">
+      <div>Authorized Shipper Signature</div>
+      <div>Courier Pickup Agent Signature</div>
+    </div>
+  </div>
+</body>
+</html>`;
+  res.setHeader('Content-Type', 'text/html');
+  return res.send(manifestHtml);
+});
+
+// 8. Cancel Shipment
+app.post('/api/shipping/cancel', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { awbNumber, orderId } = req.body;
+    const targetAwb = awbNumber || orderId;
+    if (!targetAwb) {
+      return res.status(400).json({ error: 'awbNumber or orderId is required' });
+    }
+
+    const cancelResult = await delhiveryService.cancelShipment(targetAwb);
+
+    const existing = await prisma.order.findFirst({
+      where: { OR: [{ awbNumber: targetAwb }, { id: targetAwb }, { orderNumber: targetAwb }] }
+    });
+
+    if (existing) {
+      await prisma.order.update({
+        where: { id: existing.id },
+        data: {
+          shipmentStatus: 'CANCELLED',
+          lastTrackingUpdate: new Date()
+        }
+      }).catch(() => {});
+    }
+
+    return res.json(cancelResult);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to cancel shipment', details: err.message });
   }
 });
 

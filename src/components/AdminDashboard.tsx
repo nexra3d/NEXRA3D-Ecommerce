@@ -196,6 +196,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     try {
       const orderIdentifier = targetOrder.id || targetOrder.orderNumber;
+
+      if (shipProvider === 'DELHIVERY') {
+        const res = await fetch('/api/shipping/create', {
+          method: 'POST',
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            orderId: orderIdentifier,
+            shippingMethod: shipServiceType
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          alert(`Delhivery Shipment Created successfully! AWB: ${data.awbNumber}`);
+          setShowCreateShipmentModal(false);
+          setSelectedOrderForShipment(null);
+          fetchShipments();
+          fetchAdminOrders();
+          onRefreshData();
+          return;
+        }
+      }
+
       const res = await fetch(`/api/admin/orders/${orderIdentifier}/shipments`, {
         method: 'POST',
         headers: getAuthHeaders(),
@@ -222,8 +244,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const err = await res.json();
         alert(err.error || 'Failed to create shipment');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      alert(`Error creating shipment: ${err.message}`);
     }
   };
 
@@ -2189,7 +2212,63 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {s.estimatedDeliveryDate || '3-5 Days'}
                           </td>
                           <td className="p-3 text-right">
-                            <div className="flex items-center justify-end space-x-1">
+                            <div className="flex items-center justify-end space-x-1.5 flex-wrap gap-y-1">
+                              {s.awbNumber && (
+                                <a
+                                  href={`/api/shipping/label/${s.awbNumber}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                                  title="Print Printable Delhivery Label"
+                                >
+                                  <Printer className="w-3 h-3 text-indigo-400" />
+                                  <span>Label</span>
+                                </a>
+                              )}
+
+                              {s.awbNumber && (
+                                <a
+                                  href={`/api/shipping/manifest/${s.awbNumber}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                                  title="View Handover Manifest"
+                                >
+                                  <Download className="w-3 h-3 text-amber-400" />
+                                  <span>Manifest</span>
+                                </a>
+                              )}
+
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetch('/api/shipping/pickup', {
+                                      method: 'POST',
+                                      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+                                      body: JSON.stringify({
+                                        orderId: s.orderNumber || s.orderId,
+                                        awbNumber: s.awbNumber,
+                                        pickupDate: new Date().toISOString().split('T')[0],
+                                        pickupTime: '10:00:00'
+                                      })
+                                    });
+                                    const data = await res.json();
+                                    if (res.ok) {
+                                      alert(`Pickup scheduled successfully! Request ID: ${data.pickupRequestId || data.pickupLocation || 'CONFIRMED'}`);
+                                      onRefreshData();
+                                    } else {
+                                      alert(`Pickup Scheduling: ${data.error || 'Request recorded'}`);
+                                    }
+                                  } catch (err: any) {
+                                    alert(`Failed to schedule pickup: ${err.message}`);
+                                  }
+                                }}
+                                className="px-2 py-1 bg-amber-600/80 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
+                                title="Request Courier Pickup"
+                              >
+                                Pickup
+                              </button>
+
                               <button
                                 onClick={() => {
                                   setSelectedShipment(s);
@@ -2199,15 +2278,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
                                 title="Update Status & Milestones"
                               >
-                                Update Status
-                              </button>
-
-                              <button
-                                onClick={() => handleOpenLabelModal(s.id)}
-                                className="p-1.5 text-slate-300 hover:text-white bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors cursor-pointer"
-                                title="Print Shipping Label"
-                              >
-                                <Printer className="w-3.5 h-3.5" />
+                                Status
                               </button>
                             </div>
                           </td>

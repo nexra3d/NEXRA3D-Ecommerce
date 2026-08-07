@@ -297,6 +297,21 @@ model Order {
   items             OrderItem[]
   shipment          Shipment?
   payment           Payment?
+
+  // Delhivery Shipping Fields
+  shippingProvider   String?
+  awbNumber          String?
+  trackingNumber     String?
+  shipmentId         String?
+  estimatedDelivery  DateTime?
+  shipmentStatus     String?
+  pickupRequested    Boolean?      @default(false)
+  labelUrl           String?
+  trackingUrl        String?
+  manifestUrl        String?
+  lastTrackingUpdate DateTime?
+  trackingHistory    Json?
+
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
