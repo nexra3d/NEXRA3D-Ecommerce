@@ -1570,7 +1570,7 @@ app.post('/api/products', requireAdminMiddleware, async (req: Request, res: Resp
   const {
     name, slug, sku, shortDescription, description, price, mrp,
     discountPercentage, taxPercentage, stockQuantity, categoryId,
-    imageUrl, isActive, isFeatured, isBestSeller, isNewArrival, specifications
+    imageUrl, isActive, isFeatured, isBestSeller, isNewArrival, specifications, weight
   } = parseResult.data;
 
   try {
@@ -1589,6 +1589,7 @@ app.post('/api/products', requireAdminMiddleware, async (req: Request, res: Resp
         taxPercentage: taxPercentage || 0,
         stockQuantity: stockQuantity ?? 10,
         categoryId,
+        weight: weight !== undefined && weight !== null ? Number(weight) : 0.5,
         imageUrl: imageUrl || null,
         specifications: specifications || null,
         isActive: isActive !== undefined ? Boolean(isActive) : true,
@@ -1629,7 +1630,7 @@ app.put('/api/products/:id', requireAdminMiddleware, async (req: Request, res: R
   const {
     name, slug, sku, shortDescription, description, price, mrp,
     discountPercentage, taxPercentage, stockQuantity, categoryId,
-    imageUrl, images, specifications, isFeatured, isBestSeller, isNewArrival, isActive
+    imageUrl, images, specifications, isFeatured, isBestSeller, isNewArrival, isActive, weight
   } = req.body;
 
   try {
@@ -1652,6 +1653,7 @@ app.put('/api/products/:id', requireAdminMiddleware, async (req: Request, res: R
         taxPercentage: taxPercentage !== undefined ? taxPercentage : existing.taxPercentage,
         stockQuantity: stockQuantity !== undefined ? stockQuantity : existing.stockQuantity,
         categoryId: categoryId !== undefined ? categoryId : existing.categoryId,
+        weight: weight !== undefined ? (weight !== null ? Number(weight) : null) : existing.weight,
         imageUrl: imageUrl !== undefined ? imageUrl : existing.imageUrl,
         specifications: specifications !== undefined ? specifications : existing.specifications,
         isFeatured: isFeatured !== undefined ? Boolean(isFeatured) : existing.isFeatured,
@@ -3725,17 +3727,24 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
         const qty = Math.max(1, Number(item.quantity) || 1);
         const dbP = dbProductsMap.get(item.productId || item.id);
 
-        let itemWeightGrams = 250;
-        const rawWeight = item.weight ?? (dbP?.weight ? Number(dbP.weight) : null);
+        let itemWeightGrams = 250; // Default fallback if unspecified in DB
+        const dbWeight = dbP?.weight ? Number(dbP.weight) : null;
+        const rawWeight = dbWeight !== null ? dbWeight : (item.weight ? Number(item.weight) : null);
+        
         if (rawWeight && rawWeight > 0) {
+          // If <= 20, assumed in kg (e.g. 0.5kg -> 500g); else assumed in grams
           itemWeightGrams = rawWeight <= 20 ? Math.round(rawWeight * 1000) : Math.round(rawWeight);
         }
         calculatedWeightGrams += itemWeightGrams * qty;
 
         const specs = (dbP?.specifications as any) || {};
-        const l = item.dimensions?.length || specs.length || specs.dimensions?.length || 15;
-        const w = item.dimensions?.width || specs.width || specs.dimensions?.width || 15;
-        const h = item.dimensions?.height || specs.height || specs.dimensions?.height || 5;
+        const dbL = specs.length || specs.dimensions?.length;
+        const dbW = specs.width || specs.dimensions?.width;
+        const dbH = specs.height || specs.dimensions?.height;
+
+        const l = dbL || item.dimensions?.length || 15;
+        const w = dbW || item.dimensions?.width || 15;
+        const h = dbH || item.dimensions?.height || 5;
 
         maxLength = Math.max(maxLength, Number(l) || 15);
         maxWidth = Math.max(maxWidth, Number(w) || 15);

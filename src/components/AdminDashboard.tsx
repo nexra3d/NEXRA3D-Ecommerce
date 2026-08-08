@@ -317,6 +317,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [prodIsFeatured, setProdIsFeatured] = useState(false);
   const [prodIsNewArrival, setProdIsNewArrival] = useState(false);
   const [prodIsBestSeller, setProdIsBestSeller] = useState(false);
+  const [prodWeight, setProdWeight] = useState('0.50');
+  const [prodLength, setProdLength] = useState('20');
+  const [prodWidth, setProdWidth] = useState('15');
+  const [prodHeight, setProdHeight] = useState('10');
   const [productFormError, setProductFormError] = useState<string | null>(null);
 
   // Stage 5 Image & Variant State for Editing Product
@@ -408,6 +412,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setProdIsFeatured(false);
     setProdIsNewArrival(false);
     setProdIsBestSeller(false);
+    setProdWeight('0.50');
+    setProdLength('20');
+    setProdWidth('15');
+    setProdHeight('10');
     setProductFormError(null);
     setProductImages([]);
     setProductVariants([]);
@@ -440,6 +448,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setProdIsFeatured(p.isFeatured ?? false);
     setProdIsNewArrival(p.isNewArrival ?? false);
     setProdIsBestSeller(p.isBestSeller ?? p.isTrending ?? false);
+    setProdWeight(p.weight !== null && p.weight !== undefined ? String(p.weight) : '0.50');
+    const specs = (p.specifications as any) || {};
+    setProdLength(String(specs.length || specs.dimensions?.length || '20'));
+    setProdWidth(String(specs.width || specs.dimensions?.width || '15'));
+    setProdHeight(String(specs.height || specs.dimensions?.height || '10'));
     setProductFormError(null);
 
     loadProductImagesAndVariants(p.id);
@@ -613,6 +626,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const price = Number(prodPrice);
     const mrp = prodMrp && !isNaN(Number(prodMrp)) && Number(prodMrp) >= price ? Number(prodMrp) : price;
 
+    const numWeight = Number(prodWeight);
+    const numLength = Number(prodLength);
+    const numWidth = Number(prodWidth);
+    const numHeight = Number(prodHeight);
+
+    if (isNaN(numWeight) || numWeight <= 0) {
+      setProductFormError('Weight must be a valid number greater than 0 kg.');
+      return;
+    }
+    if (isNaN(numLength) || numLength <= 0) {
+      setProductFormError('Length must be a valid number greater than 0 cm.');
+      return;
+    }
+    if (isNaN(numWidth) || numWidth <= 0) {
+      setProductFormError('Width must be a valid number greater than 0 cm.');
+      return;
+    }
+    if (isNaN(numHeight) || numHeight <= 0) {
+      setProductFormError('Height must be a valid number greater than 0 cm.');
+      return;
+    }
+
+    const existingP = editingProductId ? products.find((p) => p.id === editingProductId) : null;
+    const existingSpecs = (existingP?.specifications as any) || {};
+
     const payload = {
       name: prodName,
       sku: prodSku,
@@ -623,6 +661,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       categoryId: categoryId,
       stockQuantity: Number(prodStock || 0),
       lowStockThreshold: Number(prodLowStock || 5),
+      weight: numWeight,
+      specifications: {
+        ...existingSpecs,
+        length: numLength,
+        width: numWidth,
+        height: numHeight
+      },
       shortDescription: prodShortDesc || undefined,
       description: prodDescription || undefined,
       imageUrl: prodImageUrl || undefined,
@@ -1340,6 +1385,67 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         onChange={(e) => setProdImageUrl(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white"
                       />
+                    </div>
+                  </div>
+
+                  {/* SHIPPING INFORMATION SECTION */}
+                  <div className="bg-slate-900/60 border border-slate-700/80 rounded-xl p-3.5 space-y-2.5">
+                    <h5 className="font-bold text-indigo-300 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                      <span>Shipping Information</span>
+                    </h5>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div>
+                        <label className="block text-slate-400 font-semibold mb-1">Weight (kg) *</label>
+                        <input
+                          type="number"
+                          required
+                          step="0.01"
+                          min="0.01"
+                          placeholder="0.50"
+                          value={prodWeight}
+                          onChange={(e) => setProdWeight(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 font-semibold mb-1">Length (cm) *</label>
+                        <input
+                          type="number"
+                          required
+                          step="0.1"
+                          min="0.1"
+                          placeholder="20"
+                          value={prodLength}
+                          onChange={(e) => setProdLength(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 font-semibold mb-1">Width (cm) *</label>
+                        <input
+                          type="number"
+                          required
+                          step="0.1"
+                          min="0.1"
+                          placeholder="15"
+                          value={prodWidth}
+                          onChange={(e) => setProdWidth(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 font-semibold mb-1">Height (cm) *</label>
+                        <input
+                          type="number"
+                          required
+                          step="0.1"
+                          min="0.1"
+                          placeholder="10"
+                          value={prodHeight}
+                          onChange={(e) => setProdHeight(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-medium"
+                        />
+                      </div>
                     </div>
                   </div>
 

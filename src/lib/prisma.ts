@@ -32,6 +32,31 @@ const isPlaceholderDbUrl =
 
 const hasDatabaseUrl = !isPlaceholderDbUrl;
 
+let dbSchemaEnsured = false;
+export async function ensureDbSchema() {
+  if (dbSchemaEnsured || !hasDatabaseUrl || !rawPrisma || typeof rawPrisma.$executeRawUnsafe !== 'function') return;
+  dbSchemaEnsured = true;
+  try {
+    await rawPrisma.$executeRawUnsafe(`
+      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shippingProvider" TEXT;
+      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "awbNumber" TEXT;
+      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingNumber" TEXT;
+      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shipmentId" TEXT;
+      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "estimatedDelivery" TIMESTAMP(3);
+      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shipmentStatus" TEXT;
+      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "pickupRequested" BOOLEAN DEFAULT false;
+      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "labelUrl" TEXT;
+      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingUrl" TEXT;
+      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "manifestUrl" TEXT;
+      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "lastTrackingUpdate" TIMESTAMP(3);
+      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingHistory" JSONB;
+    `);
+    console.log('[Prisma Schema Sync] Successfully ensured orders table columns (pickupRequested, etc.) exist in PostgreSQL.');
+  } catch (err: any) {
+    console.warn('[Prisma Schema Sync] Note during schema check:', err?.message || err);
+  }
+}
+
 function createModelProxy(modelName: string) {
   const memoryHandler = memoryStore.createModelHandler(modelName);
 
@@ -45,6 +70,8 @@ function createModelProxy(modelName: string) {
           }
           return null;
         }
+
+        await ensureDbSchema();
 
         const rawModel = (rawPrisma as any)[modelName];
         if (!rawModel || typeof rawModel[prop] !== 'function') {

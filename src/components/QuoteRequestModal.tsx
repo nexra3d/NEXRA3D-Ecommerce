@@ -145,10 +145,10 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 relative">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200 relative">
         {/* Header Bar */}
-        <div className="bg-slate-900 text-white p-5 sm:p-8 relative shrink-0">
+        <div className="bg-slate-900 text-white p-6 sm:p-8 relative">
           <button
             onClick={onClose}
             className="absolute top-6 right-6 text-slate-400 hover:text-white p-1 rounded-full hover:bg-slate-800 transition-colors cursor-pointer"
@@ -167,7 +167,7 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="p-5 sm:p-8 overflow-y-auto flex-1 min-h-0">
+        <div className="p-6 sm:p-8 max-h-[80vh] overflow-y-auto">
           {isSuccess ? (
             <div className="text-center py-8 space-y-4">
               <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">

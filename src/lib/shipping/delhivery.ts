@@ -1,77 +1,8 @@
 import axios from 'axios';
 
-const DELHIVERY_BASE_URL = (process.env.DELHIVERY_BASE_URL || 'https://track.delhivery.com').replace(/\/$/, '');
+const DELHIVERY_BASE_URL = process.env.DELHIVERY_BASE_URL || 'https://track.delhivery.com';
 const DELHIVERY_API_TOKEN = process.env.DELHIVERY_API_TOKEN || '';
 const DEFAULT_ORIGIN_PINCODE = process.env.DELHIVERY_ORIGIN_PINCODE || '500032';
-
-function getAuthHeaderValue(token: string): string {
-  return token.startsWith('Bearer ') || token.startsWith('Token ') ? token : `Token ${token}`;
-}
-
-function formatDelhiveryHeaders(headers: Record<string, string | undefined> = {}) {
-  const sanitized: Record<string, string | undefined> = { ...headers };
-  if (sanitized.Authorization) {
-    const value = sanitized.Authorization;
-    if (value.startsWith('Bearer ')) {
-      sanitized.Authorization = `Bearer ****`;
-    } else if (value.startsWith('Token ')) {
-      sanitized.Authorization = `Token ****`;
-    }
-  }
-  return sanitized;
-}
-
-function getErrorMessage(payload: any, fallback: string) {
-  if (!payload) return fallback;
-  if (typeof payload === 'string') return payload;
-  if (payload.detail) return payload.detail;
-  if (payload.message) return payload.message;
-  if (payload.error) return payload.error;
-  if (payload.rmk) return payload.rmk;
-  if (payload.errors) return JSON.stringify(payload.errors);
-  return JSON.stringify(payload);
-}
-
-function classifyDelhiveryError(status: number | undefined, payload: any, fallback: string) {
-  const message = getErrorMessage(payload, fallback);
-  if (status === 401) {
-    return { errorType: 'INVALID_API_TOKEN', message: `401 Invalid API Token: ${message}` };
-  }
-  if (status === 403) {
-    return { errorType: 'UNAUTHORIZED_ACCOUNT', message: `403 Unauthorized Account: ${message}` };
-  }
-  if (status === 404) {
-    return { errorType: 'WRONG_ENDPOINT', message: `404 Wrong Delhivery API endpoint: ${message}` };
-  }
-  if (status === 422) {
-    return { errorType: 'INVALID_REQUEST_DATA', message: `422 Invalid Request Data: ${message}` };
-  }
-  if (status && status >= 500) {
-    return { errorType: 'SERVER_ERROR', message: `500 Delhivery Server Error: ${message}` };
-  }
-  return { errorType: 'NETWORK_ERROR', message: `Network/Timeout Error: ${message}` };
-}
-
-async function logAndSendRequest(method: 'GET' | 'POST', url: string, options: any = {}) {
-  console.log('----------------------------------------');
-  console.log('Delhivery Request');
-  console.log('URL:', url);
-  console.log('METHOD:', method);
-  console.log('HEADERS:', JSON.stringify(formatDelhiveryHeaders(options.headers || {}), null, 2));
-  if (options.params) console.log('QUERY PARAMETERS:', JSON.stringify(options.params, null, 2));
-  if (options.data !== undefined) console.log('BODY:', typeof options.data === 'string' ? options.data : JSON.stringify(options.data, null, 2));
-  console.log('----------------------------------------');
-  const response = await axios({ method, url, ...options, timeout: options.timeout || 15000 });
-  console.log('----------------------------------------');
-  console.log('Delhivery Response');
-  console.log('Status:', response.status);
-  console.log('Headers:', JSON.stringify(response.headers || {}, null, 2));
-  console.log('Body:', JSON.stringify(response.data, null, 2));
-  console.log('----------------------------------------');
-  return response;
-}
-
-export { classifyDelhiveryError, formatDelhiveryHeaders };
 
 export interface ServiceabilityResult {
   serviceable: boolean;
@@ -170,7 +101,6 @@ export async function checkServiceability(pincode: string): Promise<Serviceabili
     tokenProvided: Boolean(token),
     tokenLength: token ? token.length : 0
   });
-  console.log('[Delhivery Integration] Auth Type:', token.startsWith('Bearer ') ? 'Bearer' : 'Token');
 
   if (!token) {
     console.warn('[Delhivery Integration Warning] DELHIVERY_API_TOKEN environment variable is not configured. Please add DELHIVERY_API_TOKEN in Settings.');
@@ -189,12 +119,19 @@ export async function checkServiceability(pincode: string): Promise<Serviceabili
   const url = `${DELHIVERY_BASE_URL}/c/api/pin-codes/json/`;
   const params = { filter_codes: cleanPin };
   const headers = {
-    'Authorization': getAuthHeaderValue(token),
+    'Authorization': `Token ${token}`,
     'Accept': 'application/json'
   };
 
+  console.log('[Delhivery API Request] GET Serviceability:', {
+    url,
+    params,
+    headers: { Authorization: `Token ${token.substring(0, 4)}... (length ${token.length})` }
+  });
+
   try {
-    const response = await logAndSendRequest('GET', url, { params, headers, timeout: 7000 });
+    const response = await axios.get(url, { params, headers, timeout: 7000 });
+    console.log(`[Delhivery API Response] GET Serviceability Status: ${response.status}`, JSON.stringify(response.data));
 
     if (response.data && Array.isArray(response.data.delivery_codes)) {
       if (response.data.delivery_codes.length === 0) {
@@ -257,8 +194,19 @@ export async function checkServiceability(pincode: string): Promise<Serviceabili
   } catch (err: any) {
     const status = err.response?.status;
     const responseData = err.response?.data;
-    const errorInfo = classifyDelhiveryError(status, responseData, err.message || 'Serviceability request failed');
     console.error(`[Delhivery API Error] GET Serviceability Failed (Status: ${status || 'NETWORK_ERROR'}):`, JSON.stringify(responseData || err.message));
+
+    let errorMsg = `Delhivery API Error (${status || 'Connection Failed'}): `;
+    let errorType = 'API_ERROR';
+
+    if (status === 401 || status === 403) {
+      errorType = 'AUTH_ERROR';
+      errorMsg = `Delhivery API Authentication Error (${status}): ${responseData?.detail || responseData?.message || 'Invalid or unauthorized API Token'}`;
+    } else if (responseData?.detail || responseData?.message || responseData?.error) {
+      errorMsg += responseData.detail || responseData.message || responseData.error;
+    } else {
+      errorMsg += err.message;
+    }
 
     return {
       serviceable: false,
@@ -266,9 +214,9 @@ export async function checkServiceability(pincode: string): Promise<Serviceabili
       codAvailable: false,
       prepaidAvailable: false,
       estimatedDays: 0,
-      error: errorInfo.message,
-      errorType: errorInfo.errorType,
-      remarks: errorInfo.message
+      error: errorMsg,
+      errorType,
+      remarks: errorMsg
     };
   }
 }
@@ -299,13 +247,6 @@ async function fetchDelhiveryRate(params: {
     pt: params.paymentType === 'COD' ? 'COD' : 'Pre-paid'
   };
 
-  if (!params.destinationPincode || !params.originPincode) {
-    return {
-      error: 'Origin and destination pincodes are required for Delhivery rate calculation.',
-      errorType: 'INVALID_REQUEST_DATA'
-    };
-  }
-
   if (params.orderValue) {
     queryParams.clv = params.orderValue;
   }
@@ -326,15 +267,33 @@ async function fetchDelhiveryRate(params: {
   let lastStatusCode = 0;
 
   for (const url of endpoints) {
+    console.log(`
+Delhivery Shipping Request
+--------------------------
+DELHIVERY Endpoint: ${url}
+HTTP Method: GET
+Origin PIN: ${queryParams.o_pin}
+Destination PIN: ${queryParams.d_pin}
+Weight (grams): ${queryParams.cgm}
+Length: ${queryParams.l || 'N/A'}
+Width: ${queryParams.w || 'N/A'}
+Height: ${queryParams.h || 'N/A'}
+Payment Mode: ${queryParams.pt}
+Declared Value: ${queryParams.clv || 0}
+Package Count: 1
+--------------------------`);
+
     try {
-      const response = await logAndSendRequest('GET', url, {
+      const response = await axios.get(url, {
         params: queryParams,
         headers: {
-          'Authorization': getAuthHeaderValue(DELHIVERY_API_TOKEN),
+          'Authorization': `Token ${DELHIVERY_API_TOKEN}`,
           'Accept': 'application/json'
         },
         timeout: 7000
       });
+
+      console.log(`[Delhivery API Response] GET Rate Calculation (${params.mode}) Status ${response.status}:`, JSON.stringify(response.data));
 
       const data = response.data;
       let rateItem: any = null;
@@ -367,73 +326,25 @@ async function fetchDelhiveryRate(params: {
     } catch (err: any) {
       const status = err.response?.status;
       const respData = err.response?.data;
-      const errorInfo = classifyDelhiveryError(status, respData, err.message || `Rate request failed for ${params.mode}`);
       console.error(`[Delhivery API Error] Rate API (${url}, mode=${params.mode}) Failed (Status: ${status || 'NETWORK_ERROR'}):`, JSON.stringify(respData || err.message));
 
       lastStatusCode = status || 0;
-      lastErrorType = errorInfo.errorType;
-      lastError = errorInfo.message;
+      if (status === 401 || status === 403) {
+        lastErrorType = 'AUTH_ERROR';
+        lastError = `Delhivery Rate API Authentication Error (${status}): ${respData?.detail || respData?.message || 'Unauthorized API Token'}`;
+      } else if (respData?.detail || respData?.message || respData?.error) {
+        lastError = `Delhivery Rate API Error (${status || 'API'}): ${respData.detail || respData.message || respData.error}`;
+      } else {
+        lastError = `Delhivery Rate API Error: ${err.message}`;
+      }
     }
   }
 
-  // All endpoints failed. Provide intelligent fallback based on distance and weight
-  console.warn(`[Delhivery Fallback] Using estimated rates after real API failed: ${lastError}`);
-  
-  const estimatedCharge = calculateFallbackRate(
-    params.originPincode,
-    params.destinationPincode,
-    params.weightInGrams,
-    params.mode
-  );
-  
   return {
-    charge: estimatedCharge,
-    estimatedDays: params.mode === 'E' ? 2 : 4,
-    edd: getEstimatedDeliveryDate(params.mode)
+    error: lastError || `Delhivery rate calculation failed for ${params.mode === 'S' ? 'Surface' : 'Express'}.`,
+    errorType: lastErrorType,
+    statusCode: lastStatusCode
   };
-}
-
-/**
- * Fallback rate calculation when live API fails
- * Base rates are typical Delhivery charges for standard shipments
- */
-function calculateFallbackRate(originPin: string, destPin: string, weightGrams: number, mode: 'S' | 'E'): number {
-  // Base rates (in INR) for typical shipments
-  const baseRateSurface = 40;
-  const baseRateExpress = 120;
-  const baseRate = mode === 'E' ? baseRateExpress : baseRateSurface;
-  
-  // Weight surcharge: +2 per 100g above 500g
-  const weightSurcharge = Math.max(0, Math.ceil((weightGrams - 500) / 100)) * 2;
-  
-  // Distance surcharge: simple check if cross-state
-  const originState = getStateFromPin(originPin);
-  const destState = getStateFromPin(destPin);
-  const distanceSurcharge = originState !== destState ? 20 : 0;
-  
-  return baseRate + weightSurcharge + distanceSurcharge;
-}
-
-function getStateFromPin(pincode: string): string {
-  // Map common pincodes to states (simplified; extend as needed)
-  const pin = pincode.slice(0, 2);
-  const stateMap: Record<string, string> = {
-    '50': 'TS', // Telangana
-    '40': 'MH', // Maharashtra
-    '11': 'DL', // Delhi
-    '55': 'MH', // Maharashtra
-    '62': 'RJ', // Rajasthan
-    '70': 'KA', // Karnataka
-    '44': 'TG', // Tamil Nadu
-  };
-  return stateMap[pin] || 'OTHER';
-}
-
-function getEstimatedDeliveryDate(mode: 'S' | 'E'): string {
-  const date = new Date();
-  const daysToAdd = mode === 'E' ? 2 : 4;
-  date.setDate(date.getDate() + daysToAdd);
-  return date.toISOString().split('T')[0];
 }
 
 /**
@@ -492,10 +403,8 @@ export async function calculateShipping(
   ]);
 
   const options: ShippingOption[] = [];
-  let usedFallback = false;
 
   if (surfaceRes.charge && surfaceRes.charge > 0) {
-    usedFallback = !surfaceRes.error;
     options.push({
       id: 'delhivery-surface',
       name: 'Delhivery Surface',
@@ -503,7 +412,7 @@ export async function calculateShipping(
       charge: surfaceRes.charge,
       estimatedDays: surfaceRes.estimatedDays || 3,
       etaText: surfaceRes.edd ? `ETA: ${surfaceRes.edd}` : `${surfaceRes.estimatedDays || 3}–${(surfaceRes.estimatedDays || 3) + 2} Days`,
-      description: 'Standard ground delivery across India'
+      description: 'Standard ground delivery calculated live via Delhivery Rate API'
     });
   }
 
@@ -515,12 +424,12 @@ export async function calculateShipping(
       charge: expressRes.charge,
       estimatedDays: expressRes.estimatedDays || 1,
       etaText: expressRes.edd ? `ETA: ${expressRes.edd}` : `${expressRes.estimatedDays || 1}–${(expressRes.estimatedDays || 1) + 1} Days`,
-      description: 'Priority air delivery across India'
+      description: 'Priority air delivery calculated live via Delhivery Rate API'
     });
   }
 
   if (options.length === 0) {
-    const rateError = surfaceRes.error || expressRes.error || 'Delhivery shipping rate calculation unavailable. Please contact support.';
+    const rateError = surfaceRes.error || expressRes.error || 'Delhivery live shipping rate calculation failed.';
     const rateErrorType = surfaceRes.errorType || expressRes.errorType || 'API_ERROR';
     console.error(`[Delhivery Shipping Estimate] No valid rate options returned. Error: ${rateError}`);
 
@@ -559,10 +468,6 @@ export async function calculateShipping(
   etaDate.setDate(etaDate.getDate() + selectedOption.estimatedDays);
   const estimatedDeliveryDate = etaDate.toISOString().split('T')[0];
 
-  const remark = usedFallback 
-    ? 'Live shipping rates calculated successfully via Delhivery API' 
-    : 'Estimated shipping rates calculated (live API unavailable; fallback applied)';
-
   return {
     serviceable: true,
     pincode: cleanPin,
@@ -576,7 +481,7 @@ export async function calculateShipping(
     estimatedDeliveryDate,
     carrier: selectedOption.provider,
     options,
-    remarks: remark
+    remarks: 'Live shipping rates calculated successfully via Delhivery API'
   };
 }
 
@@ -638,10 +543,9 @@ export async function createShipment(orderData: {
       params.append('format', 'json');
       params.append('data', JSON.stringify(payloadData));
 
-      const response = await logAndSendRequest('POST', `${DELHIVERY_BASE_URL}/api/cmu/create.json`, {
-        data: params,
+      const response = await axios.post(`${DELHIVERY_BASE_URL}/api/cmu/create.json`, params, {
         headers: {
-          'Authorization': getAuthHeaderValue(DELHIVERY_API_TOKEN),
+          'Authorization': `Token ${DELHIVERY_API_TOKEN}`,
           'Content-Type': 'application/x-www-form-urlencoded'
         },
         timeout: 8000
@@ -664,10 +568,7 @@ export async function createShipment(orderData: {
         };
       }
     } catch (err: any) {
-      const status = err.response?.status;
-      const responseData = err.response?.data;
-      const errorInfo = classifyDelhiveryError(status, responseData, err.message || 'Shipment creation failed');
-      console.warn('Delhivery create shipment API call failed, generated fallback order shipment:', errorInfo.message);
+      console.warn('Delhivery create shipment API call failed, generated fallback order shipment:', err.message);
     }
   }
 
@@ -692,9 +593,9 @@ export async function createShipment(orderData: {
 export async function generateAWB(orderId: string): Promise<{ awbNumber: string }> {
   if (DELHIVERY_API_TOKEN) {
     try {
-      const response = await logAndSendRequest('GET', `${DELHIVERY_BASE_URL}/waybill/api/fetch/json/`, {
+      const response = await axios.get(`${DELHIVERY_BASE_URL}/waybill/api/fetch/json/`, {
         headers: {
-          'Authorization': getAuthHeaderValue(DELHIVERY_API_TOKEN)
+          'Authorization': `Token ${DELHIVERY_API_TOKEN}`
         },
         timeout: 5000
       });
@@ -732,15 +633,14 @@ export async function requestPickup(pickupData?: {
 
   if (DELHIVERY_API_TOKEN) {
     try {
-      const response = await logAndSendRequest('POST', `${DELHIVERY_BASE_URL}/fm/request/new/`, {
-        data: {
-          pickup_time: pickupData?.pickupTime || '10:00:00',
-          pickup_date: scheduledDate,
-          pickup_location: pickupData?.warehouseName || 'NEXRA 3D Primary Hub',
-          expected_package_count: pickupData?.packageCount || 1
-        },
+      const response = await axios.post(`${DELHIVERY_BASE_URL}/fm/request/new/`, {
+        pickup_time: pickupData?.pickupTime || '10:00:00',
+        pickup_date: scheduledDate,
+        pickup_location: pickupData?.warehouseName || 'NEXRA 3D Primary Hub',
+        expected_package_count: pickupData?.packageCount || 1
+      }, {
         headers: {
-          'Authorization': getAuthHeaderValue(DELHIVERY_API_TOKEN),
+          'Authorization': `Token ${DELHIVERY_API_TOKEN}`,
           'Content-Type': 'application/json'
         },
         timeout: 5000
@@ -773,10 +673,10 @@ export async function requestPickup(pickupData?: {
 export async function trackShipment(awbNumber: string): Promise<TrackingResult> {
   if (DELHIVERY_API_TOKEN) {
     try {
-      const response = await logAndSendRequest('GET', `${DELHIVERY_BASE_URL}/api/v1/packages/json/`, {
+      const response = await axios.get(`${DELHIVERY_BASE_URL}/api/v1/packages/json/`, {
         params: { waybill: awbNumber },
         headers: {
-          'Authorization': getAuthHeaderValue(DELHIVERY_API_TOKEN)
+          'Authorization': `Token ${DELHIVERY_API_TOKEN}`
         },
         timeout: 5000
       });
@@ -849,13 +749,12 @@ export async function trackShipment(awbNumber: string): Promise<TrackingResult> 
 export async function cancelShipment(awbNumber: string): Promise<{ success: boolean; message: string }> {
   if (DELHIVERY_API_TOKEN) {
     try {
-      const response = await logAndSendRequest('POST', `${DELHIVERY_BASE_URL}/api/p/edit`, {
-        data: {
-          waybill: awbNumber,
-          cancellation: true
-        },
+      const response = await axios.post(`${DELHIVERY_BASE_URL}/api/p/edit`, {
+        waybill: awbNumber,
+        cancellation: true
+      }, {
         headers: {
-          'Authorization': getAuthHeaderValue(DELHIVERY_API_TOKEN),
+          'Authorization': `Token ${DELHIVERY_API_TOKEN}`,
           'Content-Type': 'application/json'
         },
         timeout: 5000

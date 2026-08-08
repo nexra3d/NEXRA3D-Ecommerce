@@ -472,10 +472,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in">
-      <div className="bg-white w-full max-w-2xl max-h-[90vh] sm:max-h-[88vh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 overflow-hidden relative">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in">
+      <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden relative">
         {/* Header */}
-        <div className="p-5 sm:p-6 bg-slate-900 text-white flex items-center justify-between shrink-0">
+        <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Lock className="w-5 h-5 text-emerald-400" />
             <div>
@@ -486,13 +486,13 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white bg-slate-800 rounded-full transition-colors cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-white bg-slate-800 rounded-full transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-5 sm:p-6 space-y-6 overflow-y-auto flex-1 min-h-0">
+        <div className="p-6 space-y-6">
           {checkoutError && (
             <div className="bg-red-50 border border-red-200 text-red-800 rounded-2xl p-4 text-xs font-medium flex items-center justify-between gap-3">
               <span>{checkoutError}</span>
@@ -719,6 +719,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                             <Truck className="w-3.5 h-3.5 text-indigo-600" />
                             Select Shipping Option
                           </span>
+                          <span className="text-[10px] text-slate-500 font-medium">Powered by Delhivery API</span>
                         </div>
 
                         <div className="space-y-2">

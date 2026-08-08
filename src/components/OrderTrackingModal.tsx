@@ -48,10 +48,10 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
   const awbTrackingNumber = activeShipments[0]?.awbNumber || activeShipments[0]?.trackingNumber || order.shipment?.awbNumber || order.shipment?.trackingNumber || order.trackingNumber || 'Awaiting Dispatch';
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in">
-      <div className="bg-white w-full max-w-3xl max-h-[90vh] flex flex-col rounded-3xl shadow-2xl border border-slate-200 overflow-hidden relative">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in">
+      <div className="bg-white w-full max-w-3xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden relative">
         {/* Header */}
-        <div className="p-5 sm:p-6 bg-slate-900 text-white flex items-center justify-between shrink-0">
+        <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold">
               <Truck className="w-5 h-5" />
@@ -85,7 +85,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
           </div>
         </div>
 
-        <div className="p-5 sm:p-6 space-y-8 overflow-y-auto flex-1 min-h-0">
+        <div className="p-6 space-y-8 overflow-y-auto max-h-[80vh]">
           {/* Delhivery Express Carrier Information */}
           <CourierCard
             provider={order.shippingProvider || 'Delhivery'}
