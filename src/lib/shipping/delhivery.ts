@@ -110,6 +110,57 @@ export function formatDelhiveryHeaders(headers: Record<string, string> = {}) {
   return masked;
 }
 
+function sanitizeUpstreamPayload(value: any): string | null {
+  if (value === null || value === undefined) return null;
+
+  if (typeof value === 'string') {
+    return value
+      .replace(/Authorization\s*:\s*[^\n\r]+/gi, 'Authorization: [redacted]')
+      .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
+      .replace(/Token\s+[A-Za-z0-9._-]+/gi, 'Token [redacted]');
+  }
+
+  if (typeof value === 'object') {
+    const redacted: Record<string, any> = {};
+    for (const [key, item] of Object.entries(value)) {
+      const lowerKey = key.toLowerCase();
+      if (/token|secret|password|jwt|authorization|cookie|set-cookie|api[-_]?key|x-api-key|bearer/i.test(lowerKey)) {
+        redacted[key] = '[redacted]';
+        continue;
+      }
+      redacted[key] = sanitizeUpstreamPayload(item);
+    }
+    try {
+      return JSON.stringify(redacted);
+    } catch {
+      return '[redacted upstream payload]';
+    }
+  }
+
+  return String(value);
+}
+
+function getDiagnosticPayload(err: any, fallbackMessage: string) {
+  const status = err?.response?.status ?? err?.status ?? null;
+  const statusText = err?.response?.statusText ?? err?.statusText ?? null;
+  const responseData = err?.response?.data ?? err?.data ?? null;
+  const requestId = err?.response?.headers?.['x-request-id'] || err?.response?.headers?.['X-Request-Id'] || err?.response?.headers?.['request-id'] || null;
+  const upstreamMessage = sanitizeUpstreamPayload(
+    responseData && (responseData.message || responseData.error || responseData.detail || responseData.errors || responseData.description)
+      ? (responseData.message || responseData.error || responseData.detail || responseData.errors || responseData.description)
+      : responseData || fallbackMessage
+  );
+  const upstreamCode = responseData && (responseData.code || responseData.error_code || responseData.responseCode || responseData.statusCode || null);
+
+  return {
+    status,
+    statusText,
+    upstreamMessage,
+    upstreamCode,
+    requestId
+  };
+}
+
 function getAuthoritativeDelhiveryRateUrl(): string {
   return process.env.DELHIVERY_RATE_API_URL || 'https://track.delhivery.com/api/kinko/v1/invoice/charges/.json';
 }
@@ -436,6 +487,7 @@ Declared Value: ₹${queryParams.clv || 0}
     const status = err.response?.status;
     const respData = err.response?.data;
     const { errorType, message } = classifyDelhiveryError(status || 0, respData || err.message, err.message || 'Delhivery rate calculation failed');
+    const diagnostic = getDiagnosticPayload(err, message);
 
     if (status === 404 || /404/.test(String(err.message || '')) || /not found|wrong endpoint|endpoint/i.test(String(respData?.detail || respData?.message || respData?.error || ''))) {
       console.error('[Delhivery API Error] Rate API endpoint rejected the request:', formatDelhiveryHeaders({ Authorization: `Token ${token}` }));
@@ -444,7 +496,25 @@ Declared Value: ₹${queryParams.clv || 0}
     return {
       error: message,
       errorType,
-      statusCode: status || 500
+      statusCode: status || 500,
+      diagnostic: {
+        provider: 'delhivery',
+        method: 'GET',
+        endpoint: rateUrl,
+        status: diagnostic.status,
+        statusText: diagnostic.statusText,
+        upstreamMessage: diagnostic.upstreamMessage,
+        upstreamCode: diagnostic.upstreamCode,
+        requestId: diagnostic.requestId,
+        originPincode: params.originPincode,
+        destinationPincode: params.destinationPincode,
+        weightGrams: params.weightInGrams,
+        lengthCm: params.dimensions?.length ?? null,
+        widthCm: params.dimensions?.width ?? null,
+        heightCm: params.dimensions?.height ?? null,
+        paymentMode: params.paymentType,
+        declaredValue: params.orderValue ?? 0
+      }
     };
   }
 }

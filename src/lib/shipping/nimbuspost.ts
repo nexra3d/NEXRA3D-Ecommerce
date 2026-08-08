@@ -26,7 +26,7 @@ let tokenExpiryTime: number = 0;
 /**
  * Get or refresh NimbusPost API Auth Token
  */
-export async function getNimbusPostAuthToken(): Promise<{ token: string | null; error?: string; statusCode?: number }> {
+export async function getNimbusPostAuthToken(): Promise<{ token: string | null; error?: string; statusCode?: number; diagnostic?: any }> {
   const { baseUrl, email, password } = getNimbusPostConfig();
 
   if (cachedToken && Date.now() < tokenExpiryTime - 300000) {
@@ -37,7 +37,19 @@ export async function getNimbusPostAuthToken(): Promise<{ token: string | null; 
     return {
       token: null,
       error: 'NimbusPost credentials are not configured in environment variables (NIMBUSPOST_EMAIL and NIMBUSPOST_PASSWORD required).',
-      statusCode: 401
+      statusCode: 401,
+      diagnostic: {
+        provider: 'nimbuspost',
+        stage: 'login',
+        method: 'POST',
+        endpoint: `${baseUrl.replace(/\/$/, '')}/users/login`,
+        status: 401,
+        statusText: 'Unauthorized',
+        upstreamMessage: 'NimbusPost credentials are not configured in environment variables (NIMBUSPOST_EMAIL and NIMBUSPOST_PASSWORD required).',
+        upstreamCode: 'AUTHENTICATION_ERROR',
+        requestId: null,
+        credentialsConfigured: false
+      }
     };
   }
 
@@ -56,11 +68,11 @@ export async function getNimbusPostAuthToken(): Promise<{ token: string | null; 
     if (token) {
       cachedToken = token;
       tokenExpiryTime = Date.now() + (23 * 60 * 60 * 1000);
-      return { token };
+      return { token, diagnostic: { provider: 'nimbuspost', stage: 'login', method: 'POST', endpoint: loginUrl, status: response.status, statusText: response.statusText, upstreamMessage: payload?.message || payload?.error || 'NimbusPost login succeeded', upstreamCode: payload?.code || null, requestId: response.headers?.['x-request-id'] || response.headers?.['X-Request-Id'] || response.headers?.['request-id'] || null, credentialsConfigured: true } };
     }
 
     const errMsg = payload?.message || payload?.error || 'Authentication failed: Invalid credentials';
-    return { token: null, error: `NimbusPost Auth Failed: ${errMsg}`, statusCode: response.status };
+    return { token: null, error: `NimbusPost Auth Failed: ${errMsg}`, statusCode: response.status, diagnostic: { provider: 'nimbuspost', stage: 'login', method: 'POST', endpoint: loginUrl, status: response.status, statusText: response.statusText, upstreamMessage: errMsg, upstreamCode: payload?.code || null, requestId: response.headers?.['x-request-id'] || response.headers?.['X-Request-Id'] || response.headers?.['request-id'] || null, credentialsConfigured: true } };
   } catch (err: any) {
     const status = err.response?.status;
     const respData = err.response?.data;
@@ -68,7 +80,19 @@ export async function getNimbusPostAuthToken(): Promise<{ token: string | null; 
     return {
       token: null,
       error: `NimbusPost authentication failed (${status || 'Connection Error'}): ${errMsg}`,
-      statusCode: status || 500
+      statusCode: status || 500,
+      diagnostic: {
+        provider: 'nimbuspost',
+        stage: 'login',
+        method: 'POST',
+        endpoint: `${baseUrl.replace(/\/$/, '')}/users/login`,
+        status: status || 500,
+        statusText: err.response?.statusText || 'ERROR',
+        upstreamMessage: errMsg,
+        upstreamCode: respData?.code || null,
+        requestId: err.response?.headers?.['x-request-id'] || err.response?.headers?.['X-Request-Id'] || err.response?.headers?.['request-id'] || null,
+        credentialsConfigured: Boolean(email && password)
+      }
     };
   }
 }
@@ -207,7 +231,26 @@ Declared Value: ₹${orderAmount}
         options: [],
         error: 'NimbusPost returned an empty response.',
         errorType: 'API_ERROR',
-        statusCode: response.status
+        statusCode: response.status,
+        diagnostic: {
+          provider: 'nimbuspost',
+          stage: 'serviceability',
+          method: 'POST',
+          endpoint: url,
+          status: response.status,
+          statusText: response.statusText,
+          upstreamMessage: 'NimbusPost returned an empty response.',
+          upstreamCode: null,
+          requestId: response.headers?.['x-request-id'] || response.headers?.['X-Request-Id'] || response.headers?.['request-id'] || null,
+          originPincode: cleanOriginPin,
+          destinationPincode: cleanDestPin,
+          weightGrams: weightGrams,
+          lengthCm: dimensions.length,
+          widthCm: dimensions.width,
+          heightCm: dimensions.height,
+          paymentMode: isCod ? 'COD' : 'Pre-paid',
+          declaredValue: orderAmount
+        }
       };
     }
 
@@ -221,7 +264,26 @@ Declared Value: ₹${orderAmount}
         options: [],
         error: resData.message || resData.error || `Destination PIN ${cleanDestPin} is not serviceable by NimbusPost couriers.`,
         errorType: 'UNSERVICEABLE',
-        statusCode: 200
+        statusCode: 200,
+        diagnostic: {
+          provider: 'nimbuspost',
+          stage: 'serviceability',
+          method: 'POST',
+          endpoint: url,
+          status: response.status,
+          statusText: response.statusText,
+          upstreamMessage: resData.message || resData.error || `Destination PIN ${cleanDestPin} is not serviceable by NimbusPost couriers.`,
+          upstreamCode: resData.code || null,
+          requestId: response.headers?.['x-request-id'] || response.headers?.['X-Request-Id'] || response.headers?.['request-id'] || null,
+          originPincode: cleanOriginPin,
+          destinationPincode: cleanDestPin,
+          weightGrams: weightGrams,
+          lengthCm: dimensions.length,
+          widthCm: dimensions.width,
+          heightCm: dimensions.height,
+          paymentMode: isCod ? 'COD' : 'Pre-paid',
+          declaredValue: orderAmount
+        }
       };
     }
 
@@ -284,7 +346,26 @@ Declared Value: ₹${orderAmount}
       options: [],
       error: errorMsg,
       errorType,
-      statusCode: status || 500
+      statusCode: status || 500,
+      diagnostic: {
+        provider: 'nimbuspost',
+        stage: 'serviceability',
+        method: 'POST',
+        endpoint: `${config.baseUrl.replace(/\/$/, '')}/courier/serviceability`,
+        status: status || 500,
+        statusText: err.response?.statusText || 'ERROR',
+        upstreamMessage: errorMsg,
+        upstreamCode: respData?.code || null,
+        requestId: err.response?.headers?.['x-request-id'] || err.response?.headers?.['X-Request-Id'] || err.response?.headers?.['request-id'] || null,
+        originPincode: cleanOriginPin,
+        destinationPincode: cleanDestPin,
+        weightGrams: weightGrams,
+        lengthCm: dimensions.length,
+        widthCm: dimensions.width,
+        heightCm: dimensions.height,
+        paymentMode: isCod ? 'COD' : 'Pre-paid',
+        declaredValue: orderAmount
+      }
     };
   }
 }

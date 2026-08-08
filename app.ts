@@ -4080,61 +4080,79 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
     }
 
     if (combinedOptions.length === 0) {
-      const delhiveryDiagnostic = delhiveryRes.status === 'fulfilled'
-        ? buildProviderDiagnostic(
-            'delhivery',
-            delhiveryRes.value?.statusCode || 403,
-            (delhiveryRes.value?.errorType === 'AUTH_ERROR' || delhiveryRes.value?.errorType === 'BAD_REQUEST') ? 'AUTHORIZATION_ERROR' : 'UPSTREAM_ERROR',
-            delhiveryRes.value?.errorType === 'AUTH_ERROR'
-              ? 'Delhivery rejected the shipping-rate request.'
-              : 'Delhivery shipping-rate request failed.',
-            delhiveryRes.value?.error || delhiveryRes.value?.remarks || 'Delhivery rate calculation failed'
-          )
-        : buildProviderDiagnostic(
-            'delhivery',
-            delhiveryRes.reason?.statusCode || 403,
-            'AUTHORIZATION_ERROR',
-            'Delhivery rejected the shipping-rate request.',
-            delhiveryRes.reason?.message || 'Delhivery rate calculation failed'
-          );
+      const delhiveryResult = delhiveryRes.status === 'fulfilled' ? (delhiveryRes.value || {}) : (delhiveryRes.reason || {});
+      const nimbusResult = nimbusRes.status === 'fulfilled' ? (nimbusRes.value || {}) : (nimbusRes.reason || {});
 
-      const nimbusDiagnostic = nimbusRes.status === 'fulfilled'
-        ? buildProviderDiagnostic(
-            'nimbuspost',
-            nimbusRes.value?.statusCode || 503,
-            nimbusRes.value?.errorType === 'AUTH_ERROR' ? 'AUTHORIZATION_ERROR' : 'UPSTREAM_ERROR',
-            nimbusRes.value?.errorType === 'AUTH_ERROR'
-              ? 'NimbusPost authentication/service error.'
-              : 'NimbusPost shipping-rate request failed.',
-            nimbusRes.value?.error || nimbusRes.value?.remarks || 'NimbusPost rate calculation failed'
-          )
-        : buildProviderDiagnostic(
-            'nimbuspost',
-            nimbusRes.reason?.statusCode || 503,
-            'UPSTREAM_ERROR',
-            'NimbusPost shipping-rate request failed.',
-            nimbusRes.reason?.message || 'NimbusPost rate calculation failed'
-          );
+      const delhiveryDiagnostic = {
+        provider: 'delhivery',
+        success: false,
+        status: delhiveryResult.statusCode || delhiveryResult.diagnostic?.status || null,
+        statusText: delhiveryResult.diagnostic?.statusText || null,
+        errorType: delhiveryResult.errorType || 'UPSTREAM_ERROR',
+        message: delhiveryResult.error || 'Delhivery shipping-rate request failed.',
+        upstreamMessage: delhiveryResult.diagnostic?.upstreamMessage || delhiveryResult.error || delhiveryResult.remarks || null,
+        upstreamCode: delhiveryResult.diagnostic?.upstreamCode || null,
+        requestId: delhiveryResult.diagnostic?.requestId || null,
+        requestParameters: delhiveryResult.diagnostic || null
+      };
+
+      const nimbusDiagnostic = {
+        provider: 'nimbuspost',
+        success: false,
+        status: nimbusResult.statusCode || nimbusResult.diagnostic?.status || null,
+        statusText: nimbusResult.diagnostic?.statusText || null,
+        errorType: nimbusResult.errorType || 'UPSTREAM_ERROR',
+        message: nimbusResult.error || 'NimbusPost shipping-rate request failed.',
+        upstreamMessage: nimbusResult.diagnostic?.upstreamMessage || nimbusResult.error || nimbusResult.remarks || null,
+        upstreamCode: nimbusResult.diagnostic?.upstreamCode || null,
+        requestId: nimbusResult.diagnostic?.requestId || null,
+        requestParameters: nimbusResult.diagnostic || null
+      };
 
       return res.json({
+        success: false,
         serviceable: false,
         pincode: destinationPincode,
         codAvailable: false,
         options: [],
+        rates: [],
+        errors: [],
         error: 'Unable to calculate live shipping rates.',
         remarks: 'Unable to calculate live shipping rates.',
+        providers: {
+          delhivery: delhiveryDiagnostic,
+          nimbuspost: nimbusDiagnostic
+        },
         providerErrors: [delhiveryDiagnostic, nimbusDiagnostic]
       });
     }
 
     return res.json({
+      success: true,
       serviceable: true,
       pincode: destinationPincode,
       city,
       state,
       codAvailable,
       options: combinedOptions,
-      providers: Array.from(new Set(combinedOptions.map(o => o.provider || 'delhivery')))
+      rates: combinedOptions,
+      providers: {
+        delhivery: {
+          success: delhiveryRes.status === 'fulfilled' && Boolean(delhiveryRes.value && delhiveryRes.value.serviceable),
+          status: delhiveryRes.status === 'fulfilled' ? (delhiveryRes.value?.statusCode || null) : null,
+          errorType: delhiveryRes.status === 'fulfilled' ? (delhiveryRes.value?.errorType || null) : 'REJECTED',
+          message: delhiveryRes.status === 'fulfilled' ? (delhiveryRes.value?.error || null) : 'Rejected by provider',
+          upstreamMessage: delhiveryRes.status === 'fulfilled' ? (delhiveryRes.value?.diagnostic?.upstreamMessage || null) : null
+        },
+        nimbuspost: {
+          success: nimbusRes.status === 'fulfilled' && Boolean(nimbusRes.value && nimbusRes.value.serviceable),
+          status: nimbusRes.status === 'fulfilled' ? (nimbusRes.value?.statusCode || null) : null,
+          errorType: nimbusRes.status === 'fulfilled' ? (nimbusRes.value?.errorType || null) : 'REJECTED',
+          message: nimbusRes.status === 'fulfilled' ? (nimbusRes.value?.error || null) : 'Rejected by provider',
+          upstreamMessage: nimbusRes.status === 'fulfilled' ? (nimbusRes.value?.diagnostic?.upstreamMessage || null) : null
+        }
+      },
+      providersList: Array.from(new Set(combinedOptions.map(o => o.provider || 'delhivery')))
     });
   } catch (err: any) {
     if (err.shippingDataConfigured === false) {
