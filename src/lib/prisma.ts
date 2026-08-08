@@ -38,6 +38,10 @@ export async function ensureDbSchema() {
   dbSchemaEnsured = true;
   try {
     await rawPrisma.$executeRawUnsafe(`
+      ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "weight" DOUBLE PRECISION;
+      ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "length" DOUBLE PRECISION;
+      ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "width" DOUBLE PRECISION;
+      ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "height" DOUBLE PRECISION;
       ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shippingProvider" TEXT;
       ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "awbNumber" TEXT;
       ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingNumber" TEXT;

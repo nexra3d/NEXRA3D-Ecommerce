@@ -107,7 +107,10 @@ function formatPrismaProductResponse(p: any) {
     stockQuantity: p.stockQuantity ?? 0,
     stock: p.stockQuantity ?? 0,
     lowStockThreshold: p.lowStockThreshold ?? 5,
-    weight: p.weight ? Number(p.weight) : null,
+    weight: p.weight !== null && p.weight !== undefined ? Number(p.weight) : null,
+    length: p.length !== null && p.length !== undefined ? Number(p.length) : (p.specifications?.length ? Number(p.specifications.length) : null),
+    width: p.width !== null && p.width !== undefined ? Number(p.width) : (p.specifications?.width ? Number(p.specifications.width) : null),
+    height: p.height !== null && p.height !== undefined ? Number(p.height) : (p.specifications?.height ? Number(p.specifications.height) : null),
     specifications: p.specifications || {},
     imageUrl: p.imageUrl || imageList[0] || '',
     images: imageList,
@@ -400,8 +403,14 @@ async function seedInitialDatabase() {
     // Seed Products
     for (const p of INITIAL_PRODUCTS) {
       const existingProd = await prisma.product.findFirst({
-        where: { OR: [{ slug: p.slug }, { sku: p.sku }] }
+        where: { OR: [{ id: p.id }, { slug: p.slug }, { sku: p.sku }] }
       });
+
+      const pSpecs = (p.specifications as any) || {};
+      const defWeight = (p as any).weight || 0.5;
+      const defLength = pSpecs.length || 15;
+      const defWidth = pSpecs.width || 15;
+      const defHeight = pSpecs.height || 10;
 
       if (!existingProd) {
         const prod = await prisma.product.create({
@@ -418,13 +427,19 @@ async function seedInitialDatabase() {
             taxPercentage: p.taxPercentage || 18,
             stockQuantity: p.stockQuantity || p.stock || 10,
             lowStockThreshold: 5,
+            weight: defWeight,
             imageUrl: p.images && p.images[0] ? p.images[0] : p.imageUrl || null,
             isActive: true,
             isFeatured: p.isFeatured || false,
             isBestSeller: p.isBestSeller || false,
             isNewArrival: p.isNewArrival || false,
             categoryId: p.categoryId,
-            specifications: (p.specifications as any) || null
+            specifications: {
+              ...pSpecs,
+              length: defLength,
+              width: defWidth,
+              height: defHeight
+            }
           }
         });
 
@@ -441,6 +456,85 @@ async function seedInitialDatabase() {
             });
           }
         }
+      } else {
+        // Ensure existing products have weight and length/width/height in specifications
+        const existSpecs = (existingProd.specifications as any) || {};
+        if (
+          existingProd.weight === null ||
+          existingProd.weight === undefined ||
+          !existSpecs.length ||
+          !existSpecs.width ||
+          !existSpecs.height
+        ) {
+          await prisma.product.update({
+            where: { id: existingProd.id },
+            data: {
+              weight: existingProd.weight !== null && existingProd.weight !== undefined ? existingProd.weight : defWeight,
+              specifications: {
+                ...existSpecs,
+                length: existSpecs.length || defLength,
+                width: existSpecs.width || defWidth,
+                height: existSpecs.height || defHeight
+              }
+            }
+          });
+        }
+      }
+    }
+
+    // Ensure 'Vinayaka idol - 7.5 cm' product exists and has weight and dimensions
+    const vinayakaProd = await prisma.product.findFirst({
+      where: { OR: [{ id: 'prod-vinayaka-idol-75cm' }, { name: 'Vinayaka idol - 7.5 cm' }] }
+    });
+
+    if (!vinayakaProd) {
+      const idolCat = await prisma.category.findFirst({ where: { slug: 'idols' } }) || await prisma.category.findFirst();
+      if (idolCat) {
+        await prisma.product.create({
+          data: {
+            id: 'prod-vinayaka-idol-75cm',
+            name: 'Vinayaka idol - 7.5 cm',
+            slug: 'vinayaka-idol-7-5-cm',
+            sku: 'NX-IDL-VIN75',
+            shortDescription: 'Exquisitely crafted 3D printed Vinayaka idol - 7.5 cm height',
+            description: 'Exquisitely crafted 3D printed Vinayaka idol created using high precision 3D printing technology with antique finish.',
+            price: 499,
+            mrp: 799,
+            discountPercentage: 37,
+            stockQuantity: 50,
+            weight: 0.25,
+            imageUrl: 'https://images.unsplash.com/photo-1567157577867-05ccb1388e66?auto=format&fit=crop&q=80&w=800',
+            categoryId: idolCat.id,
+            specifications: {
+              'Height': '7.5 cm',
+              length: 10,
+              width: 10,
+              height: 12
+            }
+          }
+        });
+      }
+    } else {
+      const vSpecs = (vinayakaProd.specifications as any) || {};
+      if (
+        vinayakaProd.weight === null ||
+        vinayakaProd.weight === undefined ||
+        !vSpecs.length ||
+        !vSpecs.width ||
+        !vSpecs.height
+      ) {
+        await prisma.product.update({
+          where: { id: vinayakaProd.id },
+          data: {
+            weight: vinayakaProd.weight !== null && vinayakaProd.weight !== undefined ? vinayakaProd.weight : 0.25,
+            specifications: {
+              ...vSpecs,
+              length: vSpecs.length || 10,
+              width: vSpecs.width || 10,
+              height: vSpecs.height || 12
+            }
+          }
+        });
       }
     }
 
@@ -1571,7 +1665,8 @@ app.post('/api/products', requireAdminMiddleware, async (req: Request, res: Resp
   const {
     name, slug, sku, shortDescription, description, price, mrp,
     discountPercentage, taxPercentage, stockQuantity, categoryId,
-    imageUrl, isActive, isFeatured, isBestSeller, isNewArrival, specifications, weight
+    imageUrl, isActive, isFeatured, isBestSeller, isNewArrival, specifications, weight,
+    length, width, height
   } = parseResult.data;
 
   try {
@@ -1591,6 +1686,9 @@ app.post('/api/products', requireAdminMiddleware, async (req: Request, res: Resp
         stockQuantity: stockQuantity ?? 10,
         categoryId,
         weight: weight !== undefined && weight !== null ? Number(weight) : 0.5,
+        length: length !== undefined && length !== null ? Number(length) : null,
+        width: width !== undefined && width !== null ? Number(width) : null,
+        height: height !== undefined && height !== null ? Number(height) : null,
         imageUrl: imageUrl || null,
         specifications: specifications || null,
         isActive: isActive !== undefined ? Boolean(isActive) : true,
@@ -1631,7 +1729,8 @@ app.put('/api/products/:id', requireAdminMiddleware, async (req: Request, res: R
   const {
     name, slug, sku, shortDescription, description, price, mrp,
     discountPercentage, taxPercentage, stockQuantity, categoryId,
-    imageUrl, images, specifications, isFeatured, isBestSeller, isNewArrival, isActive, weight
+    imageUrl, images, specifications, isFeatured, isBestSeller, isNewArrival, isActive, weight,
+    length, width, height
   } = req.body;
 
   try {
@@ -1655,6 +1754,9 @@ app.put('/api/products/:id', requireAdminMiddleware, async (req: Request, res: R
         stockQuantity: stockQuantity !== undefined ? stockQuantity : existing.stockQuantity,
         categoryId: categoryId !== undefined ? categoryId : existing.categoryId,
         weight: weight !== undefined ? (weight !== null ? Number(weight) : null) : existing.weight,
+        length: length !== undefined ? (length !== null ? Number(length) : null) : (existing as any).length,
+        width: width !== undefined ? (width !== null ? Number(width) : null) : (existing as any).width,
+        height: height !== undefined ? (height !== null ? Number(height) : null) : (existing as any).height,
         imageUrl: imageUrl !== undefined ? imageUrl : existing.imageUrl,
         specifications: specifications !== undefined ? specifications : existing.specifications,
         isFeatured: isFeatured !== undefined ? Boolean(isFeatured) : existing.isFeatured,
@@ -2437,7 +2539,7 @@ async function autoProcessShipment(orderId: string, preferredProvider?: string, 
         courierId
       });
     } else {
-      res = await delhiveryService.createShipment({
+      res = await (delhiveryService.createShipment as any)({
         orderId: order.id,
         orderNumber: order.orderNumber,
         shippingAddress: order.shippingAddress,
@@ -3759,7 +3861,7 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
       if (productIds.length > 0) {
         const dbProducts = await prisma.product.findMany({
           where: { id: { in: productIds } },
-          select: { id: true, name: true, weight: true, specifications: true }
+          select: { id: true, name: true, weight: true, length: true, width: true, height: true, specifications: true }
         });
         dbProducts.forEach(p => dbProductsMap.set(p.id, p));
       }
@@ -3768,16 +3870,25 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
         const qty = Math.max(1, Number(item.quantity) || 1);
         const dbP = dbProductsMap.get(item.productId || item.id);
 
-        const rawWeight = dbP?.weight ? Number(dbP.weight) : (item.weight ? Number(item.weight) : null);
+        const rawWeight = dbP?.weight !== null && dbP?.weight !== undefined && Number(dbP.weight) > 0 ? Number(dbP.weight) : (item.weight ? Number(item.weight) : null);
         const specs = (dbP?.specifications as any) || {};
-        const dbL = specs.length || specs.dimensions?.length || item.dimensions?.length;
-        const dbW = specs.width || specs.dimensions?.width || item.dimensions?.width;
-        const dbH = specs.height || specs.dimensions?.height || item.dimensions?.height;
+        const dbL = (dbP as any)?.length || specs.length || specs.dimensions?.length || item.dimensions?.length;
+        const dbW = (dbP as any)?.width || specs.width || specs.dimensions?.width || item.dimensions?.width;
+        const dbH = (dbP as any)?.height || specs.height || specs.dimensions?.height || item.dimensions?.height;
 
         if (!rawWeight || rawWeight <= 0 || !dbL || Number(dbL) <= 0 || !dbW || Number(dbW) <= 0 || !dbH || Number(dbH) <= 0) {
           const prodName = dbP?.name || item.name || item.title || 'Product';
+          const missingFields: string[] = [];
+          if (!rawWeight || rawWeight <= 0) missingFields.push('weight');
+          if (!dbL || Number(dbL) <= 0) missingFields.push('length');
+          if (!dbW || Number(dbW) <= 0) missingFields.push('width');
+          if (!dbH || Number(dbH) <= 0) missingFields.push('height');
+
           return res.status(400).json({
-            error: `Shipping dimensions/weight are not configured for product: ${prodName}`
+            error: `Shipping dimensions/weight are not configured for product: ${prodName}`,
+            product: prodName,
+            shippingDataConfigured: false,
+            missingFields
           });
         }
 
@@ -3955,7 +4066,7 @@ app.post('/api/shipping/nimbuspost/estimate', async (req: Request, res: Response
         const qty = Math.max(1, Number(item.quantity) || 1);
         const dbP = dbProductsMap.get(item.productId || item.id);
 
-        const rawWeight = dbP?.weight ? Number(dbP.weight) : (item.weight ? Number(item.weight) : null);
+        const rawWeight = dbP?.weight !== null && dbP?.weight !== undefined && Number(dbP.weight) > 0 ? Number(dbP.weight) : (item.weight ? Number(item.weight) : null);
         const specs = (dbP?.specifications as any) || {};
         const dbL = specs.length || specs.dimensions?.length || item.dimensions?.length;
         const dbW = specs.width || specs.dimensions?.width || item.dimensions?.width;
@@ -3963,8 +4074,17 @@ app.post('/api/shipping/nimbuspost/estimate', async (req: Request, res: Response
 
         if (!rawWeight || rawWeight <= 0 || !dbL || Number(dbL) <= 0 || !dbW || Number(dbW) <= 0 || !dbH || Number(dbH) <= 0) {
           const prodName = dbP?.name || item.name || item.title || 'Product';
+          const missingFields: string[] = [];
+          if (!rawWeight || rawWeight <= 0) missingFields.push('weight');
+          if (!dbL || Number(dbL) <= 0) missingFields.push('length');
+          if (!dbW || Number(dbW) <= 0) missingFields.push('width');
+          if (!dbH || Number(dbH) <= 0) missingFields.push('height');
+
           return res.status(400).json({
-            error: `Shipping dimensions/weight are not configured for product: ${prodName}`
+            error: `Shipping dimensions/weight are not configured for product: ${prodName}`,
+            product: prodName,
+            shippingDataConfigured: false,
+            missingFields
           });
         }
 
@@ -4046,7 +4166,7 @@ app.get('/api/shipping/diagnostic', async (req: Request, res: Response) => {
       paymentType
     );
 
-    const httpStatus = result.statusCode || (result.charge ? 200 : (result.errorType === 'AUTH_ERROR' ? 401 : 400));
+    const httpStatus = result.statusCode || ((result as any).charge ? 200 : (result.errorType === 'AUTH_ERROR' ? 401 : 400));
     const success = Boolean(result.options && result.options.length > 0 && !result.error);
 
     return res.status(success ? 200 : (httpStatus || 400)).json({
@@ -4157,7 +4277,7 @@ app.post('/api/shipping/create', requireAuthMiddleware, async (req: Authenticate
           dimensions: finalDimensions,
           courierId: req.body.shippingMethod || req.body.courierId
         })
-      : await delhiveryService.createShipment({
+      : await (delhiveryService.createShipment as any)({
           orderId: order.id,
           orderNumber: order.orderNumber,
           shippingAddress: order.shippingAddress,

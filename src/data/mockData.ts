@@ -521,10 +521,49 @@ export const INITIAL_PRODUCTS: Product[] = [
     specifications: {
       'Height': '18 cm (7 inches)',
       'Material': 'Precision SLA Photopolymer Resin',
-      'Finish': 'Hand-Polished Antique Gold Polish'
+      'Finish': 'Hand-Polished Antique Gold Polish',
+      length: 12,
+      width: 12,
+      height: 15
     },
+    weight: 0.35,
     tags: ['idol', 'ganesha', 'hindu', 'devotional', 'statue'],
     createdAt: '2026-03-05'
+  },
+  {
+    id: 'prod-vinayaka-idol-75cm',
+    title: 'Vinayaka idol - 7.5 cm',
+    name: 'Vinayaka idol - 7.5 cm',
+    slug: 'vinayaka-idol-7-5-cm',
+    sku: 'NX-IDL-VIN75',
+    description: 'Exquisitely crafted 3D printed Vinayaka idol created using high precision 3D printing technology with antique finish.',
+    price: 499,
+    mrp: 799,
+    salePrice: 499,
+    categoryId: 'cat-idols',
+    subcategoryId: 'sub-hindu-idols',
+    stock: 50,
+    stockQuantity: 50,
+    images: [
+      'https://images.unsplash.com/photo-1567157577867-05ccb1388e66?auto=format&fit=crop&q=80&w=800'
+    ],
+    brand: 'NEXRA 3D',
+    rating: 5.0,
+    reviewCount: 38,
+    isFeatured: true,
+    isTrending: true,
+    isBestSeller: true,
+    specifications: {
+      'Height': '7.5 cm',
+      'Material': 'Precision SLA Photopolymer Resin',
+      'Finish': 'Hand-Polished Antique Gold Polish',
+      length: 10,
+      width: 10,
+      height: 12
+    },
+    weight: 0.25,
+    tags: ['idol', 'vinayaka', 'ganesha', 'statue'],
+    createdAt: '2026-03-06'
   },
   {
     id: 'prod-geometric-planter',

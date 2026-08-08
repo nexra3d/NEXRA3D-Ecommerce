@@ -127,7 +127,16 @@ class MemoryStore {
         isNewArrival: p.isNewArrival ?? false,
         isBestSeller: p.isBestSeller ?? false,
         categoryId: p.categoryId || 'cat-lamps',
-        specifications: p.specifications || {},
+        weight: p.weight ?? (p.specifications?.weight ? Number(p.specifications.weight) : 0.25),
+        length: p.length ?? (p.specifications?.length ? Number(p.specifications.length) : 10),
+        width: p.width ?? (p.specifications?.width ? Number(p.specifications.width) : 10),
+        height: p.height ?? (p.specifications?.height ? Number(p.specifications.height) : 12),
+        specifications: {
+          ...(p.specifications || {}),
+          length: p.length ?? p.specifications?.length ?? 10,
+          width: p.width ?? p.specifications?.width ?? 10,
+          height: p.height ?? p.specifications?.height ?? 12
+        },
         createdAt: new Date(),
         updatedAt: new Date()
       }));
