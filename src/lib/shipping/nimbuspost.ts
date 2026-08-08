@@ -122,7 +122,7 @@ export async function checkServiceability(
   weightGrams: number,
   paymentType: 'COD' | 'Pre-paid' | 'cod' | 'prepaid',
   orderAmount: number = 0,
-  dimensions: { length: number; width: number; height: number } = { length: 15, width: 15, height: 10 }
+  dimensions: { length: number; width: number; height: number }
 ): Promise<NimbusPostServiceabilityResult> {
   const config = getNimbusPostConfig();
   const cleanDestPin = String(destinationPin || '').trim().replace(/\D/g, '');
@@ -314,8 +314,8 @@ export async function createShipment(params: {
   items: any[];
   totalAmount: number;
   paymentMethod: string;
-  weightInGrams?: number;
-  dimensions?: { length: number; width: number; height: number };
+  weightInGrams: number;
+  dimensions: { length: number; width: number; height: number };
   courierId?: string;
 }): Promise<{
   awbNumber: string;
@@ -336,8 +336,8 @@ export async function createShipment(params: {
 
   const addr = params.shippingAddress || {};
   const isCod = params.paymentMethod === 'COD' || params.paymentMethod === 'CASH_ON_DELIVERY';
-  const weightGrams = params.weightInGrams || 1000;
-  const dims = params.dimensions || { length: 15, width: 15, height: 10 };
+  const weightGrams = params.weightInGrams;
+  const dims = params.dimensions;
 
   const orderItems = (params.items || []).map(item => ({
     name: item.productTitle || item.product?.name || 'Product',
@@ -551,18 +551,8 @@ export async function getDiagnosticInfo() {
       apiReachable = true;
       status = 200;
 
-      // Perform a test serviceability request
-      const testRes = await checkServiceability(
-        config.originPincode,
-        '500046',
-        1000,
-        'Pre-paid',
-        1499,
-        { length: 15, width: 15, height: 10 }
-      );
-      if (testRes.options && testRes.options.length > 0) {
-        sampleRates = testRes.options;
-      }
+      // Diagnostics verify authentication only. Rate requests are made only
+      // from real product parcel data by the shipping endpoints.
     } else {
       status = authResult.statusCode || 401;
       authError = authResult.error || 'Authentication failed';

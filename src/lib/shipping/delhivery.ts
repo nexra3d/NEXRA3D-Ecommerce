@@ -391,7 +391,7 @@ COD Amount: ₹${queryParams.pt === 'COD' ? (queryParams.clv || 0) : 0}
 export async function calculateShipping(
   originPincode: string = DEFAULT_ORIGIN_PINCODE,
   destinationPincode: string,
-  weightInGrams: number = 500,
+  weightInGrams: number,
   dimensions?: { length?: number; width?: number; height?: number },
   orderValue: number = 0,
   paymentType: 'Pre-paid' | 'COD' = 'Pre-paid'
@@ -533,11 +533,11 @@ export async function createShipment(orderData: {
   items: any[];
   totalAmount: number;
   paymentMethod?: string;
-  weightInGrams?: number;
+  weightInGrams: number;
 }): Promise<CreateShipmentResult> {
   const addr = orderData.shippingAddress || {};
   const isCOD = orderData.paymentMethod?.toUpperCase() === 'COD';
-  const weight = orderData.weightInGrams || 500;
+  const weight = orderData.weightInGrams;
   const awbNumber = `DLHV${Date.now()}${Math.floor(Math.random() * 100)}`;
   const trackingNumber = awbNumber;
   const shipmentId = `SHIP-${orderData.orderNumber}`;

@@ -119,7 +119,10 @@ export interface Product {
   productVariants?: ProductVariant[];
   variants?: ProductVariant[];
   imageUrl?: string | null;
-  weight?: number;
+  weight?: number | null;
+  length?: number | null;
+  width?: number | null;
+  height?: number | null;
   brand?: string;
   rating?: number;
   reviewCount?: number;
@@ -411,4 +414,3 @@ export interface SiteSetting {
   value: any;
   updatedAt?: string;
 }
-

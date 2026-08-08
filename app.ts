@@ -108,9 +108,9 @@ function formatPrismaProductResponse(p: any) {
     stock: p.stockQuantity ?? 0,
     lowStockThreshold: p.lowStockThreshold ?? 5,
     weight: p.weight !== null && p.weight !== undefined ? Number(p.weight) : null,
-    length: p.length !== null && p.length !== undefined ? Number(p.length) : (p.specifications?.length ? Number(p.specifications.length) : null),
-    width: p.width !== null && p.width !== undefined ? Number(p.width) : (p.specifications?.width ? Number(p.specifications.width) : null),
-    height: p.height !== null && p.height !== undefined ? Number(p.height) : (p.specifications?.height ? Number(p.specifications.height) : null),
+    length: p.length !== null && p.length !== undefined ? Number(p.length) : null,
+    width: p.width !== null && p.width !== undefined ? Number(p.width) : null,
+    height: p.height !== null && p.height !== undefined ? Number(p.height) : null,
     specifications: p.specifications || {},
     imageUrl: p.imageUrl || imageList[0] || '',
     images: imageList,
@@ -141,6 +141,61 @@ function formatPrismaProductResponse(p: any) {
     createdAt: p.createdAt ? safeToISOString(p.createdAt) : new Date().toISOString(),
     updatedAt: p.updatedAt ? safeToISOString(p.updatedAt) : new Date().toISOString()
   };
+}
+
+type ShippingProduct = {
+  id?: string;
+  name?: string;
+  weight?: number | null;
+  length?: number | null;
+  width?: number | null;
+  height?: number | null;
+};
+
+/**
+ * Builds one parcel from the Product shipping fields only. Weight is stored in
+ * kilograms for the existing catalogue; values above 20 retain the historical
+ * grams interpretation used by the courier integrations.
+ */
+function calculateParcelFromProducts(items: Array<{ quantity?: number; product?: ShippingProduct | null }>) {
+  if (!Array.isArray(items) || items.length === 0) {
+    const error: any = new Error('Shipping estimates require at least one product.');
+    error.shippingDataConfigured = false;
+    error.product = 'Product';
+    error.missingFields = ['weight', 'length', 'width', 'height'];
+    throw error;
+  }
+
+  let weightInGrams = 0;
+  let length = 0;
+  let width = 0;
+  let height = 0;
+
+  for (const item of items) {
+    const product = item.product;
+    const missingFields = ['weight', 'length', 'width', 'height'].filter((field) => {
+      const value = product?.[field as keyof ShippingProduct];
+      return value === null || value === undefined || !Number.isFinite(Number(value)) || Number(value) <= 0;
+    });
+
+    if (!product || missingFields.length > 0) {
+      const productName = product?.name || 'Product';
+      const error: any = new Error(`Shipping dimensions/weight are not configured for product: ${productName}`);
+      error.shippingDataConfigured = false;
+      error.product = productName;
+      error.missingFields = missingFields.length > 0 ? missingFields : ['weight', 'length', 'width', 'height'];
+      throw error;
+    }
+
+    const quantity = Math.max(1, Number(item.quantity) || 1);
+    const rawWeight = Number(product.weight);
+    weightInGrams += (rawWeight <= 20 ? Math.round(rawWeight * 1000) : Math.round(rawWeight)) * quantity;
+    length = Math.max(length, Number(product.length));
+    width = Math.max(width, Number(product.width));
+    height += Number(product.height) * quantity;
+  }
+
+  return { weightInGrams, dimensions: { length, width, height } };
 }
 
 async function formatUserResponse(user: any) {
@@ -407,10 +462,10 @@ async function seedInitialDatabase() {
       });
 
       const pSpecs = (p.specifications as any) || {};
-      const defWeight = (p as any).weight || 0.5;
-      const defLength = pSpecs.length || 15;
-      const defWidth = pSpecs.width || 15;
-      const defHeight = pSpecs.height || 10;
+      const seedWeight = (p as any).weight ?? null;
+      const seedLength = (p as any).length ?? pSpecs.length ?? pSpecs.dimensions?.length ?? null;
+      const seedWidth = (p as any).width ?? pSpecs.width ?? pSpecs.dimensions?.width ?? null;
+      const seedHeight = (p as any).height ?? pSpecs.height ?? pSpecs.dimensions?.height ?? null;
 
       if (!existingProd) {
         const prod = await prisma.product.create({
@@ -427,19 +482,17 @@ async function seedInitialDatabase() {
             taxPercentage: p.taxPercentage || 18,
             stockQuantity: p.stockQuantity || p.stock || 10,
             lowStockThreshold: 5,
-            weight: defWeight,
+            weight: seedWeight,
+            length: seedLength,
+            width: seedWidth,
+            height: seedHeight,
             imageUrl: p.images && p.images[0] ? p.images[0] : p.imageUrl || null,
             isActive: true,
             isFeatured: p.isFeatured || false,
             isBestSeller: p.isBestSeller || false,
             isNewArrival: p.isNewArrival || false,
             categoryId: p.categoryId,
-            specifications: {
-              ...pSpecs,
-              length: defLength,
-              width: defWidth,
-              height: defHeight
-            }
+            specifications: pSpecs
           }
         });
 
@@ -455,29 +508,6 @@ async function seedInitialDatabase() {
               }
             });
           }
-        }
-      } else {
-        // Ensure existing products have weight and length/width/height in specifications
-        const existSpecs = (existingProd.specifications as any) || {};
-        if (
-          existingProd.weight === null ||
-          existingProd.weight === undefined ||
-          !existSpecs.length ||
-          !existSpecs.width ||
-          !existSpecs.height
-        ) {
-          await prisma.product.update({
-            where: { id: existingProd.id },
-            data: {
-              weight: existingProd.weight !== null && existingProd.weight !== undefined ? existingProd.weight : defWeight,
-              specifications: {
-                ...existSpecs,
-                length: existSpecs.length || defLength,
-                width: existSpecs.width || defWidth,
-                height: existSpecs.height || defHeight
-              }
-            }
-          });
         }
       }
     }
@@ -503,6 +533,9 @@ async function seedInitialDatabase() {
             discountPercentage: 37,
             stockQuantity: 50,
             weight: 0.25,
+            length: 10,
+            width: 10,
+            height: 12,
             imageUrl: 'https://images.unsplash.com/photo-1567157577867-05ccb1388e66?auto=format&fit=crop&q=80&w=800',
             categoryId: idolCat.id,
             specifications: {
@@ -510,28 +543,6 @@ async function seedInitialDatabase() {
               length: 10,
               width: 10,
               height: 12
-            }
-          }
-        });
-      }
-    } else {
-      const vSpecs = (vinayakaProd.specifications as any) || {};
-      if (
-        vinayakaProd.weight === null ||
-        vinayakaProd.weight === undefined ||
-        !vSpecs.length ||
-        !vSpecs.width ||
-        !vSpecs.height
-      ) {
-        await prisma.product.update({
-          where: { id: vinayakaProd.id },
-          data: {
-            weight: vinayakaProd.weight !== null && vinayakaProd.weight !== undefined ? vinayakaProd.weight : 0.25,
-            specifications: {
-              ...vSpecs,
-              length: vSpecs.length || 10,
-              width: vSpecs.width || 10,
-              height: vSpecs.height || 12
             }
           }
         });
@@ -1685,7 +1696,7 @@ app.post('/api/products', requireAdminMiddleware, async (req: Request, res: Resp
         taxPercentage: taxPercentage || 0,
         stockQuantity: stockQuantity ?? 10,
         categoryId,
-        weight: weight !== undefined && weight !== null ? Number(weight) : 0.5,
+        weight: weight !== undefined && weight !== null ? Number(weight) : null,
         length: length !== undefined && length !== null ? Number(length) : null,
         width: width !== undefined && width !== null ? Number(width) : null,
         height: height !== undefined && height !== null ? Number(height) : null,
@@ -1726,12 +1737,19 @@ app.post('/api/products', requireAdminMiddleware, async (req: Request, res: Resp
 // UPDATE PRODUCT (ADMIN)
 app.put('/api/products/:id', requireAdminMiddleware, async (req: Request, res: Response) => {
   const { id } = req.params;
+  const parseResult = productUpdateSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    const errorMsg = parseResult.error.issues.map((e) => e.message).join('. ');
+    return res.status(400).json({ error: errorMsg });
+  }
+
+  const { images } = req.body;
   const {
     name, slug, sku, shortDescription, description, price, mrp,
     discountPercentage, taxPercentage, stockQuantity, categoryId,
-    imageUrl, images, specifications, isFeatured, isBestSeller, isNewArrival, isActive, weight,
+    imageUrl, specifications, isFeatured, isBestSeller, isNewArrival, isActive, weight,
     length, width, height
-  } = req.body;
+  } = parseResult.data;
 
   try {
     const existing = await prisma.product.findUnique({ where: { id } });
@@ -2507,23 +2525,9 @@ async function autoProcessShipment(orderId: string, preferredProvider?: string, 
     const providerName = (preferredProvider || order.shippingProvider || '').toLowerCase().includes('nimbus') ? 'NimbusPost' : 'Delhivery';
     const isNimbus = providerName === 'NimbusPost';
 
-    let totalWeightGrams = 0;
-    let maxL = 15, maxW = 15, totalH = 0;
-    for (const item of order.items) {
-      const p = item.product;
-      const rawW = p?.weight ? Number(p.weight) : 0.5;
-      const specs = (p?.specifications as any) || {};
-      const l = Number(specs.length || specs.dimensions?.length || 15);
-      const w = Number(specs.width || specs.dimensions?.width || 15);
-      const h = Number(specs.height || specs.dimensions?.height || 5);
-      const qty = item.quantity || 1;
-      totalWeightGrams += (rawW <= 20 ? Math.round(rawW * 1000) : Math.round(rawW)) * qty;
-      maxL = Math.max(maxL, l);
-      maxW = Math.max(maxW, w);
-      totalH += h * qty;
-    }
-    const calculatedWeightInGrams = Math.max(500, totalWeightGrams);
-    const calculatedDimensions = { length: maxL, width: maxW, height: Math.max(5, totalH) };
+    const parcel = calculateParcelFromProducts(order.items);
+    const calculatedWeightInGrams = parcel.weightInGrams;
+    const calculatedDimensions = parcel.dimensions;
 
     let res: any;
     if (isNimbus) {
@@ -3845,68 +3849,23 @@ app.get('/api/shipping/pincode/:pincode', async (req: Request, res: Response) =>
 // 2. Shipping Cost Estimation (Unified Delhivery + NimbusPost)
 app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
   try {
-    const { originPincode, destinationPincode, weight, dimensions, orderValue, paymentType, items } = req.body;
+    const { originPincode, destinationPincode, orderValue, paymentType, items } = req.body;
     if (!destinationPincode) {
       return res.status(400).json({ error: 'destinationPincode is required' });
     }
 
-    let calculatedWeightGrams = 0;
-    let maxLength = 15;
-    let maxWidth = 15;
-    let totalHeight = 0;
-
-    if (Array.isArray(items) && items.length > 0) {
-      const productIds = items.map((i: any) => i.productId || i.id).filter(Boolean);
-      let dbProductsMap = new Map();
-      if (productIds.length > 0) {
-        const dbProducts = await prisma.product.findMany({
-          where: { id: { in: productIds } },
-          select: { id: true, name: true, weight: true, length: true, width: true, height: true, specifications: true }
-        });
-        dbProducts.forEach(p => dbProductsMap.set(p.id, p));
-      }
-
-      for (const item of items) {
-        const qty = Math.max(1, Number(item.quantity) || 1);
-        const dbP = dbProductsMap.get(item.productId || item.id);
-
-        const rawWeight = dbP?.weight !== null && dbP?.weight !== undefined && Number(dbP.weight) > 0 ? Number(dbP.weight) : (item.weight ? Number(item.weight) : null);
-        const specs = (dbP?.specifications as any) || {};
-        const dbL = (dbP as any)?.length || specs.length || specs.dimensions?.length || item.dimensions?.length;
-        const dbW = (dbP as any)?.width || specs.width || specs.dimensions?.width || item.dimensions?.width;
-        const dbH = (dbP as any)?.height || specs.height || specs.dimensions?.height || item.dimensions?.height;
-
-        if (!rawWeight || rawWeight <= 0 || !dbL || Number(dbL) <= 0 || !dbW || Number(dbW) <= 0 || !dbH || Number(dbH) <= 0) {
-          const prodName = dbP?.name || item.name || item.title || 'Product';
-          const missingFields: string[] = [];
-          if (!rawWeight || rawWeight <= 0) missingFields.push('weight');
-          if (!dbL || Number(dbL) <= 0) missingFields.push('length');
-          if (!dbW || Number(dbW) <= 0) missingFields.push('width');
-          if (!dbH || Number(dbH) <= 0) missingFields.push('height');
-
-          return res.status(400).json({
-            error: `Shipping dimensions/weight are not configured for product: ${prodName}`,
-            product: prodName,
-            shippingDataConfigured: false,
-            missingFields
-          });
-        }
-
-        const itemWeightGrams = rawWeight <= 20 ? Math.round(rawWeight * 1000) : Math.round(rawWeight);
-        calculatedWeightGrams += itemWeightGrams * qty;
-
-        maxLength = Math.max(maxLength, Number(dbL));
-        maxWidth = Math.max(maxWidth, Number(dbW));
-        totalHeight += Number(dbH) * qty;
-      }
-    }
-
-    const deadWeightGrams = calculatedWeightGrams > 0 ? calculatedWeightGrams : (Number(weight) || 500);
-    const finalDimensions = dimensions || {
-      length: maxLength,
-      width: maxWidth,
-      height: Math.max(5, totalHeight)
-    };
+    const productIds = Array.isArray(items) ? items.map((i: any) => i.productId || i.id).filter(Boolean) : [];
+    const dbProducts = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, name: true, weight: true, length: true, width: true, height: true }
+    });
+    const productsById = new Map(dbProducts.map((product) => [product.id, product]));
+    const parcel = calculateParcelFromProducts((items || []).map((item: any) => ({
+      quantity: item.quantity,
+      product: productsById.get(item.productId || item.id) || null
+    })));
+    const deadWeightGrams = parcel.weightInGrams;
+    const finalDimensions = parcel.dimensions;
 
     const volumetricWeightKg = (finalDimensions.length * finalDimensions.width * finalDimensions.height) / 5000;
     const volumetricWeightGrams = Math.round(volumetricWeightKg * 1000);
@@ -3997,6 +3956,9 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
       providers: Array.from(new Set(combinedOptions.map(o => o.provider || 'delhivery')))
     });
   } catch (err: any) {
+    if (err.shippingDataConfigured === false) {
+      return res.status(400).json({ error: err.message, product: err.product, shippingDataConfigured: false, missingFields: err.missingFields });
+    }
     return res.status(500).json({ error: 'Failed to calculate shipping estimate', details: err.message });
   }
 });
@@ -4006,22 +3968,31 @@ app.post('/api/shipping/nimbuspost/serviceability', async (req: Request, res: Re
   try {
     const destinationPincode = req.body.pincode || req.body.destinationPincode;
     const originPincode = req.body.originPincode || process.env.NIMBUSPOST_ORIGIN_PINCODE || process.env.DELHIVERY_ORIGIN_PINCODE || '500032';
-    const weightGrams = Number(req.body.weightGrams || req.body.weight) || 1000;
     const paymentType = req.body.paymentType || req.body.paymentMethod || 'Pre-paid';
     const orderValue = Number(req.body.orderValue) || 0;
-    const dimensions = req.body.dimensions || { length: 15, width: 15, height: 10 };
 
     if (!destinationPincode) {
       return res.status(400).json({ error: 'destinationPincode or pincode is required' });
     }
 
+    const productIds = Array.isArray(req.body.items) ? req.body.items.map((item: any) => item.productId || item.id).filter(Boolean) : [];
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, name: true, weight: true, length: true, width: true, height: true }
+    });
+    const productsById = new Map(products.map((product) => [product.id, product]));
+    const parcel = calculateParcelFromProducts((req.body.items || []).map((item: any) => ({
+      quantity: item.quantity,
+      product: productsById.get(item.productId || item.id) || null
+    })));
+
     const result = await nimbuspostService.checkServiceability(
       originPincode,
       destinationPincode,
-      weightGrams,
+      parcel.weightInGrams,
       paymentType,
       orderValue,
-      dimensions
+      parcel.dimensions
     );
 
     return res.json({
@@ -4033,6 +4004,9 @@ app.post('/api/shipping/nimbuspost/serviceability', async (req: Request, res: Re
       errorType: result.errorType
     });
   } catch (err: any) {
+    if (err.shippingDataConfigured === false) {
+      return res.status(400).json({ error: err.message, product: err.product, shippingDataConfigured: false, missingFields: err.missingFields });
+    }
     return res.status(500).json({ error: 'Failed to check NimbusPost serviceability', details: err.message });
   }
 });
@@ -4046,59 +4020,18 @@ app.post('/api/shipping/nimbuspost/estimate', async (req: Request, res: Response
       return res.status(400).json({ error: 'pincode is required' });
     }
 
-    let calculatedWeightGrams = 0;
-    let maxLength = 15;
-    let maxWidth = 15;
-    let totalHeight = 0;
-
-    if (Array.isArray(items) && items.length > 0) {
-      const productIds = items.map((i: any) => i.productId || i.id).filter(Boolean);
-      let dbProductsMap = new Map();
-      if (productIds.length > 0) {
-        const dbProducts = await prisma.product.findMany({
-          where: { id: { in: productIds } },
-          select: { id: true, name: true, weight: true, specifications: true }
-        });
-        dbProducts.forEach(p => dbProductsMap.set(p.id, p));
-      }
-
-      for (const item of items) {
-        const qty = Math.max(1, Number(item.quantity) || 1);
-        const dbP = dbProductsMap.get(item.productId || item.id);
-
-        const rawWeight = dbP?.weight !== null && dbP?.weight !== undefined && Number(dbP.weight) > 0 ? Number(dbP.weight) : (item.weight ? Number(item.weight) : null);
-        const specs = (dbP?.specifications as any) || {};
-        const dbL = specs.length || specs.dimensions?.length || item.dimensions?.length;
-        const dbW = specs.width || specs.dimensions?.width || item.dimensions?.width;
-        const dbH = specs.height || specs.dimensions?.height || item.dimensions?.height;
-
-        if (!rawWeight || rawWeight <= 0 || !dbL || Number(dbL) <= 0 || !dbW || Number(dbW) <= 0 || !dbH || Number(dbH) <= 0) {
-          const prodName = dbP?.name || item.name || item.title || 'Product';
-          const missingFields: string[] = [];
-          if (!rawWeight || rawWeight <= 0) missingFields.push('weight');
-          if (!dbL || Number(dbL) <= 0) missingFields.push('length');
-          if (!dbW || Number(dbW) <= 0) missingFields.push('width');
-          if (!dbH || Number(dbH) <= 0) missingFields.push('height');
-
-          return res.status(400).json({
-            error: `Shipping dimensions/weight are not configured for product: ${prodName}`,
-            product: prodName,
-            shippingDataConfigured: false,
-            missingFields
-          });
-        }
-
-        const itemWeightGrams = rawWeight <= 20 ? Math.round(rawWeight * 1000) : Math.round(rawWeight);
-        calculatedWeightGrams += itemWeightGrams * qty;
-
-        maxLength = Math.max(maxLength, Number(dbL));
-        maxWidth = Math.max(maxWidth, Number(dbW));
-        totalHeight += Number(dbH) * qty;
-      }
-    }
-
-    const deadWeightGrams = calculatedWeightGrams > 0 ? calculatedWeightGrams : 500;
-    const finalDimensions = { length: maxLength, width: maxWidth, height: Math.max(5, totalHeight) };
+    const productIds = Array.isArray(items) ? items.map((i: any) => i.productId || i.id).filter(Boolean) : [];
+    const dbProducts = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, name: true, weight: true, length: true, width: true, height: true }
+    });
+    const productsById = new Map(dbProducts.map((product) => [product.id, product]));
+    const parcel = calculateParcelFromProducts((items || []).map((item: any) => ({
+      quantity: item.quantity,
+      product: productsById.get(item.productId || item.id) || null
+    })));
+    const deadWeightGrams = parcel.weightInGrams;
+    const finalDimensions = parcel.dimensions;
     const effectiveOriginPin = process.env.NIMBUSPOST_ORIGIN_PINCODE || process.env.DELHIVERY_ORIGIN_PINCODE || '500032';
 
     const result = await nimbuspostService.calculateShipping(
@@ -4112,6 +4045,9 @@ app.post('/api/shipping/nimbuspost/estimate', async (req: Request, res: Response
 
     return res.json(result);
   } catch (err: any) {
+    if (err.shippingDataConfigured === false) {
+      return res.status(400).json({ error: err.message, product: err.product, shippingDataConfigured: false, missingFields: err.missingFields });
+    }
     return res.status(500).json({ error: 'Failed to calculate NimbusPost shipping estimate', details: err.message });
   }
 });
@@ -4247,23 +4183,9 @@ app.post('/api/shipping/create', requireAuthMiddleware, async (req: Authenticate
     const isNimbus = String(provider).toUpperCase().includes('NIMBUS');
     const providerName = isNimbus ? 'NimbusPost' : 'Delhivery';
 
-    let totalWeightGrams = 0;
-    let maxL = 15, maxW = 15, totalH = 0;
-    for (const item of order.items) {
-      const p = item.product;
-      const rawW = p?.weight ? Number(p.weight) : 0.5;
-      const specs = (p?.specifications as any) || {};
-      const l = Number(specs.length || specs.dimensions?.length || 15);
-      const w = Number(specs.width || specs.dimensions?.width || 15);
-      const h = Number(specs.height || specs.dimensions?.height || 5);
-      const qty = item.quantity || 1;
-      totalWeightGrams += (rawW <= 20 ? Math.round(rawW * 1000) : Math.round(rawW)) * qty;
-      maxL = Math.max(maxL, l);
-      maxW = Math.max(maxW, w);
-      totalH += h * qty;
-    }
-    const finalWeightInGrams = weightInGrams || Math.max(500, totalWeightGrams);
-    const finalDimensions = { length: maxL, width: maxW, height: Math.max(5, totalH) };
+    const parcel = calculateParcelFromProducts(order.items);
+    const finalWeightInGrams = parcel.weightInGrams;
+    const finalDimensions = parcel.dimensions;
 
     const shipmentResult = isNimbus
       ? await nimbuspostService.createShipment({
@@ -4350,6 +4272,9 @@ app.post('/api/shipping/create', requireAuthMiddleware, async (req: Authenticate
       order: formatOrder(updatedOrder)
     });
   } catch (err: any) {
+    if (err.shippingDataConfigured === false) {
+      return res.status(400).json({ error: err.message, product: err.product, shippingDataConfigured: false, missingFields: err.missingFields });
+    }
     return res.status(500).json({ error: 'Failed to create shipment', details: err.message });
   }
 });

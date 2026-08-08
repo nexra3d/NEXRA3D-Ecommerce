@@ -322,10 +322,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [prodIsFeatured, setProdIsFeatured] = useState(false);
   const [prodIsNewArrival, setProdIsNewArrival] = useState(false);
   const [prodIsBestSeller, setProdIsBestSeller] = useState(false);
-  const [prodWeight, setProdWeight] = useState('0.50');
-  const [prodLength, setProdLength] = useState('20');
-  const [prodWidth, setProdWidth] = useState('15');
-  const [prodHeight, setProdHeight] = useState('10');
+  const [prodWeight, setProdWeight] = useState('');
+  const [prodLength, setProdLength] = useState('');
+  const [prodWidth, setProdWidth] = useState('');
+  const [prodHeight, setProdHeight] = useState('');
   const [productFormError, setProductFormError] = useState<string | null>(null);
 
   // Stage 5 Image & Variant State for Editing Product
@@ -417,10 +417,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setProdIsFeatured(false);
     setProdIsNewArrival(false);
     setProdIsBestSeller(false);
-    setProdWeight('0.50');
-    setProdLength('20');
-    setProdWidth('15');
-    setProdHeight('10');
+    setProdWeight('');
+    setProdLength('');
+    setProdWidth('');
+    setProdHeight('');
     setProductFormError(null);
     setProductImages([]);
     setProductVariants([]);
@@ -453,11 +453,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setProdIsFeatured(p.isFeatured ?? false);
     setProdIsNewArrival(p.isNewArrival ?? false);
     setProdIsBestSeller(p.isBestSeller ?? p.isTrending ?? false);
-    setProdWeight(p.weight !== null && p.weight !== undefined ? String(p.weight) : '0.50');
-    const specs = (p.specifications as any) || {};
-    setProdLength(String(specs.length || specs.dimensions?.length || '20'));
-    setProdWidth(String(specs.width || specs.dimensions?.width || '15'));
-    setProdHeight(String(specs.height || specs.dimensions?.height || '10'));
+    setProdWeight(p.weight !== null && p.weight !== undefined ? String(p.weight) : '');
+    setProdLength(p.length !== null && p.length !== undefined ? String(p.length) : '');
+    setProdWidth(p.width !== null && p.width !== undefined ? String(p.width) : '');
+    setProdHeight(p.height !== null && p.height !== undefined ? String(p.height) : '');
     setProductFormError(null);
 
     loadProductImagesAndVariants(p.id);
@@ -667,12 +666,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       stockQuantity: Number(prodStock || 0),
       lowStockThreshold: Number(prodLowStock || 5),
       weight: numWeight,
-      specifications: {
-        ...existingSpecs,
-        length: numLength,
-        width: numWidth,
-        height: numHeight
-      },
+      length: numLength,
+      width: numWidth,
+      height: numHeight,
+      specifications: existingSpecs,
       shortDescription: prodShortDesc || undefined,
       description: prodDescription || undefined,
       imageUrl: prodImageUrl || undefined,

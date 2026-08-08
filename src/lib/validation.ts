@@ -76,10 +76,10 @@ export const productCreateSchema = z.object({
   taxPercentage: z.coerce.number().min(0).max(100).default(0),
   stockQuantity: z.coerce.number().int().min(0, 'Stock quantity cannot be negative').default(0),
   lowStockThreshold: z.coerce.number().int().min(0).default(5),
-  weight: z.coerce.number().min(0).optional().nullable(),
-  length: z.coerce.number().min(0).optional().nullable(),
-  width: z.coerce.number().min(0).optional().nullable(),
-  height: z.coerce.number().min(0).optional().nullable(),
+  weight: z.coerce.number().positive('Weight must be greater than 0').optional().nullable(),
+  length: z.coerce.number().positive('Length must be greater than 0').optional().nullable(),
+  width: z.coerce.number().positive('Width must be greater than 0').optional().nullable(),
+  height: z.coerce.number().positive('Height must be greater than 0').optional().nullable(),
   specifications: z.record(z.string(), z.any()).optional().nullable(),
   imageUrl: z.string().trim().optional().nullable(),
   isActive: z.boolean().default(true),
@@ -104,10 +104,10 @@ export const productUpdateSchema = z.object({
   taxPercentage: z.coerce.number().min(0).max(100).optional(),
   stockQuantity: z.coerce.number().int().min(0, 'Stock quantity cannot be negative').optional(),
   lowStockThreshold: z.coerce.number().int().min(0).optional(),
-  weight: z.coerce.number().min(0).optional().nullable(),
-  length: z.coerce.number().min(0).optional().nullable(),
-  width: z.coerce.number().min(0).optional().nullable(),
-  height: z.coerce.number().min(0).optional().nullable(),
+  weight: z.coerce.number().positive('Weight must be greater than 0').optional().nullable(),
+  length: z.coerce.number().positive('Length must be greater than 0').optional().nullable(),
+  width: z.coerce.number().positive('Width must be greater than 0').optional().nullable(),
+  height: z.coerce.number().positive('Height must be greater than 0').optional().nullable(),
   specifications: z.record(z.string(), z.any()).optional().nullable(),
   imageUrl: z.string().trim().optional().nullable(),
   isActive: z.boolean().optional(),
@@ -230,5 +230,4 @@ export type ServiceCreateInput = z.infer<typeof serviceCreateSchema>;
 export type ServiceUpdateInput = z.infer<typeof serviceUpdateSchema>;
 export type QuoteRequestCreateInput = z.infer<typeof quoteRequestCreateSchema>;
 export type QuoteRequestUpdateInput = z.infer<typeof quoteRequestUpdateSchema>;
-
 
