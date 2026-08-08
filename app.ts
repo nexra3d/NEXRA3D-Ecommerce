@@ -198,6 +198,87 @@ function calculateParcelFromProducts(items: Array<{ quantity?: number; product?:
   return { weightInGrams, dimensions: { length, width, height } };
 }
 
+async function calculateServerShippingFee(input: {
+  items: Array<{ productId?: string; id?: string; quantity?: number; product?: ShippingProduct | null }>;
+  destinationPincode: string;
+  paymentMethod?: string;
+  shippingProvider?: string;
+  selectedShippingOptionId?: string;
+  orderValue?: number;
+}) {
+  if (!Array.isArray(input.items) || input.items.length === 0) {
+    throw new Error('Shipping estimate requires at least one cart item.');
+  }
+
+  const productIds = input.items.map((item) => item.productId || item.id).filter(Boolean) as string[];
+  const dbProducts = await prisma.product.findMany({
+    where: { id: { in: productIds } },
+    select: { id: true, name: true, weight: true, length: true, width: true, height: true }
+  }).catch(() => []);
+
+  const productsById = new Map(dbProducts.map((product) => [product.id, product]));
+  const parcel = calculateParcelFromProducts(input.items.map((item) => ({
+    quantity: item.quantity,
+    product: productsById.get(item.productId || item.id || '') || item.product || null
+  })));
+
+  const deadWeightGrams = parcel.weightInGrams;
+  const finalDimensions = parcel.dimensions;
+  const volumetricWeightKg = (finalDimensions.length * finalDimensions.width * finalDimensions.height) / 5000;
+  const volumetricWeightGrams = Math.round(volumetricWeightKg * 1000);
+  const chargeableWeightGrams = Math.max(deadWeightGrams, volumetricWeightGrams);
+  const paymentType = input.paymentMethod === 'COD' || input.paymentMethod === 'CASH_ON_DELIVERY' ? 'COD' : 'Pre-paid';
+  const effectiveOriginPin = process.env.NIMBUSPOST_ORIGIN_PINCODE || process.env.DELHIVERY_ORIGIN_PINCODE || '500032';
+  const preferredProvider = input.shippingProvider || (input.selectedShippingOptionId?.startsWith('nimbuspost') ? 'NimbusPost' : 'Delhivery');
+
+  const [delhiveryRes, nimbusRes] = await Promise.allSettled([
+    delhiveryService.calculateShipping(
+      effectiveOriginPin,
+      String(input.destinationPincode || '').trim(),
+      chargeableWeightGrams,
+      finalDimensions,
+      Number(input.orderValue) || 0,
+      paymentType as 'Pre-paid' | 'COD'
+    ),
+    nimbuspostService.calculateShipping(
+      effectiveOriginPin,
+      String(input.destinationPincode || '').trim(),
+      chargeableWeightGrams,
+      finalDimensions,
+      Number(input.orderValue) || 0,
+      paymentType as 'Pre-paid' | 'COD'
+    )
+  ]);
+
+  const availableOptions: any[] = [];
+  if (delhiveryRes.status === 'fulfilled' && delhiveryRes.value?.serviceable) {
+    availableOptions.push(...(delhiveryRes.value.options || []));
+  }
+  if (nimbusRes.status === 'fulfilled' && nimbusRes.value?.serviceable) {
+    availableOptions.push(...(nimbusRes.value.options || []));
+  }
+
+  if (availableOptions.length === 0) {
+    const delhiveryErr = delhiveryRes.status === 'fulfilled' ? delhiveryRes.value?.error || 'Delhivery rate calculation failed' : (delhiveryRes.reason?.message || 'Delhivery rate calculation failed');
+    const nimbusErr = nimbusRes.status === 'fulfilled' ? nimbusRes.value?.error || 'NimbusPost rate calculation failed' : (nimbusRes.reason?.message || 'NimbusPost rate calculation failed');
+    const error: any = new Error(`Unable to calculate live shipping rates. Delhivery: (${delhiveryErr}). NimbusPost: (${nimbusErr}).`);
+    error.shippingDataConfigured = true;
+    throw error;
+  }
+
+  const providerFiltered = availableOptions.filter((option) => {
+    const providerName = option.provider || '';
+    return preferredProvider.toLowerCase().includes('nimbus') ? providerName.toLowerCase().includes('nimbus') : !providerName.toLowerCase().includes('nimbus');
+  });
+
+  const selectedOption = providerFiltered[0] || availableOptions[0];
+  if (!selectedOption || typeof selectedOption.charge !== 'number') {
+    throw new Error('Selected courier is unavailable.');
+  }
+
+  return Number(selectedOption.charge || 0);
+}
+
 async function formatUserResponse(user: any) {
   if (!user) return null;
 
@@ -2435,14 +2516,32 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
         return total + (price * ci.quantity * taxRate) / 100;
       }, 0)
     );
-    const providedShippingFee = req.body.shippingFee !== undefined
-      ? Number(req.body.shippingFee)
-      : (req.body.shippingCharge !== undefined ? Number(req.body.shippingCharge) : null);
-    const shippingFee = providedShippingFee !== null && !isNaN(providedShippingFee)
-      ? providedShippingFee
-      : 0;
 
-    const totalAmount = Math.max(0, subtotal + taxAmount + shippingFee - discountAmount);
+    const selectedProvider = req.body.shippingProvider || (req.body.selectedShippingOptionId?.startsWith('nimbuspost') ? 'NimbusPost' : 'Delhivery');
+    let actualShippingFee: number;
+
+    try {
+      actualShippingFee = await calculateServerShippingFee({
+        items: cart.items.map((ci: any) => ({
+          productId: ci.productId || ci.product?.id,
+          id: ci.product?.id,
+          quantity: ci.quantity,
+          product: ci.product
+        })),
+        destinationPincode: shippingAddressData?.postalCode || shippingAddressData?.pincode || req.body.destinationPincode || req.body.pincode || '',
+        paymentMethod: paymentMethod,
+        shippingProvider: selectedProvider,
+        selectedShippingOptionId: req.body.selectedShippingOptionId,
+        orderValue: subtotal + taxAmount - discountAmount
+      });
+    } catch (error: any) {
+      return res.status(400).json({
+        error: error.message || 'Selected courier is unavailable.',
+        shippingDataConfigured: true
+      });
+    }
+
+    const totalAmount = Math.max(0, subtotal + taxAmount + actualShippingFee - discountAmount);
 
     const now = new Date();
     const dd = String(now.getDate()).padStart(2, '0');
@@ -2452,8 +2551,6 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
     const orderNumber = `N3D-${randNum} ${dd}${mm}${yyyy}`;
 
     const isCod = paymentMethod === 'COD' || paymentMethod === 'CASH_ON_DELIVERY';
-
-    const selectedProvider = req.body.shippingProvider || (req.body.selectedShippingOptionId?.startsWith('nimbuspost') ? 'NimbusPost' : 'Delhivery');
 
     const newOrder = await prisma.order.create({
       data: {
@@ -2465,7 +2562,7 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
         subtotal,
         discountAmount,
         taxAmount,
-        shippingFee,
+        shippingFee: actualShippingFee,
         totalAmount,
         shippingProvider: selectedProvider,
         couponCode: couponCode || null,
@@ -4073,16 +4170,10 @@ app.get('/api/shipping/nimbuspost/diagnostic', async (req: Request, res: Respons
 app.get('/api/shipping/diagnostic', async (req: Request, res: Response) => {
   try {
     const token = process.env.DELHIVERY_API_TOKEN || '';
-    const rateUrl = process.env.DELHIVERY_RATE_API_URL || '';
-    const baseUrl = process.env.DELHIVERY_BASE_URL || 'https://track.delhivery.com';
-
-    const tokenConfigured = Boolean(token);
-    const endpointConfigured = Boolean(rateUrl);
-    const configured = tokenConfigured;
-
-    const safeEndpoint = rateUrl
-      ? rateUrl.replace(/(token=)[^&]+/i, '$1***')
-      : `${baseUrl}/api/kcl/charge.json (default candidate)`;
+    const rateUrl = process.env.DELHIVERY_RATE_API_URL || 'https://track.delhivery.com/api/kinko/v1/invoice/charges/.json';
+    const configured = Boolean(token);
+    const endpointConfigured = Boolean(process.env.DELHIVERY_RATE_API_URL);
+    const safeEndpoint = rateUrl;
 
     const originPincode = (req.query.o_pin as string) || process.env.DELHIVERY_ORIGIN_PINCODE || '500032';
     const destinationPincode = (req.query.d_pin as string) || '500046';
@@ -4106,10 +4197,15 @@ app.get('/api/shipping/diagnostic', async (req: Request, res: Response) => {
     const success = Boolean(result.options && result.options.length > 0 && !result.error);
 
     return res.status(success ? 200 : (httpStatus || 400)).json({
+      provider: 'delhivery',
       configured,
-      endpointConfigured,
-      tokenConfigured,
       endpoint: safeEndpoint,
+      authenticationConfigured: configured,
+      apiReachable: success,
+      status: success ? 200 : (httpStatus || 400),
+      rateFound: success,
+      endpointConfigured,
+      tokenConfigured: configured,
       httpStatus,
       success,
       rates: result.options || [],

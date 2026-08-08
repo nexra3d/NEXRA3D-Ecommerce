@@ -27,63 +27,76 @@ let tokenExpiryTime: number = 0;
  * Get or refresh NimbusPost API Auth Token
  */
 export async function getNimbusPostAuthToken(): Promise<{ token: string | null; error?: string; statusCode?: number }> {
-  const { baseUrl, apiKey, email, password } = getNimbusPostConfig();
+  const { baseUrl, email, password } = getNimbusPostConfig();
 
-  // If a direct API Key is set in env, return it
-  if (apiKey) {
-    return { token: apiKey };
-  }
-
-  // If token is cached and valid for at least 5 minutes
   if (cachedToken && Date.now() < tokenExpiryTime - 300000) {
     return { token: cachedToken };
   }
 
-  // If login credentials exist, perform authentication
-  if (email && password) {
-    try {
-      const loginUrl = `${baseUrl}/users/login`;
-      console.log('[NimbusPost Authentication] Requesting login token from endpoint...');
-
-      const response = await axios.post(loginUrl, {
-        email,
-        password
-      }, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 10000
-      });
-
-      if (response.data && (response.data.status === true || response.data.status === 200 || response.data.data)) {
-        const token = typeof response.data.data === 'string' ? response.data.data : (response.data.data?.token || response.data.token);
-        if (token) {
-          cachedToken = token;
-          // Set expiry 23 hours from now
-          tokenExpiryTime = Date.now() + (23 * 60 * 60 * 1000);
-          console.log('[NimbusPost Authentication] Successfully authenticated and obtained session token.');
-          return { token };
-        }
-      }
-
-      const errMsg = response.data?.message || response.data?.error || 'Authentication failed: Invalid credentials';
-      return { token: null, error: `NimbusPost Auth Failed: ${errMsg}`, statusCode: response.status };
-    } catch (err: any) {
-      const status = err.response?.status;
-      const respData = err.response?.data;
-      const errMsg = respData?.message || respData?.error || err.message;
-      console.error(`[NimbusPost Auth Error] Status ${status || 'NETWORK_ERROR'}:`, errMsg);
-      return {
-        token: null,
-        error: `NimbusPost authentication failed (${status || 'Connection Error'}): ${errMsg}`,
-        statusCode: status || 500
-      };
-    }
+  if (!email || !password) {
+    return {
+      token: null,
+      error: 'NimbusPost credentials are not configured in environment variables (NIMBUSPOST_EMAIL and NIMBUSPOST_PASSWORD required).',
+      statusCode: 401
+    };
   }
 
-  return {
-    token: null,
-    error: 'NimbusPost API credentials are not configured in environment variables (NIMBUSPOST_API_KEY or NIMBUSPOST_EMAIL + NIMBUSPOST_PASSWORD required).',
-    statusCode: 401
-  };
+  try {
+    const loginUrl = `${baseUrl.replace(/\/$/, '')}/users/login`;
+    const response = await axios.post(loginUrl, { email, password }, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 10000
+    });
+
+    const payload = response.data;
+    const token = typeof payload?.data === 'string'
+      ? payload.data
+      : payload?.data?.token || payload?.data?.jwt || payload?.token || payload?.jwt || null;
+
+    if (token) {
+      cachedToken = token;
+      tokenExpiryTime = Date.now() + (23 * 60 * 60 * 1000);
+      return { token };
+    }
+
+    const errMsg = payload?.message || payload?.error || 'Authentication failed: Invalid credentials';
+    return { token: null, error: `NimbusPost Auth Failed: ${errMsg}`, statusCode: response.status };
+  } catch (err: any) {
+    const status = err.response?.status;
+    const respData = err.response?.data;
+    const errMsg = respData?.message || respData?.error || err.message;
+    return {
+      token: null,
+      error: `NimbusPost authentication failed (${status || 'Connection Error'}): ${errMsg}`,
+      statusCode: status || 500
+    };
+  }
+}
+
+async function withNimbusPostAuthRetry<T>(request: (token: string) => Promise<T>): Promise<T> {
+  const auth = await getNimbusPostAuthToken();
+  if (!auth.token) {
+    throw new Error(auth.error || 'NimbusPost API authentication failed.');
+  }
+
+  try {
+    return await request(auth.token);
+  } catch (err: any) {
+    const status = err.response?.status;
+    if (status !== 401) {
+      throw err;
+    }
+
+    cachedToken = null;
+    tokenExpiryTime = 0;
+
+    const refreshed = await getNimbusPostAuthToken();
+    if (!refreshed.token) {
+      throw new Error(refreshed.error || 'NimbusPost API authentication failed after token refresh.');
+    }
+
+    return request(refreshed.token);
+  }
 }
 
 export interface NimbusPostCourierOption {
@@ -140,19 +153,6 @@ export async function checkServiceability(
     };
   }
 
-  const auth = await getNimbusPostAuthToken();
-  if (!auth.token) {
-    return {
-      serviceable: false,
-      pincode: cleanDestPin,
-      codAvailable: false,
-      options: [],
-      error: auth.error || 'NimbusPost API authentication failed.',
-      errorType: 'AUTH_ERROR',
-      statusCode: auth.statusCode || 401
-    };
-  }
-
   const isCod = String(paymentType).toLowerCase() === 'cod';
   const weightKg = Number((weightGrams / 1000).toFixed(2));
 
@@ -184,18 +184,17 @@ Declared Value: ₹${orderAmount}
     height: dimensions.height
   };
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${auth.token}`
-  };
-
-  if (config.apiKey) {
-    headers['x-api-key'] = config.apiKey;
-  }
-
   try {
-    const url = `${config.baseUrl}/courier/serviceability`;
-    const response = await axios.post(url, payload, { headers, timeout: 10000 });
+    const url = `${config.baseUrl.replace(/\/$/, '')}/courier/serviceability`;
+    const response = await withNimbusPostAuthRetry(async (token) => {
+      return axios.post(url, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        timeout: 10000
+      });
+    });
 
     console.log(`[NimbusPost API Response] Status ${response.status}:`, JSON.stringify(response.data));
 
@@ -328,11 +327,6 @@ export async function createShipment(params: {
   status: string;
 }> {
   const config = getNimbusPostConfig();
-  const auth = await getNimbusPostAuthToken();
-
-  if (!auth.token) {
-    throw new Error(auth.error || 'NimbusPost API authentication failed.');
-  }
 
   const addr = params.shippingAddress || {};
   const isCod = params.paymentMethod === 'COD' || params.paymentMethod === 'CASH_ON_DELIVERY';
@@ -373,18 +367,17 @@ export async function createShipment(params: {
     consignee_phone: '***MASKED***'
   }));
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${auth.token}`
-  };
-
-  if (config.apiKey) {
-    headers['x-api-key'] = config.apiKey;
-  }
-
   try {
-    const url = `${config.baseUrl}/shipments/create`;
-    const response = await axios.post(url, payload, { headers, timeout: 15000 });
+    const url = `${config.baseUrl.replace(/\/$/, '')}/shipments/create`;
+    const response = await withNimbusPostAuthRetry(async (token) => {
+      return axios.post(url, payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        timeout: 15000
+      });
+    });
 
     console.log('[NimbusPost Create Shipment Response]:', JSON.stringify(response.data));
 
@@ -425,26 +418,18 @@ export async function trackShipment(awb: string): Promise<{
   raw?: any;
 }> {
   const config = getNimbusPostConfig();
-  const auth = await getNimbusPostAuthToken();
-
-  if (!auth.token) {
-    return {
-      provider: 'nimbuspost',
-      awb,
-      status: 'AWB Assigned',
-      currentLocation: 'Hub Center',
-      events: [{ date: new Date().toISOString(), status: 'AWB Assigned', location: 'Dispatch Center', remark: 'Shipment created via NimbusPost' }]
-    };
-  }
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${auth.token}`
-  };
 
   try {
-    const url = `${config.baseUrl}/shipments/track/${awb}`;
-    const response = await axios.get(url, { headers, timeout: 8000 });
+    const url = `${config.baseUrl.replace(/\/$/, '')}/shipments/track/${awb}`;
+    const response = await withNimbusPostAuthRetry(async (token) => {
+      return axios.get(url, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        timeout: 8000
+      });
+    });
 
     const resData = response.data;
     const trackData = resData?.data || resData || {};
@@ -506,20 +491,17 @@ export async function requestPickup(params: {
  */
 export async function cancelShipment(awb: string) {
   const config = getNimbusPostConfig();
-  const auth = await getNimbusPostAuthToken();
-
-  if (!auth.token) {
-    return { success: false, message: 'Authentication failed' };
-  }
 
   try {
-    const url = `${config.baseUrl}/shipments/cancel`;
-    const response = await axios.post(url, { awb }, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${auth.token}`
-      },
-      timeout: 8000
+    const url = `${config.baseUrl.replace(/\/$/, '')}/shipments/cancel`;
+    const response = await withNimbusPostAuthRetry(async (token) => {
+      return axios.post(url, { awb }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        timeout: 8000
+      });
     });
     return { success: true, response: response.data };
   } catch (err: any) {
@@ -532,17 +514,13 @@ export async function cancelShipment(awb: string) {
  */
 export async function getDiagnosticInfo() {
   const config = getNimbusPostConfig();
-  const apiKeyConfigured = Boolean(config.apiKey);
-  const apiSecretConfigured = Boolean(config.apiSecret);
-  const emailPasswordConfigured = Boolean(config.email && config.password);
-  const credentialsConfigured = apiKeyConfigured || emailPasswordConfigured;
-  const baseUrlConfigured = Boolean(config.baseUrl);
+  const credentialsConfigured = Boolean(config.email && config.password);
+  const configured = credentialsConfigured;
 
   let authenticationSuccessful = false;
   let apiReachable = false;
   let status = credentialsConfigured ? 400 : 401;
   let authError: string | null = null;
-  let sampleRates: any[] = [];
 
   if (credentialsConfigured) {
     const authResult = await getNimbusPostAuthToken();
@@ -550,9 +528,6 @@ export async function getDiagnosticInfo() {
       authenticationSuccessful = true;
       apiReachable = true;
       status = 200;
-
-      // Diagnostics verify authentication only. Rate requests are made only
-      // from real product parcel data by the shipping endpoints.
     } else {
       status = authResult.statusCode || 401;
       authError = authResult.error || 'Authentication failed';
@@ -560,17 +535,12 @@ export async function getDiagnosticInfo() {
   }
 
   return {
-    configured: credentialsConfigured && authenticationSuccessful,
+    provider: 'nimbuspost',
+    configured: configured && authenticationSuccessful,
     credentialsConfigured,
     authenticationSuccessful,
     apiReachable,
-    baseUrlConfigured,
-    apiKeyConfigured,
-    apiSecretConfigured,
     status,
-    endpoint: `${config.baseUrl}/courier/serviceability`,
-    authError,
-    sampleRatesCount: sampleRates.length,
-    sampleRates
+    authError
   };
 }

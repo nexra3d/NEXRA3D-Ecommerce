@@ -76,6 +76,123 @@ export interface TrackingResult {
   lastUpdate: string;
 }
 
+export function classifyDelhiveryError(statusCode: number, responseData?: any, fallbackMessage?: string) {
+  const upstreamDetail = responseData && (responseData.detail || responseData.message || responseData.error || responseData.errors || responseData.description);
+  const detailText = upstreamDetail ? String(upstreamDetail) : '';
+  const message = detailText ? `${statusCode || 'HTTP_ERROR'}: ${detailText}` : (fallbackMessage || 'Delhivery API request failed.');
+
+  if (statusCode === 404 || /not found|wrong endpoint|endpoint/i.test(detailText)) {
+    return { errorType: 'WRONG_ENDPOINT', message };
+  }
+
+  if (statusCode === 401 || /unauthorized|invalid token|authorization/i.test(detailText)) {
+    return { errorType: 'AUTH_ERROR', message };
+  }
+
+  if (statusCode === 400 || /bad request|invalid.*param|missing.*param/i.test(detailText)) {
+    return { errorType: 'BAD_REQUEST', message };
+  }
+
+  return { errorType: 'API_ERROR', message };
+}
+
+export function formatDelhiveryHeaders(headers: Record<string, string> = {}) {
+  const masked: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === 'authorization') {
+      masked[key] = typeof value === 'string' && /^Token\s+/i.test(value) ? 'Token ****' : value;
+    } else {
+      masked[key] = value;
+    }
+  }
+
+  return masked;
+}
+
+function getAuthoritativeDelhiveryRateUrl(): string {
+  return process.env.DELHIVERY_RATE_API_URL || 'https://track.delhivery.com/api/kinko/v1/invoice/charges/.json';
+}
+
+function normalizePositiveNumber(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const numeric = Number(trimmed.replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+  }
+
+  return null;
+}
+
+function extractRateFromValue(input: any): { charge?: number; edd?: string } {
+  if (Array.isArray(input)) {
+    for (const item of input) {
+      const result = extractRateFromValue(item);
+      if (result.charge) return result;
+    }
+    return {};
+  }
+
+  if (!input || typeof input !== 'object') {
+    return {};
+  }
+
+  const chargeKeys = ['total_amount', 'total_charge', 'freight_charge', 'gross_amount', 'shipping_charge', 'charge', 'amount', 'totalAmount', 'totalCharge', 'shippingCharge', 'delivery_charge'];
+  for (const key of chargeKeys) {
+    const candidate = normalizePositiveNumber((input as Record<string, unknown>)[key]);
+    if (candidate !== null) {
+      return {
+        charge: candidate,
+        edd: typeof (input as Record<string, unknown>).delivery_date === 'string' ? String((input as Record<string, unknown>).delivery_date) : undefined
+      };
+    }
+  }
+
+  for (const [key, value] of Object.entries(input)) {
+    if (key.toLowerCase().includes('date') || key.toLowerCase().includes('time')) {
+      continue;
+    }
+
+    if (typeof value === 'object') {
+      const nested = extractRateFromValue(value);
+      if (nested.charge) {
+        return nested;
+      }
+    }
+  }
+
+  return {};
+}
+
+function parseDelhiveryResponse(data: any): { charge?: number; edd?: string } {
+  if (data == null) return {};
+
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      const candidate = parseDelhiveryResponse(item);
+      if (candidate.charge) return candidate;
+    }
+    return {};
+  }
+
+  if (typeof data === 'object') {
+    const direct = extractRateFromValue(data);
+    if (direct.charge) return direct;
+
+    for (const value of Object.values(data)) {
+      const nested = parseDelhiveryResponse(value);
+      if (nested.charge) return nested;
+    }
+  }
+
+  return {};
+}
+
 /**
  * 1. Check Pincode Serviceability with Delhivery API
  */
@@ -253,7 +370,6 @@ async function fetchDelhiveryRate(params: {
     d_pin: params.destinationPincode,
     o_pin: params.originPincode,
     cgm: params.weightInGrams,
-    gm: params.weightInGrams,
     pt: params.paymentType === 'COD' ? 'COD' : 'Pre-paid'
   };
 
@@ -267,37 +383,12 @@ async function fetchDelhiveryRate(params: {
     if (params.dimensions.height) queryParams.h = params.dimensions.height;
   }
 
-  const baseUrl = process.env.DELHIVERY_BASE_URL || DELHIVERY_BASE_URL || 'https://track.delhivery.com';
-  const rateUrlFromEnv = process.env.DELHIVERY_RATE_API_URL || '';
+  const rateUrl = getAuthoritativeDelhiveryRateUrl();
 
-  const candidateUrls = [
-    rateUrlFromEnv,
-    `${baseUrl}/api/kcl/charge.json`,
-    `${baseUrl}/c/api/kcl/charge.json`,
-    'https://express.delhivery.com/api/kcl/charge.json',
-    'https://express.delhivery.com/c/api/kcl/charge.json',
-    'https://staging-express.delhivery.com/api/kcl/charge.json',
-    'https://staging-express.delhivery.com/c/api/kcl/charge.json',
-    `${baseUrl}/c/api/v1/kcl/charge.json`,
-    `${baseUrl}/api/v1/kcl/charge.json`
-  ].filter(Boolean);
-
-  const endpoints = Array.from(new Set(candidateUrls));
-
-  let lastError = '';
-  let lastErrorType = 'API_ERROR';
-  let lastStatusCode = 0;
-
-  for (const url of endpoints) {
-    const isProd = url.includes('track.delhivery.com') || url.includes('express.delhivery.com');
-    const isStaging = url.includes('staging');
-    const envName = isStaging ? 'Staging / Sandbox' : (isProd ? 'Production' : 'Custom');
-
-    console.log(`
+  console.log(`
 DELHIVERY FREIGHT REQUEST
 -------------------------
-API URL: ${url}
-Environment: ${envName}
+API URL: ${rateUrl}
 Origin PIN: ${queryParams.o_pin}
 Destination PIN: ${queryParams.d_pin}
 Weight: ${queryParams.cgm}g
@@ -306,83 +397,56 @@ Width: ${queryParams.w || 'N/A'}cm
 Height: ${queryParams.h || 'N/A'}cm
 Payment Mode: ${queryParams.pt}
 Declared Value: ₹${queryParams.clv || 0}
-COD Amount: ₹${queryParams.pt === 'COD' ? (queryParams.clv || 0) : 0}
 -------------------------`);
 
-    try {
-      const response = await axios.get(url, {
-        params: queryParams,
-        headers: {
-          'Authorization': `Token ${token}`,
-          'Accept': 'application/json'
-        },
-        timeout: 8000
-      });
+  try {
+    const response = await axios.get(rateUrl, {
+      params: queryParams,
+      headers: {
+        'Authorization': `Token ${token}`,
+        'Accept': 'application/json'
+      },
+      timeout: 8000
+    });
 
-      console.log(`[Delhivery API Response] GET Rate Calculation (${params.mode}) Status ${response.status}:`, JSON.stringify(response.data));
-
-      const data = response.data;
-      let rateItem: any = null;
-      if (Array.isArray(data) && data.length > 0) {
-        rateItem = data[0];
-      } else if (data && typeof data === 'object') {
-        rateItem = data;
-      }
-
-      if (rateItem) {
-        const rawAmount = rateItem.total_amount ?? rateItem.total_charge ?? rateItem.totalAmount ?? rateItem.amount ?? rateItem.charge_DL ?? rateItem.freight_charge ?? rateItem.gross_amount ?? rateItem.charge;
-        if (rawAmount !== undefined && rawAmount !== null && !isNaN(Number(rawAmount)) && Number(rawAmount) > 0) {
-          const charge = Math.round(Number(rawAmount));
-          const edd = rateItem.delivery_date || rateItem.edd || rateItem.expected_delivery_date || '';
-          let estimatedDays = params.mode === 'E' ? 2 : 4;
-          if (edd) {
-            const eddTime = new Date(edd).getTime();
-            const nowTime = new Date().getTime();
-            const diffDays = Math.ceil((eddTime - nowTime) / (1000 * 60 * 60 * 24));
-            if (diffDays > 0 && diffDays < 20) {
-              estimatedDays = diffDays;
-            }
-          }
-          return { charge, estimatedDays, edd };
-        } else if (rateItem.status === false || rateItem.error || rateItem.message || rateItem.detail) {
-          lastError = rateItem.error || rateItem.message || rateItem.detail || JSON.stringify(rateItem);
-          lastStatusCode = response.status;
+    const parsed = parseDelhiveryResponse(response.data);
+    if (parsed.charge && parsed.charge > 0) {
+      const charge = Math.round(parsed.charge);
+      const edd = parsed.edd || '';
+      let estimatedDays = params.mode === 'E' ? 2 : 4;
+      if (edd) {
+        const eddTime = new Date(edd).getTime();
+        const nowTime = new Date().getTime();
+        const diffDays = Math.ceil((eddTime - nowTime) / (1000 * 60 * 60 * 24));
+        if (diffDays > 0 && diffDays < 20) {
+          estimatedDays = diffDays;
         }
       }
-    } catch (err: any) {
-      const status = err.response?.status;
-      const respData = err.response?.data;
-      console.error(`[Delhivery API Error] Rate API (${url}, mode=${params.mode}) Failed (Status: ${status || 'NETWORK_ERROR'}):`, JSON.stringify(respData || err.message));
 
-      lastStatusCode = status || 0;
-      if (status === 404) {
-        lastErrorType = 'ENDPOINT_NOT_FOUND';
-        lastError = 'Delhivery rate API endpoint not found. Verify the configured Delhivery Freight Estimator API URL.';
-      } else if (status === 401) {
-        lastErrorType = 'AUTH_ERROR';
-        lastError = 'Delhivery API authentication failed.';
-      } else if (status === 403) {
-        lastErrorType = 'AUTH_ERROR';
-        lastError = 'Delhivery API access is not enabled for this account.';
-      } else if (status === 400) {
-        lastErrorType = 'BAD_REQUEST';
-        lastError = 'Delhivery rejected the shipping-rate request. Check shipment parameters.';
-      } else if (status >= 500) {
-        lastErrorType = 'SERVER_ERROR';
-        lastError = 'Delhivery shipping service is temporarily unavailable.';
-      } else if (respData?.detail || respData?.message || respData?.error) {
-        lastError = respData.detail || respData.message || respData.error;
-      } else {
-        lastError = `Delhivery Rate API Error: ${err.message}`;
-      }
+      return { charge, estimatedDays, edd };
     }
-  }
 
-  return {
-    error: lastError || `Delhivery rate calculation failed for ${params.mode === 'S' ? 'Surface' : 'Express'}.`,
-    errorType: lastErrorType,
-    statusCode: lastStatusCode
-  };
+    const { errorType, message } = classifyDelhiveryError(response.status, response.data, `Unable to determine Delhivery shipping charge from API response`);
+    return {
+      error: message,
+      errorType,
+      statusCode: response.status
+    };
+  } catch (err: any) {
+    const status = err.response?.status;
+    const respData = err.response?.data;
+    const { errorType, message } = classifyDelhiveryError(status || 0, respData || err.message, err.message || 'Delhivery rate calculation failed');
+
+    if (status === 404 || /404/.test(String(err.message || '')) || /not found|wrong endpoint|endpoint/i.test(String(respData?.detail || respData?.message || respData?.error || ''))) {
+      console.error('[Delhivery API Error] Rate API endpoint rejected the request:', formatDelhiveryHeaders({ Authorization: `Token ${token}` }));
+    }
+
+    return {
+      error: message,
+      errorType,
+      statusCode: status || 500
+    };
+  }
 }
 
 /**
