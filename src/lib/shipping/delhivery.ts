@@ -89,8 +89,20 @@ export function classifyDelhiveryError(statusCode: number, responseData?: any, f
     return { errorType: 'AUTH_ERROR', message };
   }
 
+  if (statusCode === 403 || /forbidden|access denied|account|ip restriction|permission|not allowed/i.test(detailText)) {
+    return { errorType: 'FORBIDDEN', message };
+  }
+
   if (statusCode === 400 || /bad request|invalid.*param|missing.*param/i.test(detailText)) {
     return { errorType: 'BAD_REQUEST', message };
+  }
+
+  if (!statusCode || statusCode >= 500) {
+    return { errorType: 'UPSTREAM_ERROR', message };
+  }
+
+  if (statusCode === 0 || Number.isNaN(statusCode)) {
+    return { errorType: 'NETWORK_ERROR', message };
   }
 
   return { errorType: 'API_ERROR', message };

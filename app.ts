@@ -232,6 +232,25 @@ function sanitizeDiagnosticValue(value: any): any {
   return value;
 }
 
+function getShippingDiagnosticsState() {
+  const delhiveryRateApiUrl = (process.env.DELHIVERY_RATE_API_URL || 'https://track.delhivery.com/api/kinko/v1/invoice/charges/.json').trim();
+
+  return {
+    delhivery: {
+      tokenConfigured: Boolean((process.env.DELHIVERY_API_TOKEN || '').trim()),
+      rateApiUrlConfigured: Boolean(delhiveryRateApiUrl),
+      originPincodeConfigured: Boolean((process.env.DELHIVERY_ORIGIN_PINCODE || '').trim()),
+      rateApiUrl: delhiveryRateApiUrl
+    },
+    nimbuspost: {
+      baseUrlConfigured: Boolean((process.env.NIMBUSPOST_API_BASE_URL || '').trim()),
+      emailConfigured: Boolean((process.env.NIMBUSPOST_EMAIL || '').trim()),
+      passwordConfigured: Boolean((process.env.NIMBUSPOST_PASSWORD || '').trim()),
+      originPincodeConfigured: Boolean((process.env.NIMBUSPOST_ORIGIN_PINCODE || '').trim())
+    }
+  };
+}
+
 function buildProviderDiagnostic(provider: 'delhivery' | 'nimbuspost', status: number | undefined, errorType: string, message: string, upstream: any) {
   const sanitizedUpstream = sanitizeDiagnosticValue(upstream);
   const upstreamString = typeof sanitizedUpstream === 'string'
@@ -2541,10 +2560,13 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
       const total = price * ci.quantity;
       subtotal += total;
 
+      const customNameFromCart = ci.customizationText || (clientItems || []).find((item: any) => (item.productId || item.product?.id) === p.id)?.customizationText || '';
+      const displayName = customNameFromCart ? `${p.name} • For: ${customNameFromCart}` : p.name;
+
       orderItemsData.push({
         productId: p.id,
         variantId: ci.variantId || null,
-        productTitle: p.name,
+        productTitle: displayName,
         price,
         quantity: ci.quantity,
         total,
@@ -3762,6 +3784,15 @@ app.post('/api/orders/:id/retry-payment', requireAuthMiddleware, async (req: Aut
 });
 
 // Admin Shipments & Reconciliation
+app.get('/api/shipping/diagnostics', requireAdminMiddleware, async (_req: Request, res: Response) => {
+  try {
+    const state = getShippingDiagnosticsState();
+    return res.json({ success: true, ...state });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'Failed to fetch shipping configuration diagnostics', details: err.message });
+  }
+});
+
 app.get('/api/admin/shipments', requireAdminMiddleware, async (req: Request, res: Response) => {
   try {
     const shipments = await prisma.shipment.findMany({
@@ -4085,6 +4116,7 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
 
       const delhiveryDiagnostic = {
         provider: 'delhivery',
+        available: false,
         success: false,
         status: delhiveryResult.statusCode || delhiveryResult.diagnostic?.status || null,
         statusText: delhiveryResult.diagnostic?.statusText || null,
@@ -4093,11 +4125,20 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
         upstreamMessage: delhiveryResult.diagnostic?.upstreamMessage || delhiveryResult.error || delhiveryResult.remarks || null,
         upstreamCode: delhiveryResult.diagnostic?.upstreamCode || null,
         requestId: delhiveryResult.diagnostic?.requestId || null,
-        requestParameters: delhiveryResult.diagnostic || null
+        requestParameters: delhiveryResult.diagnostic || null,
+        diagnostic: {
+          provider: 'delhivery',
+          status: delhiveryResult.statusCode || delhiveryResult.diagnostic?.status || null,
+          statusText: delhiveryResult.diagnostic?.statusText || null,
+          errorType: delhiveryResult.errorType || 'UPSTREAM_ERROR',
+          upstreamMessage: delhiveryResult.diagnostic?.upstreamMessage || delhiveryResult.error || delhiveryResult.remarks || null,
+          requestId: delhiveryResult.diagnostic?.requestId || null
+        }
       };
 
       const nimbusDiagnostic = {
         provider: 'nimbuspost',
+        available: false,
         success: false,
         status: nimbusResult.statusCode || nimbusResult.diagnostic?.status || null,
         statusText: nimbusResult.diagnostic?.statusText || null,
@@ -4106,7 +4147,15 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
         upstreamMessage: nimbusResult.diagnostic?.upstreamMessage || nimbusResult.error || nimbusResult.remarks || null,
         upstreamCode: nimbusResult.diagnostic?.upstreamCode || null,
         requestId: nimbusResult.diagnostic?.requestId || null,
-        requestParameters: nimbusResult.diagnostic || null
+        requestParameters: nimbusResult.diagnostic || null,
+        diagnostic: {
+          provider: 'nimbuspost',
+          status: nimbusResult.statusCode || nimbusResult.diagnostic?.status || null,
+          statusText: nimbusResult.diagnostic?.statusText || null,
+          errorType: nimbusResult.errorType || 'UPSTREAM_ERROR',
+          upstreamMessage: nimbusResult.diagnostic?.upstreamMessage || nimbusResult.error || nimbusResult.remarks || null,
+          requestId: nimbusResult.diagnostic?.requestId || null
+        }
       };
 
       return res.json({
@@ -4138,18 +4187,36 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
       rates: combinedOptions,
       providers: {
         delhivery: {
+          available: delhiveryRes.status === 'fulfilled' && Boolean(delhiveryRes.value && delhiveryRes.value.serviceable),
           success: delhiveryRes.status === 'fulfilled' && Boolean(delhiveryRes.value && delhiveryRes.value.serviceable),
           status: delhiveryRes.status === 'fulfilled' ? (delhiveryRes.value?.statusCode || null) : null,
           errorType: delhiveryRes.status === 'fulfilled' ? (delhiveryRes.value?.errorType || null) : 'REJECTED',
           message: delhiveryRes.status === 'fulfilled' ? (delhiveryRes.value?.error || null) : 'Rejected by provider',
-          upstreamMessage: delhiveryRes.status === 'fulfilled' ? (delhiveryRes.value?.diagnostic?.upstreamMessage || null) : null
+          upstreamMessage: delhiveryRes.status === 'fulfilled' ? (delhiveryRes.value?.diagnostic?.upstreamMessage || null) : null,
+          diagnostic: {
+            provider: 'delhivery',
+            status: delhiveryRes.status === 'fulfilled' ? (delhiveryRes.value?.statusCode || null) : null,
+            statusText: delhiveryRes.status === 'fulfilled' ? (delhiveryRes.value?.diagnostic?.statusText || null) : null,
+            errorType: delhiveryRes.status === 'fulfilled' ? (delhiveryRes.value?.errorType || null) : 'REJECTED',
+            upstreamMessage: delhiveryRes.status === 'fulfilled' ? (delhiveryRes.value?.diagnostic?.upstreamMessage || null) : null,
+            requestId: delhiveryRes.status === 'fulfilled' ? (delhiveryRes.value?.diagnostic?.requestId || null) : null
+          }
         },
         nimbuspost: {
+          available: nimbusRes.status === 'fulfilled' && Boolean(nimbusRes.value && nimbusRes.value.serviceable),
           success: nimbusRes.status === 'fulfilled' && Boolean(nimbusRes.value && nimbusRes.value.serviceable),
           status: nimbusRes.status === 'fulfilled' ? (nimbusRes.value?.statusCode || null) : null,
           errorType: nimbusRes.status === 'fulfilled' ? (nimbusRes.value?.errorType || null) : 'REJECTED',
           message: nimbusRes.status === 'fulfilled' ? (nimbusRes.value?.error || null) : 'Rejected by provider',
-          upstreamMessage: nimbusRes.status === 'fulfilled' ? (nimbusRes.value?.diagnostic?.upstreamMessage || null) : null
+          upstreamMessage: nimbusRes.status === 'fulfilled' ? (nimbusRes.value?.diagnostic?.upstreamMessage || null) : null,
+          diagnostic: {
+            provider: 'nimbuspost',
+            status: nimbusRes.status === 'fulfilled' ? (nimbusRes.value?.statusCode || null) : null,
+            statusText: nimbusRes.status === 'fulfilled' ? (nimbusRes.value?.diagnostic?.statusText || null) : null,
+            errorType: nimbusRes.status === 'fulfilled' ? (nimbusRes.value?.errorType || null) : 'REJECTED',
+            upstreamMessage: nimbusRes.status === 'fulfilled' ? (nimbusRes.value?.diagnostic?.upstreamMessage || null) : null,
+            requestId: nimbusRes.status === 'fulfilled' ? (nimbusRes.value?.diagnostic?.requestId || null) : null
+          }
         }
       },
       providersList: Array.from(new Set(combinedOptions.map(o => o.provider || 'delhivery')))

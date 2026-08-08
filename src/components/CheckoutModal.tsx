@@ -73,6 +73,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [shippingLoading, setShippingLoading] = useState<boolean>(false);
   const [shippingError, setShippingError] = useState<string | null>(null);
   const [selectedShippingOptionId, setSelectedShippingOptionId] = useState<string>('delhivery-surface');
+  const [deliveryDetailsExpanded, setDeliveryDetailsExpanded] = useState<boolean>(false);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('RAZORPAY');
   const [isProcessingOrder, setIsProcessingOrder] = useState(false);
@@ -146,9 +147,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
   // Auto-Fetch Delhivery Shipping Estimate whenever pincode, address, or cart items change
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setDeliveryDetailsExpanded(false);
+      setShippingEstimate(null);
+      setShippingError(null);
+      setShippingLoading(false);
+      return;
+    }
 
     if (activePincode.length !== 6) {
+      setDeliveryDetailsExpanded(false);
       setShippingEstimate(null);
       setShippingError(null);
       return;
@@ -156,6 +164,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
     let isMounted = true;
     const fetchShippingEstimate = async () => {
+      setDeliveryDetailsExpanded(true);
       setShippingLoading(true);
       setShippingError(null);
 
@@ -186,7 +195,25 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           const providerMessages = providerState
             ? Object.entries(providerState)
                 .filter(([, value]: any[]) => value && !value.success && value.message)
-                .map(([key, value]: any[]) => key === 'delhivery' ? 'Delhivery is currently unavailable. Please try another shipping option.' : 'NimbusPost is currently unavailable. Please try another shipping option.')
+                .map(([key, value]: any[]) => {
+                  const errorType = value?.diagnostic?.errorType || value?.errorType || 'UPSTREAM_ERROR';
+                  if (key === 'delhivery') {
+                    if (errorType === 'CONFIG_ERROR') return 'Delhivery is not configured correctly.';
+                    if (errorType === 'AUTH_ERROR') return 'Delhivery authentication failed.';
+                    if (errorType === 'FORBIDDEN') return 'Delhivery is currently unavailable (access denied by courier service).';
+                    if (errorType === 'WRONG_ENDPOINT') return 'Delhivery shipping endpoint is misconfigured.';
+                    if (errorType === 'BAD_REQUEST') return 'Delhivery request is invalid.';
+                    if (errorType === 'NETWORK_ERROR') return 'Delhivery shipping service is temporarily unavailable.';
+                    return 'Delhivery is currently unavailable (courier service error).';
+                  }
+                  if (errorType === 'CONFIG_ERROR') return 'NimbusPost authentication is not configured.';
+                  if (errorType === 'AUTH_ERROR') return 'NimbusPost authentication failed.';
+                  if (errorType === 'FORBIDDEN') return 'NimbusPost access is denied by the courier service.';
+                  if (errorType === 'WRONG_ENDPOINT') return 'NimbusPost endpoint is misconfigured.';
+                  if (errorType === 'BAD_REQUEST') return 'NimbusPost request is invalid.';
+                  if (errorType === 'NETWORK_ERROR') return 'NimbusPost shipping service is temporarily unavailable.';
+                  return 'NimbusPost is currently unavailable (courier service error).';
+                })
             : [];
           const realError = providerMessages[0] || (data.error || data.remarks || 'This delivery address is not serviceable by our shipping partners.');
           setShippingError(realError);
@@ -302,7 +329,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           items: safeCartItems.map((ci) => ({
             productId: ci.productId || ci.product?.id,
             quantity: ci.quantity,
-            variantId: ci.variantId
+            variantId: ci.variantId,
+            customizationText: ci.customizationText || (ci.product?.title || '').includes('• For:') ? (ci.product?.title || '').split('• For:')[1]?.trim() || undefined : undefined
           }))
         })
       });
@@ -681,88 +709,104 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               {/* Live Delhivery Shipping Rate & Serviceability Panel */}
               {activePincode && activePincode.length === 6 && (
                 <div className="space-y-3 pt-2">
-                  {shippingLoading && (
-                    <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-2xl p-4 flex items-center justify-center space-x-3 text-xs font-bold text-indigo-700">
-                      <Loader2 className="w-4 h-4 animate-spin text-indigo-600 shrink-0" />
-                      <span>Checking delivery availability & live shipping rates...</span>
-                    </div>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryDetailsExpanded((prev) => !prev)}
+                    className="w-full flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-[11px] font-bold text-slate-800 shadow-sm"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Truck className="w-3.5 h-3.5 text-indigo-600" />
+                      Delivery details
+                    </span>
+                    <span className="text-indigo-600">{deliveryDetailsExpanded ? 'Hide' : 'Show'}</span>
+                  </button>
 
-                  {!shippingLoading && shippingError && (
-                    <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex items-center space-x-3 text-xs font-bold text-rose-700">
-                      <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-                      <div>
-                        <span className="block font-extrabold text-rose-900">{shippingError}</span>
-                        <p className="text-[11px] font-normal text-rose-600 mt-0.5">
-                          {shippingError.toLowerCase().includes('not serviceable')
-                            ? 'Please select another delivery address or pincode.'
-                            : 'Please verify delivery details or Delhivery configuration.'}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {!shippingLoading && shippingEstimate && shippingEstimate.serviceable && (
-                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3 text-xs">
-                      <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
-                        <div className="flex items-center space-x-2 text-emerald-700 font-extrabold">
-                          <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
-                          <span>
-                            Delivery Available {shippingEstimate.city ? `to ${shippingEstimate.city}, ${shippingEstimate.state}` : `(PIN: ${activePincode})`}
-                          </span>
+                  {deliveryDetailsExpanded && (
+                    <>
+                      {shippingLoading && (
+                        <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-2xl p-4 flex items-center justify-center space-x-3 text-xs font-bold text-indigo-700">
+                          <Loader2 className="w-4 h-4 animate-spin text-indigo-600 shrink-0" />
+                          <span>Checking delivery availability & live shipping rates...</span>
                         </div>
-                        {shippingEstimate.codAvailable && (
-                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded">
-                            COD Available
-                          </span>
-                        )}
-                      </div>
+                      )}
 
-                      {/* Shipping Options Selector */}
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                            <Truck className="w-3.5 h-3.5 text-indigo-600" />
-                            Select Shipping Option
-                          </span>
-                          <span className="text-[10px] text-slate-500 font-medium">Live Rates via Delhivery & NimbusPost</span>
+                      {!shippingLoading && shippingError && (
+                        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex items-center space-x-3 text-xs font-bold text-rose-700">
+                          <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                          <div>
+                            <span className="block font-extrabold text-rose-900">{shippingError}</span>
+                            <p className="text-[11px] font-normal text-rose-600 mt-0.5">
+                              {shippingError.toLowerCase().includes('not serviceable')
+                                ? 'Please select another delivery address or pincode.'
+                                : 'Please verify delivery details or Delhivery configuration.'}
+                            </p>
+                          </div>
                         </div>
+                      )}
 
-                        <div className="space-y-2">
-                          {availableShippingOptions.map((opt: any) => (
-                            <label
-                              key={opt.id}
-                              onClick={() => setSelectedShippingOptionId(opt.id)}
-                              className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
-                                selectedShippingOptionId === opt.id
-                                  ? 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-200'
-                                  : 'border-slate-200 bg-white hover:bg-slate-100'
-                              }`}
-                            >
-                              <div className="flex items-center space-x-3">
-                                <input
-                                  type="radio"
-                                  name="checkout_shipping_option"
-                                  checked={selectedShippingOptionId === opt.id}
-                                  onChange={() => setSelectedShippingOptionId(opt.id)}
-                                  className="text-indigo-600 focus:ring-indigo-500"
-                                />
-                                <div>
-                                  <span className="font-extrabold text-slate-900 text-xs block">{opt.name}</span>
-                                  <span className="text-[10px] text-slate-500">{opt.description || opt.etaText}</span>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <span className="font-black text-slate-900 text-xs block">
-                                  {opt.charge === 0 ? <span className="text-emerald-600 font-extrabold">FREE</span> : `₹${opt.charge}`}
-                                </span>
-                                <span className="text-[10px] font-semibold text-slate-500">{opt.etaText}</span>
-                              </div>
-                            </label>
-                          ))}
+                      {!shippingLoading && shippingEstimate && shippingEstimate.serviceable && (
+                        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3 text-xs">
+                          <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                            <div className="flex items-center space-x-2 text-emerald-700 font-extrabold">
+                              <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
+                              <span>
+                                Delivery Available {shippingEstimate.city ? `to ${shippingEstimate.city}, ${shippingEstimate.state}` : `(PIN: ${activePincode})`}
+                              </span>
+                            </div>
+                            {shippingEstimate.codAvailable && (
+                              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded">
+                                COD Available
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Shipping Options Selector */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                                <Truck className="w-3.5 h-3.5 text-indigo-600" />
+                                Select Shipping Option
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-medium">Live Rates via Delhivery & NimbusPost</span>
+                            </div>
+
+                            <div className="space-y-2">
+                              {availableShippingOptions.map((opt: any) => (
+                                <label
+                                  key={opt.id}
+                                  onClick={() => setSelectedShippingOptionId(opt.id)}
+                                  className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                                    selectedShippingOptionId === opt.id
+                                      ? 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-200'
+                                      : 'border-slate-200 bg-white hover:bg-slate-100'
+                                  }`}
+                                >
+                                  <div className="flex items-center space-x-3">
+                                    <input
+                                      type="radio"
+                                      name="checkout_shipping_option"
+                                      checked={selectedShippingOptionId === opt.id}
+                                      onChange={() => setSelectedShippingOptionId(opt.id)}
+                                      className="text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                    <div>
+                                      <span className="font-extrabold text-slate-900 text-xs block">{opt.name}</span>
+                                      <span className="text-[10px] text-slate-500">{opt.description || opt.etaText}</span>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className="font-black text-slate-900 text-xs block">
+                                      {opt.charge === 0 ? <span className="text-emerald-600 font-extrabold">FREE</span> : `₹${opt.charge}`}
+                                    </span>
+                                    <span className="text-[10px] font-semibold text-slate-500">{opt.etaText}</span>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}

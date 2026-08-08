@@ -25,14 +25,15 @@ import {
 } from 'lucide-react';
 import { Product, ProductReview, ProductVariant } from '../types';
 import { useSEO } from '../hooks/useSEO';
+import { isNameKeychainProduct } from '../lib/personalization';
 
 interface ProductDetailsModalProps {
   product: Product | null;
   onClose: () => void;
   isWishlisted: boolean;
   onToggleWishlist: (p: Product) => void;
-  onAddToCart: (p: Product, variantId?: string, quantity?: number) => void;
-  onBuyNow: (p: Product) => void;
+  onAddToCart: (p: Product, variantId?: string, quantity?: number, customizationText?: string) => void;
+  onBuyNow: (p: Product, customizationText?: string) => void;
   onSelectRelatedProduct?: (p: Product) => void;
 }
 
@@ -81,6 +82,8 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   const [newReviewComment, setNewReviewComment] = useState('');
   const [newReviewRating, setNewReviewRating] = useState(5);
   const [reviewSubmittedMsg, setReviewSubmittedMsg] = useState(false);
+  const [customizationText, setCustomizationText] = useState('');
+  const needsCustomization = product ? isNameKeychainProduct(product) : false;
 
   // SEO Hook
   useSEO({
@@ -205,6 +208,14 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     navigator.clipboard.writeText(urlToCopy);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
+  };
+
+  const handleAddCustomProduct = () => {
+    if (!product) return;
+    if (needsCustomization && !customizationText.trim()) {
+      return;
+    }
+    onAddToCart(product, selectedVariant?.id, quantity, customizationText.trim());
   };
 
   const handleAddReview = async (e: React.FormEvent) => {
@@ -461,14 +472,25 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                 </div>
               )}
 
+              {needsCustomization && (
+                <div className="space-y-2 pt-1">
+                  <label className="text-[11px] font-bold uppercase tracking-wide text-slate-700">Name for keychain</label>
+                  <input
+                    type="text"
+                    value={customizationText}
+                    onChange={(e) => setCustomizationText(e.target.value.slice(0, 20))}
+                    placeholder="Enter name"
+                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              )}
+
               {/* Main CTA Buttons */}
               <div className="space-y-3 pt-2">
                 <div className="grid grid-cols-2 gap-3">
                   <button
-                    onClick={() => {
-                      onAddToCart(product, selectedVariant?.id, quantity);
-                    }}
-                    disabled={stockQty <= 0}
+                    onClick={handleAddCustomProduct}
+                    disabled={stockQty <= 0 || (needsCustomization && !customizationText.trim())}
                     className="w-full py-3.5 bg-slate-900 hover:bg-indigo-600 text-white font-bold text-sm rounded-2xl flex items-center justify-center space-x-2 transition-all shadow-md cursor-pointer disabled:opacity-50"
                   >
                     <ShoppingBag className="w-4 h-4" />
@@ -477,7 +499,8 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
 
                   <button
                     onClick={() => {
-                      onBuyNow(product);
+                      if (needsCustomization && !customizationText.trim()) return;
+                      onBuyNow(product, customizationText.trim());
                       onClose();
                     }}
                     disabled={stockQty <= 0}

@@ -2170,6 +2170,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <span>Dispatch Shipment</span>
                       </button>
                     </div>
+
+                    {(ord.items || []).length > 0 && (
+                      <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-2.5 space-y-1.5">
+                        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Items / Personalization</div>
+                        {(ord.items || []).map((item: any) => {
+                          const itemTitle = item.productTitle || item.product?.name || item.product?.title || 'Product';
+                          const customName = itemTitle.includes('• For:') ? itemTitle.split('• For:')[1]?.trim() : '';
+                          return (
+                            <div key={item.id || `${ord.id}-${item.productId}`} className="flex justify-between gap-3 text-[11px] text-slate-200">
+                              <span className="font-medium">{itemTitle}</span>
+                              <span className="text-slate-400">Qty: {item.quantity || 1}</span>
+                            </div>
+                          );
+                        })}
+                        {(ord.items || []).some((item: any) => (item.productTitle || item.product?.name || '').includes('• For:')) && (
+                          <div className="text-[10px] text-emerald-300 font-semibold pt-1 border-t border-slate-800">
+                            Custom name logged for production: {(ord.items || []).find((item: any) => (item.productTitle || item.product?.name || '').includes('• For:'))?.productTitle?.split('• For:')[1]?.trim()}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
                   })

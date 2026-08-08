@@ -33,6 +33,29 @@ export async function getNimbusPostAuthToken(): Promise<{ token: string | null; 
     return { token: cachedToken };
   }
 
+  const loginUrl = baseUrl ? `${baseUrl.replace(/\/$/, '')}/users/login` : '';
+
+  if (!baseUrl) {
+    return {
+      token: null,
+      error: 'NimbusPost API base URL is not configured (NIMBUSPOST_API_BASE_URL required).',
+      statusCode: 500,
+      diagnostic: {
+        provider: 'nimbuspost',
+        stage: 'login',
+        method: 'POST',
+        endpoint: null,
+        status: 500,
+        statusText: 'CONFIG_ERROR',
+        errorType: 'CONFIG_ERROR',
+        upstreamMessage: 'NimbusPost API base URL is not configured (NIMBUSPOST_API_BASE_URL required).',
+        upstreamCode: 'CONFIG_ERROR',
+        requestId: null,
+        credentialsConfigured: Boolean(email && password)
+      }
+    };
+  }
+
   if (!email || !password) {
     return {
       token: null,
@@ -42,9 +65,10 @@ export async function getNimbusPostAuthToken(): Promise<{ token: string | null; 
         provider: 'nimbuspost',
         stage: 'login',
         method: 'POST',
-        endpoint: `${baseUrl.replace(/\/$/, '')}/users/login`,
+        endpoint: loginUrl,
         status: 401,
         statusText: 'Unauthorized',
+        errorType: 'CONFIG_ERROR',
         upstreamMessage: 'NimbusPost credentials are not configured in environment variables (NIMBUSPOST_EMAIL and NIMBUSPOST_PASSWORD required).',
         upstreamCode: 'AUTHENTICATION_ERROR',
         requestId: null,
@@ -54,7 +78,6 @@ export async function getNimbusPostAuthToken(): Promise<{ token: string | null; 
   }
 
   try {
-    const loginUrl = `${baseUrl.replace(/\/$/, '')}/users/login`;
     const response = await axios.post(loginUrl, { email, password }, {
       headers: { 'Content-Type': 'application/json' },
       timeout: 10000
@@ -68,15 +91,16 @@ export async function getNimbusPostAuthToken(): Promise<{ token: string | null; 
     if (token) {
       cachedToken = token;
       tokenExpiryTime = Date.now() + (23 * 60 * 60 * 1000);
-      return { token, diagnostic: { provider: 'nimbuspost', stage: 'login', method: 'POST', endpoint: loginUrl, status: response.status, statusText: response.statusText, upstreamMessage: payload?.message || payload?.error || 'NimbusPost login succeeded', upstreamCode: payload?.code || null, requestId: response.headers?.['x-request-id'] || response.headers?.['X-Request-Id'] || response.headers?.['request-id'] || null, credentialsConfigured: true } };
+      return { token, diagnostic: { provider: 'nimbuspost', stage: 'login', method: 'POST', endpoint: loginUrl, status: response.status, statusText: response.statusText, errorType: 'AUTH_SUCCESS', upstreamMessage: payload?.message || payload?.error || 'NimbusPost login succeeded', upstreamCode: payload?.code || null, requestId: response.headers?.['x-request-id'] || response.headers?.['X-Request-Id'] || response.headers?.['request-id'] || null, credentialsConfigured: true } };
     }
 
     const errMsg = payload?.message || payload?.error || 'Authentication failed: Invalid credentials';
-    return { token: null, error: `NimbusPost Auth Failed: ${errMsg}`, statusCode: response.status, diagnostic: { provider: 'nimbuspost', stage: 'login', method: 'POST', endpoint: loginUrl, status: response.status, statusText: response.statusText, upstreamMessage: errMsg, upstreamCode: payload?.code || null, requestId: response.headers?.['x-request-id'] || response.headers?.['X-Request-Id'] || response.headers?.['request-id'] || null, credentialsConfigured: true } };
+    return { token: null, error: `NimbusPost Auth Failed: ${errMsg}`, statusCode: response.status, diagnostic: { provider: 'nimbuspost', stage: 'login', method: 'POST', endpoint: loginUrl, status: response.status, statusText: response.statusText, errorType: 'AUTH_ERROR', upstreamMessage: errMsg, upstreamCode: payload?.code || null, requestId: response.headers?.['x-request-id'] || response.headers?.['X-Request-Id'] || response.headers?.['request-id'] || null, credentialsConfigured: true } };
   } catch (err: any) {
     const status = err.response?.status;
     const respData = err.response?.data;
     const errMsg = respData?.message || respData?.error || err.message;
+    const errorType = status === 401 ? 'AUTH_ERROR' : status === 403 ? 'FORBIDDEN' : status === 404 ? 'WRONG_ENDPOINT' : status === 400 ? 'BAD_REQUEST' : status && status >= 500 ? 'UPSTREAM_ERROR' : 'NETWORK_ERROR';
     return {
       token: null,
       error: `NimbusPost authentication failed (${status || 'Connection Error'}): ${errMsg}`,
@@ -85,9 +109,10 @@ export async function getNimbusPostAuthToken(): Promise<{ token: string | null; 
         provider: 'nimbuspost',
         stage: 'login',
         method: 'POST',
-        endpoint: `${baseUrl.replace(/\/$/, '')}/users/login`,
+        endpoint: loginUrl,
         status: status || 500,
         statusText: err.response?.statusText || 'ERROR',
+        errorType,
         upstreamMessage: errMsg,
         upstreamCode: respData?.code || null,
         requestId: err.response?.headers?.['x-request-id'] || err.response?.headers?.['X-Request-Id'] || err.response?.headers?.['request-id'] || null,
@@ -330,11 +355,17 @@ Declared Value: ₹${orderAmount}
       errorType = 'AUTH_ERROR';
       errorMsg = 'NimbusPost API authentication failed. Check credentials.';
     } else if (status === 403) {
-      errorType = 'AUTH_ERROR';
+      errorType = 'FORBIDDEN';
       errorMsg = 'NimbusPost API access is forbidden for this account.';
     } else if (status === 404) {
-      errorType = 'ENDPOINT_NOT_FOUND';
+      errorType = 'WRONG_ENDPOINT';
       errorMsg = 'NimbusPost rate calculation endpoint not found. Verify NIMBUSPOST_API_BASE_URL.';
+    } else if (status === 400) {
+      errorType = 'BAD_REQUEST';
+      errorMsg = respData?.message || respData?.error || 'NimbusPost request is malformed.';
+    } else if (status && status >= 500) {
+      errorType = 'UPSTREAM_ERROR';
+      errorMsg = respData?.message || respData?.error || 'NimbusPost shipping service is temporarily unavailable.';
     } else if (respData?.message || respData?.error) {
       errorMsg = respData.message || respData.error;
     }

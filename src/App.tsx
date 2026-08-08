@@ -673,7 +673,7 @@ export default function App() {
   };
 
   // Cart Actions
-  const handleAddToCart = async (productOrId: Product | string, variantIdOrQty?: string | number, quantity = 1) => {
+  const handleAddToCart = async (productOrId: Product | string, variantIdOrQty?: string | number, quantity = 1, customizationText?: string) => {
     if (!user) {
       setIsAuthOpen(true);
       showToast('Please log in or create an account to add items to cart');
@@ -691,10 +691,17 @@ export default function App() {
       actualQty = quantity;
     }
 
+    const trimmedCustomization = (customizationText || '').trim();
+
     try {
       const res = await apiFetch('/api/cart/items', {
         method: 'POST',
-        body: JSON.stringify({ productId: prodId, variantId: actualVariantId, quantity: actualQty })
+        body: JSON.stringify({
+          productId: prodId,
+          variantId: actualVariantId,
+          quantity: actualQty,
+          customizationText: trimmedCustomization
+        })
       });
       const data = await res.json();
       if (!res.ok) {
@@ -702,7 +709,15 @@ export default function App() {
         throw new Error(data.error || 'Failed to add item to cart');
       }
       setCartData(data);
-      setCartItems(formatCartItems(data?.items));
+      const formattedItems = formatCartItems(data?.items);
+      if (trimmedCustomization) {
+        formattedItems.forEach((item) => {
+          if (item.productId === prodId) {
+            item.customizationText = trimmedCustomization;
+          }
+        });
+      }
+      setCartItems(formattedItems);
       showToast('Item added to Shopping Cart!');
     } catch (err: any) {
       console.error('Add to cart error:', err);
@@ -1236,9 +1251,9 @@ export default function App() {
         }}
         isWishlisted={quickViewProduct ? wishlistProductIds.includes(quickViewProduct.id) : false}
         onToggleWishlist={handleToggleWishlist}
-        onAddToCart={(p, qty) => handleAddToCart(p, qty)}
-        onBuyNow={(p) => {
-          handleAddToCart(p, 1);
+        onAddToCart={(p, qty, _unused, customizationText) => handleAddToCart(p, qty, 1, customizationText)}
+        onBuyNow={(p, customizationText) => {
+          handleAddToCart(p, 1, 1, customizationText);
           handleProceedToCheckout();
         }}
         onSelectRelatedProduct={(p) => setQuickViewProduct(p)}

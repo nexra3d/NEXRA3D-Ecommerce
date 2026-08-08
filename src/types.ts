@@ -147,6 +147,7 @@ export interface CartItem {
   quantity: number;
   selectedVariant?: string;
   taxPercentage?: number;
+  customizationText?: string;
 }
 
 export interface Coupon {
@@ -175,6 +176,7 @@ export interface OrderItem {
   price: number;
   quantity: number;
   totalPrice: number;
+  customizationText?: string;
 }
 
 export type ShipmentStatus =
