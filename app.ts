@@ -42,6 +42,7 @@ import {
   bannerCreateSchema
 } from './src/lib/validation.js';
 import * as delhiveryService from './src/lib/shipping/delhivery.js';
+import * as nimbuspostService from './src/lib/shipping/nimbuspost.js';
 
 export interface AuthenticatedRequest extends Request {
   user?: any;
@@ -2332,6 +2333,8 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
 
     const isCod = paymentMethod === 'COD' || paymentMethod === 'CASH_ON_DELIVERY';
 
+    const selectedProvider = req.body.shippingProvider || (req.body.selectedShippingOptionId?.startsWith('nimbuspost') ? 'NimbusPost' : 'Delhivery');
+
     const newOrder = await prisma.order.create({
       data: {
         orderNumber,
@@ -2344,6 +2347,7 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
         taxAmount,
         shippingFee,
         totalAmount,
+        shippingProvider: selectedProvider,
         couponCode: couponCode || null,
         shippingAddress: {
           ...shippingAddressData,
@@ -2367,7 +2371,7 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
 
     // Auto-create shipment if COD order
     if (isCod) {
-      await autoProcessDelhiveryShipment(newOrder.id);
+      await autoProcessShipment(newOrder.id, selectedProvider, req.body.courierId);
     }
 
     const finalCreatedOrder = await prisma.order.findUnique({
@@ -2386,7 +2390,7 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
   }
 });
 
-async function autoProcessDelhiveryShipment(orderId: string) {
+async function autoProcessShipment(orderId: string, preferredProvider?: string, courierId?: string) {
   try {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
@@ -2398,20 +2402,57 @@ async function autoProcessDelhiveryShipment(orderId: string) {
       return order;
     }
 
-    const res = await delhiveryService.createShipment({
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      shippingAddress: order.shippingAddress,
-      items: order.items,
-      totalAmount: Number(order.totalAmount),
-      paymentMethod: order.paymentMethod,
-      weightInGrams: 500
-    });
+    const providerName = (preferredProvider || order.shippingProvider || '').toLowerCase().includes('nimbus') ? 'NimbusPost' : 'Delhivery';
+    const isNimbus = providerName === 'NimbusPost';
+
+    let totalWeightGrams = 0;
+    let maxL = 15, maxW = 15, totalH = 0;
+    for (const item of order.items) {
+      const p = item.product;
+      const rawW = p?.weight ? Number(p.weight) : 0.5;
+      const specs = (p?.specifications as any) || {};
+      const l = Number(specs.length || specs.dimensions?.length || 15);
+      const w = Number(specs.width || specs.dimensions?.width || 15);
+      const h = Number(specs.height || specs.dimensions?.height || 5);
+      const qty = item.quantity || 1;
+      totalWeightGrams += (rawW <= 20 ? Math.round(rawW * 1000) : Math.round(rawW)) * qty;
+      maxL = Math.max(maxL, l);
+      maxW = Math.max(maxW, w);
+      totalH += h * qty;
+    }
+    const calculatedWeightInGrams = Math.max(500, totalWeightGrams);
+    const calculatedDimensions = { length: maxL, width: maxW, height: Math.max(5, totalH) };
+
+    let res: any;
+    if (isNimbus) {
+      res = await nimbuspostService.createShipment({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        shippingAddress: order.shippingAddress,
+        items: order.items,
+        totalAmount: Number(order.totalAmount),
+        paymentMethod: order.paymentMethod,
+        weightInGrams: calculatedWeightInGrams,
+        dimensions: calculatedDimensions,
+        courierId
+      });
+    } else {
+      res = await delhiveryService.createShipment({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        shippingAddress: order.shippingAddress,
+        items: order.items,
+        totalAmount: Number(order.totalAmount),
+        paymentMethod: order.paymentMethod,
+        weightInGrams: calculatedWeightInGrams,
+        dimensions: calculatedDimensions
+      });
+    }
 
     const updatedOrder = await prisma.order.update({
       where: { id: order.id },
       data: {
-        shippingProvider: 'Delhivery',
+        shippingProvider: providerName,
         awbNumber: res.awbNumber,
         trackingNumber: res.trackingNumber,
         shipmentId: res.shipmentId,
@@ -2428,7 +2469,7 @@ async function autoProcessDelhiveryShipment(orderId: string) {
             date: new Date().toISOString(),
             status: 'Shipment Created',
             location: 'NEXRA Fulfillment Hub',
-            remark: 'Shipment manifest generated via Delhivery'
+            remark: `Shipment manifest generated via ${providerName}`
           }
         ]
       },
@@ -2442,8 +2483,8 @@ async function autoProcessDelhiveryShipment(orderId: string) {
         orderId: order.id,
         orderNumber: order.orderNumber,
         shipmentNumber: res.shipmentId,
-        provider: 'Delhivery',
-        courier: 'Delhivery Surface & Express',
+        provider: providerName,
+        courier: isNimbus ? 'NimbusPost Partner Courier' : 'Delhivery Surface & Express',
         awbNumber: res.awbNumber,
         trackingNumber: res.trackingNumber,
         trackingUrl: res.trackingUrl,
@@ -2453,8 +2494,8 @@ async function autoProcessDelhiveryShipment(orderId: string) {
         estimatedDelivery: res.estimatedDelivery ? new Date(res.estimatedDelivery) : null
       },
       update: {
-        provider: 'Delhivery',
-        courier: 'Delhivery Surface & Express',
+        provider: providerName,
+        courier: isNimbus ? 'NimbusPost Partner Courier' : 'Delhivery Surface & Express',
         awbNumber: res.awbNumber,
         trackingNumber: res.trackingNumber,
         trackingUrl: res.trackingUrl,
@@ -2469,12 +2510,12 @@ async function autoProcessDelhiveryShipment(orderId: string) {
       if (custEmail) {
         await sendEmail({
           to: custEmail,
-          subject: `Shipment Dispatched - Order #${order.orderNumber} (Delhivery AWB: ${res.awbNumber})`,
+          subject: `Shipment Dispatched - Order #${order.orderNumber} (${providerName} AWB: ${res.awbNumber})`,
           html: `<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
-            <h2 style="color: #4f46e5;">Order #${order.orderNumber} Dispatched via Delhivery!</h2>
-            <p>Your order has been handed over to <strong>Delhivery Express</strong>.</p>
+            <h2 style="color: #4f46e5;">Order #${order.orderNumber} Dispatched via ${providerName}!</h2>
+            <p>Your order has been handed over to <strong>${providerName}</strong>.</p>
             <p><strong>AWB Number:</strong> ${res.awbNumber}</p>
-            <p><strong>Estimated Delivery:</strong> ${res.estimatedDelivery}</p>
+            <p><strong>Estimated Delivery:</strong> ${res.estimatedDelivery || '3-5 Days'}</p>
             <p style="margin-top: 16px;"><a href="${res.trackingUrl}" style="background-color: #4f46e5; color: white; padding: 10px 18px; text-decoration: none; border-radius: 8px; display: inline-block;">Track Your Shipment</a></p>
           </div>`
         });
@@ -2483,7 +2524,7 @@ async function autoProcessDelhiveryShipment(orderId: string) {
 
     return updatedOrder;
   } catch (err) {
-    console.error('Error auto processing Delhivery shipment:', err);
+    console.error('Error auto processing shipment:', err);
     return null;
   }
 }
@@ -2812,7 +2853,7 @@ const handleRazorpayVerifyPayment = async (req: AuthenticatedRequest, res: Respo
       });
 
       if (updatedOrder) {
-        const processed = await autoProcessDelhiveryShipment(updatedOrder.id);
+        const processed = await autoProcessShipment(updatedOrder.id, updatedOrder.shippingProvider);
         if (processed) updatedOrder = processed;
       }
     }
@@ -3699,7 +3740,7 @@ app.get('/api/shipping/pincode/:pincode', async (req: Request, res: Response) =>
   }
 });
 
-// 2. Shipping Cost Estimation
+// 2. Shipping Cost Estimation (Unified Delhivery + NimbusPost)
 app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
   try {
     const { originPincode, destinationPincode, weight, dimensions, orderValue, paymentType, items } = req.body;
@@ -3718,7 +3759,7 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
       if (productIds.length > 0) {
         const dbProducts = await prisma.product.findMany({
           where: { id: { in: productIds } },
-          select: { id: true, weight: true, specifications: true }
+          select: { id: true, name: true, weight: true, specifications: true }
         });
         dbProducts.forEach(p => dbProductsMap.set(p.id, p));
       }
@@ -3727,61 +3768,341 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
         const qty = Math.max(1, Number(item.quantity) || 1);
         const dbP = dbProductsMap.get(item.productId || item.id);
 
-        let itemWeightGrams = 250; // Default fallback if unspecified in DB
-        const dbWeight = dbP?.weight ? Number(dbP.weight) : null;
-        const rawWeight = dbWeight !== null ? dbWeight : (item.weight ? Number(item.weight) : null);
-        
-        if (rawWeight && rawWeight > 0) {
-          // If <= 20, assumed in kg (e.g. 0.5kg -> 500g); else assumed in grams
-          itemWeightGrams = rawWeight <= 20 ? Math.round(rawWeight * 1000) : Math.round(rawWeight);
+        const rawWeight = dbP?.weight ? Number(dbP.weight) : (item.weight ? Number(item.weight) : null);
+        const specs = (dbP?.specifications as any) || {};
+        const dbL = specs.length || specs.dimensions?.length || item.dimensions?.length;
+        const dbW = specs.width || specs.dimensions?.width || item.dimensions?.width;
+        const dbH = specs.height || specs.dimensions?.height || item.dimensions?.height;
+
+        if (!rawWeight || rawWeight <= 0 || !dbL || Number(dbL) <= 0 || !dbW || Number(dbW) <= 0 || !dbH || Number(dbH) <= 0) {
+          const prodName = dbP?.name || item.name || item.title || 'Product';
+          return res.status(400).json({
+            error: `Shipping dimensions/weight are not configured for product: ${prodName}`
+          });
         }
+
+        const itemWeightGrams = rawWeight <= 20 ? Math.round(rawWeight * 1000) : Math.round(rawWeight);
         calculatedWeightGrams += itemWeightGrams * qty;
 
-        const specs = (dbP?.specifications as any) || {};
-        const dbL = specs.length || specs.dimensions?.length;
-        const dbW = specs.width || specs.dimensions?.width;
-        const dbH = specs.height || specs.dimensions?.height;
-
-        const l = dbL || item.dimensions?.length || 15;
-        const w = dbW || item.dimensions?.width || 15;
-        const h = dbH || item.dimensions?.height || 5;
-
-        maxLength = Math.max(maxLength, Number(l) || 15);
-        maxWidth = Math.max(maxWidth, Number(w) || 15);
-        totalHeight += (Number(h) || 5) * qty;
+        maxLength = Math.max(maxLength, Number(dbL));
+        maxWidth = Math.max(maxWidth, Number(dbW));
+        totalHeight += Number(dbH) * qty;
       }
     }
 
-    const finalWeightGrams = calculatedWeightGrams > 0 ? calculatedWeightGrams : (Number(weight) || 500);
+    const deadWeightGrams = calculatedWeightGrams > 0 ? calculatedWeightGrams : (Number(weight) || 500);
     const finalDimensions = dimensions || {
       length: maxLength,
       width: maxWidth,
       height: Math.max(5, totalHeight)
     };
 
+    const volumetricWeightKg = (finalDimensions.length * finalDimensions.width * finalDimensions.height) / 5000;
+    const volumetricWeightGrams = Math.round(volumetricWeightKg * 1000);
+    const chargeableWeightGrams = Math.max(deadWeightGrams, volumetricWeightGrams);
+
     const effectiveOriginPin = originPincode || process.env.DELHIVERY_ORIGIN_PINCODE || '500032';
 
     console.log('[API /api/shipping/estimate] Request parameters:', {
       originPincode: effectiveOriginPin,
       destinationPincode,
-      weightGrams: finalWeightGrams,
+      deadWeightGrams,
+      volumetricWeightGrams,
+      chargeableWeightGrams,
       dimensions: finalDimensions,
       orderValue: Number(orderValue) || 0,
       paymentType: paymentType || 'Pre-paid',
       itemCount: Array.isArray(items) ? items.length : 0
     });
 
-    const result = await delhiveryService.calculateShipping(
-      effectiveOriginPin,
-      destinationPincode,
-      finalWeightGrams,
-      finalDimensions,
-      Number(orderValue) || 0,
-      paymentType || 'Pre-paid'
-    );
-    return res.json(result);
+    const [delhiveryRes, nimbusRes] = await Promise.allSettled([
+      delhiveryService.calculateShipping(
+        effectiveOriginPin,
+        destinationPincode,
+        chargeableWeightGrams,
+        finalDimensions,
+        Number(orderValue) || 0,
+        paymentType || 'Pre-paid'
+      ),
+      nimbuspostService.calculateShipping(
+        effectiveOriginPin,
+        destinationPincode,
+        chargeableWeightGrams,
+        finalDimensions,
+        Number(orderValue) || 0,
+        paymentType || 'Pre-paid'
+      )
+    ]);
+
+    const combinedOptions: any[] = [];
+    let isServiceable = false;
+    let codAvailable = false;
+    let city: string | undefined = undefined;
+    let state: string | undefined = undefined;
+
+    if (delhiveryRes.status === 'fulfilled' && delhiveryRes.value) {
+      const dVal = delhiveryRes.value;
+      if (dVal.serviceable && dVal.options && dVal.options.length > 0) {
+        isServiceable = true;
+        if (dVal.codAvailable) codAvailable = true;
+        if (dVal.city) city = dVal.city;
+        if (dVal.state) state = dVal.state;
+        combinedOptions.push(...dVal.options);
+      }
+    }
+
+    if (nimbusRes.status === 'fulfilled' && nimbusRes.value) {
+      const nVal = nimbusRes.value;
+      if (nVal.serviceable && nVal.options && nVal.options.length > 0) {
+        isServiceable = true;
+        if (nVal.codAvailable) codAvailable = true;
+        if (!city && nVal.city) city = nVal.city;
+        if (!state && nVal.state) state = nVal.state;
+        combinedOptions.push(...nVal.options);
+      }
+    }
+
+    if (combinedOptions.length === 0) {
+      const delhiveryErr = delhiveryRes.status === 'fulfilled' ? delhiveryRes.value.error : (delhiveryRes.reason?.message || 'Delhivery rate calculation failed');
+      const nimbusErr = nimbusRes.status === 'fulfilled' ? nimbusRes.value.error : (nimbusRes.reason?.message || 'NimbusPost rate calculation failed');
+
+      return res.json({
+        serviceable: false,
+        pincode: destinationPincode,
+        codAvailable: false,
+        options: [],
+        error: `Unable to calculate live shipping rates. Delhivery: (${delhiveryErr}). NimbusPost: (${nimbusErr}).`,
+        remarks: `Delhivery: ${delhiveryErr} | NimbusPost: ${nimbusErr}`
+      });
+    }
+
+    return res.json({
+      serviceable: true,
+      pincode: destinationPincode,
+      city,
+      state,
+      codAvailable,
+      options: combinedOptions,
+      providers: Array.from(new Set(combinedOptions.map(o => o.provider || 'delhivery')))
+    });
   } catch (err: any) {
     return res.status(500).json({ error: 'Failed to calculate shipping estimate', details: err.message });
+  }
+});
+
+// Dedicated NimbusPost Serviceability Endpoint
+app.post('/api/shipping/nimbuspost/serviceability', async (req: Request, res: Response) => {
+  try {
+    const destinationPincode = req.body.pincode || req.body.destinationPincode;
+    const originPincode = req.body.originPincode || process.env.NIMBUSPOST_ORIGIN_PINCODE || process.env.DELHIVERY_ORIGIN_PINCODE || '500032';
+    const weightGrams = Number(req.body.weightGrams || req.body.weight) || 1000;
+    const paymentType = req.body.paymentType || req.body.paymentMethod || 'Pre-paid';
+    const orderValue = Number(req.body.orderValue) || 0;
+    const dimensions = req.body.dimensions || { length: 15, width: 15, height: 10 };
+
+    if (!destinationPincode) {
+      return res.status(400).json({ error: 'destinationPincode or pincode is required' });
+    }
+
+    const result = await nimbuspostService.checkServiceability(
+      originPincode,
+      destinationPincode,
+      weightGrams,
+      paymentType,
+      orderValue,
+      dimensions
+    );
+
+    return res.json({
+      provider: 'nimbuspost',
+      serviceable: result.serviceable,
+      codAvailable: result.codAvailable,
+      services: result.options,
+      error: result.error,
+      errorType: result.errorType
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to check NimbusPost serviceability', details: err.message });
+  }
+});
+
+// Dedicated NimbusPost Rate Estimate Endpoint
+app.post('/api/shipping/nimbuspost/estimate', async (req: Request, res: Response) => {
+  try {
+    const { pincode, paymentMethod, items, orderValue } = req.body;
+    const destinationPincode = pincode || req.body.destinationPincode;
+    if (!destinationPincode) {
+      return res.status(400).json({ error: 'pincode is required' });
+    }
+
+    let calculatedWeightGrams = 0;
+    let maxLength = 15;
+    let maxWidth = 15;
+    let totalHeight = 0;
+
+    if (Array.isArray(items) && items.length > 0) {
+      const productIds = items.map((i: any) => i.productId || i.id).filter(Boolean);
+      let dbProductsMap = new Map();
+      if (productIds.length > 0) {
+        const dbProducts = await prisma.product.findMany({
+          where: { id: { in: productIds } },
+          select: { id: true, name: true, weight: true, specifications: true }
+        });
+        dbProducts.forEach(p => dbProductsMap.set(p.id, p));
+      }
+
+      for (const item of items) {
+        const qty = Math.max(1, Number(item.quantity) || 1);
+        const dbP = dbProductsMap.get(item.productId || item.id);
+
+        const rawWeight = dbP?.weight ? Number(dbP.weight) : (item.weight ? Number(item.weight) : null);
+        const specs = (dbP?.specifications as any) || {};
+        const dbL = specs.length || specs.dimensions?.length || item.dimensions?.length;
+        const dbW = specs.width || specs.dimensions?.width || item.dimensions?.width;
+        const dbH = specs.height || specs.dimensions?.height || item.dimensions?.height;
+
+        if (!rawWeight || rawWeight <= 0 || !dbL || Number(dbL) <= 0 || !dbW || Number(dbW) <= 0 || !dbH || Number(dbH) <= 0) {
+          const prodName = dbP?.name || item.name || item.title || 'Product';
+          return res.status(400).json({
+            error: `Shipping dimensions/weight are not configured for product: ${prodName}`
+          });
+        }
+
+        const itemWeightGrams = rawWeight <= 20 ? Math.round(rawWeight * 1000) : Math.round(rawWeight);
+        calculatedWeightGrams += itemWeightGrams * qty;
+
+        maxLength = Math.max(maxLength, Number(dbL));
+        maxWidth = Math.max(maxWidth, Number(dbW));
+        totalHeight += Number(dbH) * qty;
+      }
+    }
+
+    const deadWeightGrams = calculatedWeightGrams > 0 ? calculatedWeightGrams : 500;
+    const finalDimensions = { length: maxLength, width: maxWidth, height: Math.max(5, totalHeight) };
+    const effectiveOriginPin = process.env.NIMBUSPOST_ORIGIN_PINCODE || process.env.DELHIVERY_ORIGIN_PINCODE || '500032';
+
+    const result = await nimbuspostService.calculateShipping(
+      effectiveOriginPin,
+      destinationPincode,
+      deadWeightGrams,
+      finalDimensions,
+      Number(orderValue) || 0,
+      paymentMethod === 'COD' ? 'COD' : 'Pre-paid'
+    );
+
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to calculate NimbusPost shipping estimate', details: err.message });
+  }
+});
+
+// Dedicated NimbusPost Diagnostic Endpoint
+app.get('/api/shipping/nimbuspost/diagnostic', async (req: Request, res: Response) => {
+  try {
+    const diagnostic = await nimbuspostService.getDiagnosticInfo();
+    return res.status(diagnostic.status || 200).json(diagnostic);
+  } catch (err: any) {
+    return res.status(500).json({
+      configured: false,
+      baseUrlConfigured: false,
+      credentialsConfigured: false,
+      apiReachable: false,
+      status: 500,
+      error: err.message
+    });
+  }
+});
+
+// Diagnostic Endpoint for Testing Delhivery API
+app.get('/api/shipping/diagnostic', async (req: Request, res: Response) => {
+  try {
+    const token = process.env.DELHIVERY_API_TOKEN || '';
+    const rateUrl = process.env.DELHIVERY_RATE_API_URL || '';
+    const baseUrl = process.env.DELHIVERY_BASE_URL || 'https://track.delhivery.com';
+
+    const tokenConfigured = Boolean(token);
+    const endpointConfigured = Boolean(rateUrl);
+    const configured = tokenConfigured;
+
+    const safeEndpoint = rateUrl
+      ? rateUrl.replace(/(token=)[^&]+/i, '$1***')
+      : `${baseUrl}/api/kcl/charge.json (default candidate)`;
+
+    const originPincode = (req.query.o_pin as string) || process.env.DELHIVERY_ORIGIN_PINCODE || '500032';
+    const destinationPincode = (req.query.d_pin as string) || '500046';
+    const weightGrams = Number(req.query.weight) || 1000;
+    const length = Number(req.query.l) || 15;
+    const width = Number(req.query.w) || 15;
+    const height = Number(req.query.h) || 10;
+    const paymentType = (req.query.pt as string) === 'COD' ? 'COD' : 'Pre-paid';
+    const orderValue = Number(req.query.clv) || 1499;
+
+    const result = await delhiveryService.calculateShipping(
+      originPincode,
+      destinationPincode,
+      weightGrams,
+      { length, width, height },
+      orderValue,
+      paymentType
+    );
+
+    const httpStatus = result.statusCode || (result.charge ? 200 : (result.errorType === 'AUTH_ERROR' ? 401 : 400));
+    const success = Boolean(result.options && result.options.length > 0 && !result.error);
+
+    return res.status(success ? 200 : (httpStatus || 400)).json({
+      configured,
+      endpointConfigured,
+      tokenConfigured,
+      endpoint: safeEndpoint,
+      httpStatus,
+      success,
+      rates: result.options || [],
+      errorType: result.errorType || (success ? null : 'API_ERROR'),
+      message: result.error || (success ? 'Delhivery live rate calculated successfully' : 'Rate calculation failed'),
+      requestParameters: {
+        originPincode,
+        destinationPincode,
+        weightGrams,
+        dimensions: { length, width, height },
+        paymentType,
+        orderValue
+      }
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      configured: false,
+      success: false,
+      httpStatus: 500,
+      errorType: 'SERVER_ERROR',
+      message: err.message
+    });
+  }
+});
+
+// Track NimbusPost Shipment
+app.get('/api/shipping/nimbuspost/track/:awb', async (req: Request, res: Response) => {
+  try {
+    const { awb } = req.params;
+    const tracking = await nimbuspostService.trackShipment(awb);
+
+    const existingOrder = await prisma.order.findFirst({
+      where: { OR: [{ awbNumber: awb }, { trackingNumber: awb }, { shipmentId: awb }] }
+    });
+
+    if (existingOrder) {
+      await prisma.order.update({
+        where: { id: existingOrder.id },
+        data: {
+          shipmentStatus: tracking.status,
+          lastTrackingUpdate: new Date(),
+          trackingHistory: tracking.events as any
+        }
+      }).catch(() => {});
+    }
+
+    return res.json(tracking);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to track NimbusPost shipment', details: err.message });
   }
 });
 
@@ -3802,20 +4123,55 @@ app.post('/api/shipping/create', requireAuthMiddleware, async (req: Authenticate
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    const shipmentResult = await delhiveryService.createShipment({
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      shippingAddress: order.shippingAddress,
-      items: order.items,
-      totalAmount: Number(order.totalAmount),
-      paymentMethod: order.paymentMethod,
-      weightInGrams: weightInGrams || 500
-    });
+    const provider = req.body.provider || order.shippingProvider || 'Delhivery';
+    const isNimbus = String(provider).toUpperCase().includes('NIMBUS');
+    const providerName = isNimbus ? 'NimbusPost' : 'Delhivery';
+
+    let totalWeightGrams = 0;
+    let maxL = 15, maxW = 15, totalH = 0;
+    for (const item of order.items) {
+      const p = item.product;
+      const rawW = p?.weight ? Number(p.weight) : 0.5;
+      const specs = (p?.specifications as any) || {};
+      const l = Number(specs.length || specs.dimensions?.length || 15);
+      const w = Number(specs.width || specs.dimensions?.width || 15);
+      const h = Number(specs.height || specs.dimensions?.height || 5);
+      const qty = item.quantity || 1;
+      totalWeightGrams += (rawW <= 20 ? Math.round(rawW * 1000) : Math.round(rawW)) * qty;
+      maxL = Math.max(maxL, l);
+      maxW = Math.max(maxW, w);
+      totalH += h * qty;
+    }
+    const finalWeightInGrams = weightInGrams || Math.max(500, totalWeightGrams);
+    const finalDimensions = { length: maxL, width: maxW, height: Math.max(5, totalH) };
+
+    const shipmentResult = isNimbus
+      ? await nimbuspostService.createShipment({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          shippingAddress: order.shippingAddress,
+          items: order.items,
+          totalAmount: Number(order.totalAmount),
+          paymentMethod: order.paymentMethod,
+          weightInGrams: finalWeightInGrams,
+          dimensions: finalDimensions,
+          courierId: req.body.shippingMethod || req.body.courierId
+        })
+      : await delhiveryService.createShipment({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          shippingAddress: order.shippingAddress,
+          items: order.items,
+          totalAmount: Number(order.totalAmount),
+          paymentMethod: order.paymentMethod,
+          weightInGrams: finalWeightInGrams,
+          dimensions: finalDimensions
+        });
 
     const updatedOrder = await prisma.order.update({
       where: { id: order.id },
       data: {
-        shippingProvider: 'Delhivery',
+        shippingProvider: providerName,
         awbNumber: shipmentResult.awbNumber,
         trackingNumber: shipmentResult.trackingNumber,
         shipmentId: shipmentResult.shipmentId,
@@ -3830,8 +4186,8 @@ app.post('/api/shipping/create', requireAuthMiddleware, async (req: Authenticate
           {
             date: new Date().toISOString(),
             status: 'Shipment Created',
-            location: 'Delhivery Warehouse Hub',
-            remark: 'Shipment generated via Delhivery API'
+            location: isNimbus ? 'NimbusPost Fulfillment Center' : 'Delhivery Warehouse Hub',
+            remark: `Shipment generated via ${providerName} API`
           }
         ]
       },

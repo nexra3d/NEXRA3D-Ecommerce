@@ -94,16 +94,19 @@ export async function checkServiceability(pincode: string): Promise<Serviceabili
     };
   }
 
-  const token = DELHIVERY_API_TOKEN;
+  const token = process.env.DELHIVERY_API_TOKEN || DELHIVERY_API_TOKEN || '';
+  const baseUrl = process.env.DELHIVERY_BASE_URL || DELHIVERY_BASE_URL || 'https://track.delhivery.com';
+  const originPin = process.env.DELHIVERY_ORIGIN_PINCODE || DEFAULT_ORIGIN_PINCODE || '500032';
+
   console.log('[Delhivery Integration] Environment Check:', {
-    baseUrl: DELHIVERY_BASE_URL,
-    originPincode: DEFAULT_ORIGIN_PINCODE,
+    baseUrl,
+    originPincode: originPin,
     tokenProvided: Boolean(token),
     tokenLength: token ? token.length : 0
   });
 
   if (!token) {
-    console.warn('[Delhivery Integration Warning] DELHIVERY_API_TOKEN environment variable is not configured. Please add DELHIVERY_API_TOKEN in Settings.');
+    console.warn('[Delhivery Integration Warning] DELHIVERY_API_TOKEN environment variable is not configured.');
     return {
       serviceable: false,
       pincode: cleanPin,
@@ -111,12 +114,13 @@ export async function checkServiceability(pincode: string): Promise<Serviceabili
       prepaidAvailable: false,
       estimatedDays: 0,
       errorType: 'AUTH_ERROR',
-      error: 'Delhivery API Token (DELHIVERY_API_TOKEN) is not configured in environment variables. Please set it in Settings.',
+      statusCode: 401,
+      error: 'Delhivery authentication failed. Please verify the API token and environment.',
       remarks: 'Missing DELHIVERY_API_TOKEN'
     };
   }
 
-  const url = `${DELHIVERY_BASE_URL}/c/api/pin-codes/json/`;
+  const url = `${baseUrl}/c/api/pin-codes/json/`;
   const params = { filter_codes: cleanPin };
   const headers = {
     'Authorization': `Token ${token}`,
@@ -125,8 +129,7 @@ export async function checkServiceability(pincode: string): Promise<Serviceabili
 
   console.log('[Delhivery API Request] GET Serviceability:', {
     url,
-    params,
-    headers: { Authorization: `Token ${token.substring(0, 4)}... (length ${token.length})` }
+    params
   });
 
   try {
@@ -196,16 +199,20 @@ export async function checkServiceability(pincode: string): Promise<Serviceabili
     const responseData = err.response?.data;
     console.error(`[Delhivery API Error] GET Serviceability Failed (Status: ${status || 'NETWORK_ERROR'}):`, JSON.stringify(responseData || err.message));
 
-    let errorMsg = `Delhivery API Error (${status || 'Connection Failed'}): `;
+    let errorMsg = 'Delhivery shipping service is temporarily unavailable.';
     let errorType = 'API_ERROR';
 
-    if (status === 401 || status === 403) {
+    if (status === 401) {
       errorType = 'AUTH_ERROR';
-      errorMsg = `Delhivery API Authentication Error (${status}): ${responseData?.detail || responseData?.message || 'Invalid or unauthorized API Token'}`;
+      errorMsg = 'Delhivery API authentication failed.';
+    } else if (status === 403) {
+      errorType = 'AUTH_ERROR';
+      errorMsg = 'Delhivery API access is not enabled for this account.';
+    } else if (status === 404) {
+      errorType = 'ENDPOINT_NOT_FOUND';
+      errorMsg = 'Delhivery serviceability endpoint not found.';
     } else if (responseData?.detail || responseData?.message || responseData?.error) {
-      errorMsg += responseData.detail || responseData.message || responseData.error;
-    } else {
-      errorMsg += err.message;
+      errorMsg = responseData.detail || responseData.message || responseData.error;
     }
 
     return {
@@ -214,6 +221,7 @@ export async function checkServiceability(pincode: string): Promise<Serviceabili
       codAvailable: false,
       prepaidAvailable: false,
       estimatedDays: 0,
+      statusCode: status,
       error: errorMsg,
       errorType,
       remarks: errorMsg
@@ -230,10 +238,12 @@ async function fetchDelhiveryRate(params: {
   paymentType: 'Pre-paid' | 'COD';
   orderValue?: number;
 }): Promise<{ charge?: number; estimatedDays?: number; edd?: string; error?: string; errorType?: string; statusCode?: number }> {
-  if (!DELHIVERY_API_TOKEN) {
+  const token = process.env.DELHIVERY_API_TOKEN || DELHIVERY_API_TOKEN || '';
+  if (!token) {
     return {
-      error: 'DELHIVERY_API_TOKEN is missing or not configured in environment variables.',
-      errorType: 'AUTH_ERROR'
+      error: 'Delhivery authentication failed. Please verify the API token and environment.',
+      errorType: 'AUTH_ERROR',
+      statusCode: 401
     };
   }
 
@@ -257,40 +267,56 @@ async function fetchDelhiveryRate(params: {
     if (params.dimensions.height) queryParams.h = params.dimensions.height;
   }
 
-  const endpoints = [
-    `${DELHIVERY_BASE_URL}/api/kcl/charge.json`,
-    `${DELHIVERY_BASE_URL}/c/api/kcl/charge.json`
-  ];
+  const baseUrl = process.env.DELHIVERY_BASE_URL || DELHIVERY_BASE_URL || 'https://track.delhivery.com';
+  const rateUrlFromEnv = process.env.DELHIVERY_RATE_API_URL || '';
+
+  const candidateUrls = [
+    rateUrlFromEnv,
+    `${baseUrl}/api/kcl/charge.json`,
+    `${baseUrl}/c/api/kcl/charge.json`,
+    'https://express.delhivery.com/api/kcl/charge.json',
+    'https://express.delhivery.com/c/api/kcl/charge.json',
+    'https://staging-express.delhivery.com/api/kcl/charge.json',
+    'https://staging-express.delhivery.com/c/api/kcl/charge.json',
+    `${baseUrl}/c/api/v1/kcl/charge.json`,
+    `${baseUrl}/api/v1/kcl/charge.json`
+  ].filter(Boolean);
+
+  const endpoints = Array.from(new Set(candidateUrls));
 
   let lastError = '';
   let lastErrorType = 'API_ERROR';
   let lastStatusCode = 0;
 
   for (const url of endpoints) {
+    const isProd = url.includes('track.delhivery.com') || url.includes('express.delhivery.com');
+    const isStaging = url.includes('staging');
+    const envName = isStaging ? 'Staging / Sandbox' : (isProd ? 'Production' : 'Custom');
+
     console.log(`
-Delhivery Shipping Request
---------------------------
-DELHIVERY Endpoint: ${url}
-HTTP Method: GET
+DELHIVERY FREIGHT REQUEST
+-------------------------
+API URL: ${url}
+Environment: ${envName}
 Origin PIN: ${queryParams.o_pin}
 Destination PIN: ${queryParams.d_pin}
-Weight (grams): ${queryParams.cgm}
-Length: ${queryParams.l || 'N/A'}
-Width: ${queryParams.w || 'N/A'}
-Height: ${queryParams.h || 'N/A'}
+Weight: ${queryParams.cgm}g
+Length: ${queryParams.l || 'N/A'}cm
+Width: ${queryParams.w || 'N/A'}cm
+Height: ${queryParams.h || 'N/A'}cm
 Payment Mode: ${queryParams.pt}
-Declared Value: ${queryParams.clv || 0}
-Package Count: 1
---------------------------`);
+Declared Value: ₹${queryParams.clv || 0}
+COD Amount: ₹${queryParams.pt === 'COD' ? (queryParams.clv || 0) : 0}
+-------------------------`);
 
     try {
       const response = await axios.get(url, {
         params: queryParams,
         headers: {
-          'Authorization': `Token ${DELHIVERY_API_TOKEN}`,
+          'Authorization': `Token ${token}`,
           'Accept': 'application/json'
         },
-        timeout: 7000
+        timeout: 8000
       });
 
       console.log(`[Delhivery API Response] GET Rate Calculation (${params.mode}) Status ${response.status}:`, JSON.stringify(response.data));
@@ -304,7 +330,7 @@ Package Count: 1
       }
 
       if (rateItem) {
-        const rawAmount = rateItem.total_amount ?? rateItem.total_charge ?? rateItem.totalAmount ?? rateItem.amount ?? rateItem.charge_DL;
+        const rawAmount = rateItem.total_amount ?? rateItem.total_charge ?? rateItem.totalAmount ?? rateItem.amount ?? rateItem.charge_DL ?? rateItem.freight_charge ?? rateItem.gross_amount ?? rateItem.charge;
         if (rawAmount !== undefined && rawAmount !== null && !isNaN(Number(rawAmount)) && Number(rawAmount) > 0) {
           const charge = Math.round(Number(rawAmount));
           const edd = rateItem.delivery_date || rateItem.edd || rateItem.expected_delivery_date || '';
@@ -329,11 +355,23 @@ Package Count: 1
       console.error(`[Delhivery API Error] Rate API (${url}, mode=${params.mode}) Failed (Status: ${status || 'NETWORK_ERROR'}):`, JSON.stringify(respData || err.message));
 
       lastStatusCode = status || 0;
-      if (status === 401 || status === 403) {
+      if (status === 404) {
+        lastErrorType = 'ENDPOINT_NOT_FOUND';
+        lastError = 'Delhivery rate API endpoint not found. Verify the configured Delhivery Freight Estimator API URL.';
+      } else if (status === 401) {
         lastErrorType = 'AUTH_ERROR';
-        lastError = `Delhivery Rate API Authentication Error (${status}): ${respData?.detail || respData?.message || 'Unauthorized API Token'}`;
+        lastError = 'Delhivery API authentication failed.';
+      } else if (status === 403) {
+        lastErrorType = 'AUTH_ERROR';
+        lastError = 'Delhivery API access is not enabled for this account.';
+      } else if (status === 400) {
+        lastErrorType = 'BAD_REQUEST';
+        lastError = 'Delhivery rejected the shipping-rate request. Check shipment parameters.';
+      } else if (status >= 500) {
+        lastErrorType = 'SERVER_ERROR';
+        lastError = 'Delhivery shipping service is temporarily unavailable.';
       } else if (respData?.detail || respData?.message || respData?.error) {
-        lastError = `Delhivery Rate API Error (${status || 'API'}): ${respData.detail || respData.message || respData.error}`;
+        lastError = respData.detail || respData.message || respData.error;
       } else {
         lastError = `Delhivery Rate API Error: ${err.message}`;
       }

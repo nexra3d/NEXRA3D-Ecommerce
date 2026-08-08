@@ -179,10 +179,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
         if (!res.ok) {
           setShippingEstimate(null);
-          setShippingError(data.error || data.details || 'Delhivery shipping estimation failed.');
+          setShippingError(data.error || data.details || 'Shipping rate calculation failed.');
         } else if (!data.serviceable) {
           setShippingEstimate(null);
-          const realError = data.error || data.remarks || 'This delivery address is not serviceable.';
+          const realError = data.error || data.remarks || 'This delivery address is not serviceable by our shipping partners.';
           setShippingError(realError);
         } else {
           setShippingEstimate(data);
@@ -690,7 +690,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                         <p className="text-[11px] font-normal text-rose-600 mt-0.5">
                           {shippingError.toLowerCase().includes('not serviceable')
                             ? 'Please select another delivery address or pincode.'
-                            : 'Please check your Delhivery API configuration or credentials.'}
+                            : 'Please verify delivery details or Delhivery configuration.'}
                         </p>
                       </div>
                     </div>
@@ -719,7 +719,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                             <Truck className="w-3.5 h-3.5 text-indigo-600" />
                             Select Shipping Option
                           </span>
-                          <span className="text-[10px] text-slate-500 font-medium">Powered by Delhivery API</span>
+                          <span className="text-[10px] text-slate-500 font-medium">Live Rates via Delhivery & NimbusPost</span>
                         </div>
 
                         <div className="space-y-2">

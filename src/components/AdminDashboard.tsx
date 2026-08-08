@@ -72,6 +72,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Shipping & Logistics State
   const [shipmentsList, setShipmentsList] = useState<Shipment[]>([]);
   const [shipmentFilterStatus, setShipmentFilterStatus] = useState<string>('ALL');
+  const [shipmentFilterProvider, setShipmentFilterProvider] = useState<string>('ALL');
   const [shipmentSearchQuery, setShipmentSearchQuery] = useState<string>('');
 
   // Create Shipment Modal
@@ -197,23 +198,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       const orderIdentifier = targetOrder.id || targetOrder.orderNumber;
 
-      if (shipProvider === 'DELHIVERY') {
+      if (shipProvider === 'DELHIVERY' || shipProvider === 'NIMBUSPOST') {
         const res = await fetch('/api/shipping/create', {
           method: 'POST',
           headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             orderId: orderIdentifier,
+            provider: shipProvider,
             shippingMethod: shipServiceType
           })
         });
         const data = await res.json();
         if (res.ok && data.success) {
-          alert(`Delhivery Shipment Created successfully! AWB: ${data.awbNumber}`);
+          alert(`${shipProvider === 'NIMBUSPOST' ? 'NimbusPost' : 'Delhivery'} Shipment Created successfully! AWB: ${data.awbNumber}`);
           setShowCreateShipmentModal(false);
           setSelectedOrderForShipment(null);
           fetchShipments();
           fetchAdminOrders();
           onRefreshData();
+          return;
+        } else {
+          alert(`Shipment Creation Failed: ${data.error || data.details || 'API Error'}`);
           return;
         }
       }
@@ -2249,6 +2254,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
 
                 <select
+                  value={shipmentFilterProvider}
+                  onChange={(e) => setShipmentFilterProvider(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 text-slate-300 font-medium text-xs px-3 py-1.5 rounded-xl focus:outline-none"
+                >
+                  <option value="ALL">All Providers</option>
+                  <option value="Delhivery">Delhivery</option>
+                  <option value="NimbusPost">NimbusPost</option>
+                  <option value="Manual">Manual Logistics</option>
+                </select>
+
+                <select
                   value={shipmentFilterStatus}
                   onChange={(e) => setShipmentFilterStatus(e.target.value)}
                   className="bg-slate-950 border border-slate-800 text-slate-300 font-medium text-xs px-3 py-1.5 rounded-xl focus:outline-none"
@@ -2279,6 +2295,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     {shipmentsList
                       .filter((s) => {
                         if (shipmentFilterStatus !== 'ALL' && s.status !== shipmentFilterStatus) return false;
+                        if (shipmentFilterProvider !== 'ALL') {
+                          const p = (s.provider || '').toLowerCase();
+                          const targetP = shipmentFilterProvider.toLowerCase();
+                          if (!p.includes(targetP)) return false;
+                        }
                         if (shipmentSearchQuery) {
                           const q = shipmentSearchQuery.toLowerCase();
                           return (
@@ -2730,8 +2751,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 text-xs focus:outline-none focus:border-indigo-500"
                     >
                       <option value="MANUAL">Manual Logistics Partner</option>
+                      <option value="DELHIVERY">Delhivery Surface & Express</option>
+                      <option value="NIMBUSPOST">NimbusPost Multi-Courier Network</option>
                       <option value="BLUE_DART">Blue Dart Express</option>
-                      <option value="DELHIVERY">Delhivery Surface</option>
                       <option value="SHIPROCKET">Shiprocket Hub</option>
                       <option value="DTDC">DTDC Air Express</option>
                       <option value="FEDEX">FedEx Industrial</option>
