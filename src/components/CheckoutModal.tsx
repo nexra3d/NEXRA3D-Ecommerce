@@ -182,7 +182,13 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           setShippingError(data.error || data.details || 'Shipping rate calculation failed.');
         } else if (!data.serviceable) {
           setShippingEstimate(null);
-          const realError = data.error || data.remarks || 'This delivery address is not serviceable by our shipping partners.';
+          const providerMessages = Array.isArray(data.providerErrors)
+            ? data.providerErrors
+                .filter((entry: any) => entry && entry.message)
+                .map((entry: any) => `${entry.provider === 'delhivery' ? 'Delhivery' : 'NimbusPost'}: ${entry.message}`)
+                .join(' • ')
+            : '';
+          const realError = providerMessages || (data.error || data.remarks || 'This delivery address is not serviceable by our shipping partners.');
           setShippingError(realError);
         } else {
           setShippingEstimate(data);

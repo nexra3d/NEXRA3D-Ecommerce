@@ -198,6 +198,56 @@ function calculateParcelFromProducts(items: Array<{ quantity?: number; product?:
   return { weightInGrams, dimensions: { length, width, height } };
 }
 
+function sanitizeDiagnosticValue(value: any): any {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeDiagnosticValue(entry));
+  }
+
+  if (typeof value === 'object') {
+    const sanitized: Record<string, any> = {};
+    for (const [key, itemValue] of Object.entries(value)) {
+      const lowerKey = key.toLowerCase();
+      if (/token|secret|password|jwt|authorization|cookie|set-cookie|api[-_]?key|x-api-key|bearer/i.test(lowerKey)) {
+        continue;
+      }
+      sanitized[key] = sanitizeDiagnosticValue(itemValue);
+    }
+    return sanitized;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return value;
+    return trimmed
+      .replace(/Authorization:\s*[^\n\r]+/gi, 'Authorization: [redacted]')
+      .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
+      .replace(/Token\s+[A-Za-z0-9._-]+/gi, 'Token [redacted]')
+      .replace(/(password|secret|token|jwt|apiKey|api_key|x-api-key)\s*[:=]\s*[^,\s\]]+/gi, '$1=[redacted]');
+  }
+
+  return value;
+}
+
+function buildProviderDiagnostic(provider: 'delhivery' | 'nimbuspost', status: number | undefined, errorType: string, message: string, upstream: any) {
+  const sanitizedUpstream = sanitizeDiagnosticValue(upstream);
+  const upstreamString = typeof sanitizedUpstream === 'string'
+    ? sanitizedUpstream
+    : JSON.stringify(sanitizedUpstream ?? {});
+
+  return {
+    provider,
+    success: false,
+    status: status || 0,
+    errorType,
+    message,
+    upstreamMessage: upstreamString === '{}' ? 'Upstream response was empty or redacted.' : upstreamString
+  };
+}
+
 async function calculateServerShippingFee(input: {
   items: Array<{ productId?: string; id?: string; quantity?: number; product?: ShippingProduct | null }>;
   destinationPincode: string;
@@ -4030,16 +4080,50 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
     }
 
     if (combinedOptions.length === 0) {
-      const delhiveryErr = delhiveryRes.status === 'fulfilled' ? delhiveryRes.value.error : (delhiveryRes.reason?.message || 'Delhivery rate calculation failed');
-      const nimbusErr = nimbusRes.status === 'fulfilled' ? nimbusRes.value.error : (nimbusRes.reason?.message || 'NimbusPost rate calculation failed');
+      const delhiveryDiagnostic = delhiveryRes.status === 'fulfilled'
+        ? buildProviderDiagnostic(
+            'delhivery',
+            delhiveryRes.value?.statusCode || 403,
+            (delhiveryRes.value?.errorType === 'AUTH_ERROR' || delhiveryRes.value?.errorType === 'BAD_REQUEST') ? 'AUTHORIZATION_ERROR' : 'UPSTREAM_ERROR',
+            delhiveryRes.value?.errorType === 'AUTH_ERROR'
+              ? 'Delhivery rejected the shipping-rate request.'
+              : 'Delhivery shipping-rate request failed.',
+            delhiveryRes.value?.error || delhiveryRes.value?.remarks || 'Delhivery rate calculation failed'
+          )
+        : buildProviderDiagnostic(
+            'delhivery',
+            delhiveryRes.reason?.statusCode || 403,
+            'AUTHORIZATION_ERROR',
+            'Delhivery rejected the shipping-rate request.',
+            delhiveryRes.reason?.message || 'Delhivery rate calculation failed'
+          );
+
+      const nimbusDiagnostic = nimbusRes.status === 'fulfilled'
+        ? buildProviderDiagnostic(
+            'nimbuspost',
+            nimbusRes.value?.statusCode || 503,
+            nimbusRes.value?.errorType === 'AUTH_ERROR' ? 'AUTHORIZATION_ERROR' : 'UPSTREAM_ERROR',
+            nimbusRes.value?.errorType === 'AUTH_ERROR'
+              ? 'NimbusPost authentication/service error.'
+              : 'NimbusPost shipping-rate request failed.',
+            nimbusRes.value?.error || nimbusRes.value?.remarks || 'NimbusPost rate calculation failed'
+          )
+        : buildProviderDiagnostic(
+            'nimbuspost',
+            nimbusRes.reason?.statusCode || 503,
+            'UPSTREAM_ERROR',
+            'NimbusPost shipping-rate request failed.',
+            nimbusRes.reason?.message || 'NimbusPost rate calculation failed'
+          );
 
       return res.json({
         serviceable: false,
         pincode: destinationPincode,
         codAvailable: false,
         options: [],
-        error: `Unable to calculate live shipping rates. Delhivery: (${delhiveryErr}). NimbusPost: (${nimbusErr}).`,
-        remarks: `Delhivery: ${delhiveryErr} | NimbusPost: ${nimbusErr}`
+        error: 'Unable to calculate live shipping rates.',
+        remarks: 'Unable to calculate live shipping rates.',
+        providerErrors: [delhiveryDiagnostic, nimbusDiagnostic]
       });
     }
 
@@ -4169,12 +4253,6 @@ app.get('/api/shipping/nimbuspost/diagnostic', async (req: Request, res: Respons
 // Diagnostic Endpoint for Testing Delhivery API
 app.get('/api/shipping/diagnostic', async (req: Request, res: Response) => {
   try {
-    const token = process.env.DELHIVERY_API_TOKEN || '';
-    const rateUrl = process.env.DELHIVERY_RATE_API_URL || 'https://track.delhivery.com/api/kinko/v1/invoice/charges/.json';
-    const configured = Boolean(token);
-    const endpointConfigured = Boolean(process.env.DELHIVERY_RATE_API_URL);
-    const safeEndpoint = rateUrl;
-
     const originPincode = (req.query.o_pin as string) || process.env.DELHIVERY_ORIGIN_PINCODE || '500032';
     const destinationPincode = (req.query.d_pin as string) || '500046';
     const weightGrams = Number(req.query.weight) || 1000;
@@ -4184,7 +4262,7 @@ app.get('/api/shipping/diagnostic', async (req: Request, res: Response) => {
     const paymentType = (req.query.pt as string) === 'COD' ? 'COD' : 'Pre-paid';
     const orderValue = Number(req.query.clv) || 1499;
 
-    const result = await delhiveryService.calculateShipping(
+    const delhiveryResult = await delhiveryService.calculateShipping(
       originPincode,
       destinationPincode,
       weightGrams,
@@ -4193,40 +4271,63 @@ app.get('/api/shipping/diagnostic', async (req: Request, res: Response) => {
       paymentType
     );
 
-    const httpStatus = result.statusCode || ((result as any).charge ? 200 : (result.errorType === 'AUTH_ERROR' ? 401 : 400));
-    const success = Boolean(result.options && result.options.length > 0 && !result.error);
+    const nimbuspostResult = await nimbuspostService.calculateShipping(
+      originPincode,
+      destinationPincode,
+      weightGrams,
+      { length, width, height },
+      orderValue,
+      paymentType
+    );
 
-    return res.status(success ? 200 : (httpStatus || 400)).json({
-      provider: 'delhivery',
-      configured,
-      endpoint: safeEndpoint,
-      authenticationConfigured: configured,
-      apiReachable: success,
-      status: success ? 200 : (httpStatus || 400),
-      rateFound: success,
-      endpointConfigured,
-      tokenConfigured: configured,
-      httpStatus,
-      success,
-      rates: result.options || [],
-      errorType: result.errorType || (success ? null : 'API_ERROR'),
-      message: result.error || (success ? 'Delhivery live rate calculated successfully' : 'Rate calculation failed'),
-      requestParameters: {
-        originPincode,
-        destinationPincode,
-        weightGrams,
-        dimensions: { length, width, height },
-        paymentType,
-        orderValue
+    const delhiveryDiagnostic = buildProviderDiagnostic(
+      'delhivery',
+      delhiveryResult.statusCode || (delhiveryResult.error ? 403 : 200),
+      delhiveryResult.errorType === 'AUTH_ERROR' ? 'AUTHORIZATION_ERROR' : (delhiveryResult.errorType || 'UPSTREAM_ERROR'),
+      delhiveryResult.error || (delhiveryResult.serviceable ? 'Delhivery rate calculated successfully.' : 'Delhivery rate calculation failed.'),
+      delhiveryResult.error || delhiveryResult.remarks || 'Delhivery shipping-rate request failed.'
+    );
+
+    const nimbusDiagnostic = buildProviderDiagnostic(
+      'nimbuspost',
+      nimbuspostResult.statusCode || (nimbuspostResult.error ? 503 : 200),
+      nimbuspostResult.errorType === 'AUTH_ERROR' ? 'AUTHORIZATION_ERROR' : (nimbuspostResult.errorType || 'UPSTREAM_ERROR'),
+      nimbuspostResult.error || (nimbuspostResult.serviceable ? 'NimbusPost rate calculated successfully.' : 'NimbusPost rate calculation failed.'),
+      nimbuspostResult.error || nimbuspostResult.remarks || 'NimbusPost shipping-rate request failed.'
+    );
+
+    return res.json({
+      delhivery: {
+        ...delhiveryDiagnostic,
+        configured: Boolean(process.env.DELHIVERY_API_TOKEN),
+        endpoint: process.env.DELHIVERY_RATE_API_URL || 'https://track.delhivery.com/api/kinko/v1/invoice/charges/.json'
+      },
+      nimbuspost: {
+        ...nimbusDiagnostic,
+        configured: Boolean(process.env.NIMBUSPOST_API_BASE_URL && process.env.NIMBUSPOST_EMAIL && process.env.NIMBUSPOST_PASSWORD),
+        endpoint: process.env.NIMBUSPOST_API_BASE_URL ? `${process.env.NIMBUSPOST_API_BASE_URL.replace(/\/$/, '')}/users/login` : 'https://api.nimbuspost.com/v1/users/login'
       }
     });
   } catch (err: any) {
     return res.status(500).json({
-      configured: false,
-      success: false,
-      httpStatus: 500,
-      errorType: 'SERVER_ERROR',
-      message: err.message
+      delhivery: {
+        provider: 'delhivery',
+        configured: Boolean(process.env.DELHIVERY_API_TOKEN),
+        success: false,
+        status: 500,
+        errorType: 'SERVER_ERROR',
+        message: err.message,
+        upstreamMessage: 'Diagnostic request failed server-side.'
+      },
+      nimbuspost: {
+        provider: 'nimbuspost',
+        configured: Boolean(process.env.NIMBUSPOST_API_BASE_URL && process.env.NIMBUSPOST_EMAIL && process.env.NIMBUSPOST_PASSWORD),
+        success: false,
+        status: 500,
+        errorType: 'SERVER_ERROR',
+        message: err.message,
+        upstreamMessage: 'Diagnostic request failed server-side.'
+      }
     });
   }
 });
