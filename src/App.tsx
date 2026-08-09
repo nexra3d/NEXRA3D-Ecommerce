@@ -31,7 +31,7 @@ import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { INITIAL_CATEGORIES } from './data/mockData';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, ArrowRight } from 'lucide-react';
 import { apiFetch, getStoredToken, getStoredUser, clearStoredAuth, setStoredAuth } from './lib/api';
 import {
   Product,
@@ -1155,7 +1155,7 @@ export default function App() {
 
       {/* Home View */}
       {currentView === 'home' && (
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-12">
           <HeroBanner
             categories={categories}
             onSelectCategory={(catId) => {
@@ -1172,6 +1172,38 @@ export default function App() {
             }}
             onExploreServices={() => setCurrentView('services')}
           />
+
+          {/* Featured Product Catalog Section */}
+          <div className="space-y-6 pt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-black text-slate-900 tracking-tight">3D Printed Products Catalog</h2>
+                <p className="text-xs text-slate-500 mt-1">Explore our range of precision 3D printed creations, idols, decor, and components</p>
+              </div>
+              <button
+                onClick={() => {
+                  setFilters({ ...filters, categoryId: undefined });
+                  setCurrentView('shop');
+                }}
+                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center space-x-1 cursor-pointer"
+              >
+                <span>View All Products</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            <ProductGrid
+              products={products}
+              categories={categories}
+              filters={filters}
+              onFilterChange={(newFilters) => setFilters(newFilters)}
+              wishlistProductIds={wishlistProductIds}
+              onToggleWishlist={handleToggleWishlist}
+              onAddToCart={handleAddToCart}
+              onQuickView={(p) => setQuickViewProduct(p)}
+              isLoading={isProductsLoading}
+            />
+          </div>
         </main>
       )}
 
@@ -1238,26 +1270,28 @@ export default function App() {
       {/* MODALS & DRAWERS */}
 
       {/* 1. Product Quick View Details Modal */}
-      <ProductDetailsModal
-        product={quickViewProduct}
-        onClose={() => {
-          setQuickViewProduct(null);
-          if (typeof window !== 'undefined') {
-            const url = new URL(window.location.href);
-            url.searchParams.delete('product');
-            url.searchParams.delete('productId');
-            window.history.replaceState(null, '', url.pathname + (url.search ? url.search : ''));
-          }
-        }}
-        isWishlisted={quickViewProduct ? wishlistProductIds.includes(quickViewProduct.id) : false}
-        onToggleWishlist={handleToggleWishlist}
-        onAddToCart={(p, qty, _unused, customizationText) => handleAddToCart(p, qty, 1, customizationText)}
-        onBuyNow={(p, customizationText) => {
-          handleAddToCart(p, 1, 1, customizationText);
-          handleProceedToCheckout();
-        }}
-        onSelectRelatedProduct={(p) => setQuickViewProduct(p)}
-      />
+      {quickViewProduct && (
+        <ProductDetailsModal
+          product={quickViewProduct}
+          onClose={() => {
+            setQuickViewProduct(null);
+            if (typeof window !== 'undefined') {
+              const url = new URL(window.location.href);
+              url.searchParams.delete('product');
+              url.searchParams.delete('productId');
+              window.history.replaceState(null, '', url.pathname + (url.search ? url.search : ''));
+            }
+          }}
+          isWishlisted={wishlistProductIds.includes(quickViewProduct.id)}
+          onToggleWishlist={handleToggleWishlist}
+          onAddToCart={(p, qty, _unused, customizationText) => handleAddToCart(p, qty, 1, customizationText)}
+          onBuyNow={(p, customizationText) => {
+            handleAddToCart(p, 1, 1, customizationText);
+            handleProceedToCheckout();
+          }}
+          onSelectRelatedProduct={(p) => setQuickViewProduct(p)}
+        />
+      )}
 
       {/* 2. Cart Drawer */}
       <CartDrawer
