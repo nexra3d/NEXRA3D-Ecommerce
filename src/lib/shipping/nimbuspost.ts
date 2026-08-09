@@ -170,9 +170,11 @@ export interface NimbusPostServiceabilityResult {
   state?: string;
   codAvailable: boolean;
   options: NimbusPostCourierOption[];
+  remarks?: string;
   error?: string;
   errorType?: string;
   statusCode?: number;
+  diagnostic?: any;
 }
 
 /**

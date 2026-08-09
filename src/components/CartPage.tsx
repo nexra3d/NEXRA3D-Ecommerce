@@ -308,6 +308,24 @@ export const CartPage: React.FC<CartPageProps> = ({
                         </div>
                       )}
 
+                      {/* Lamp Option Attributes */}
+                      {(item.selectedColour || item.selectedWattage || item.variant?.colour || item.variant?.wattage) && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {(item.selectedColour || item.variant?.colour) && (
+                            <span className="bg-indigo-50 text-indigo-700 text-xs font-bold px-2 py-0.5 rounded-md border border-indigo-100 flex items-center gap-1">
+                              <span>Colour:</span>
+                              <span className="text-indigo-900">{item.selectedColour || item.variant?.colour}</span>
+                            </span>
+                          )}
+                          {(item.selectedWattage || item.variant?.wattage) && (
+                            <span className="bg-amber-50 text-amber-800 text-xs font-bold px-2 py-0.5 rounded-md border border-amber-100 flex items-center gap-1">
+                              <span>Wattage:</span>
+                              <span className="text-amber-950">{item.selectedWattage || item.variant?.wattage}</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
+
                       {/* Stock Alert Badge */}
                       {item.stockIssue && (
                         <p className="text-xs font-bold text-amber-600 flex items-center gap-1 pt-0.5">

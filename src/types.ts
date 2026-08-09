@@ -89,6 +89,8 @@ export interface ProductVariant {
   price: number;
   mrp: number;
   stockQuantity: number;
+  colour?: string | null;
+  wattage?: string | null;
   attributes?: Record<string, any> | null;
   isActive: boolean;
   createdAt?: string;
@@ -145,7 +147,11 @@ export interface CartItem {
   productId: string;
   product: Product;
   quantity: number;
+  variantId?: string | null;
+  variant?: ProductVariant | null;
   selectedVariant?: string;
+  selectedColour?: string;
+  selectedWattage?: string;
   taxPercentage?: number;
   customizationText?: string;
 }
@@ -171,6 +177,9 @@ export interface OrderItem {
   id: string;
   productId: string;
   variantId?: string;
+  skuSnapshot?: string;
+  selectedColour?: string;
+  selectedWattage?: string;
   productTitle: string;
   productImage: string;
   price: number;

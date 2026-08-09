@@ -328,11 +328,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [prodHeight, setProdHeight] = useState('');
   const [productFormError, setProductFormError] = useState<string | null>(null);
 
-  // Stage 5 Image & Variant State for Editing Product
+  // Stage 5 Image & Variant State for Product Create & Edit
   const [productImages, setProductImages] = useState<any[]>([]);
+  const [pendingProductImages, setPendingProductImages] = useState<{ file?: File; url: string; isPrimary: boolean }[]>([]);
   const [productVariants, setProductVariants] = useState<any[]>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+
+  // Lamp Matrix Configurator State
+  const [lampColours, setLampColours] = useState<string[]>(['Warm White', 'Cool White', 'Neutral White']);
+  const [lampWattages, setLampWattages] = useState<string[]>(['5W', '7W', '9W', '12W']);
+  const [newLampColourInput, setNewLampColourInput] = useState('');
+  const [newLampWattageInput, setNewLampWattageInput] = useState('');
 
   // Variant Form State
   const [showAddVariantForm, setShowAddVariantForm] = useState(false);
@@ -423,6 +430,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setProdHeight('');
     setProductFormError(null);
     setProductImages([]);
+    setPendingProductImages([]);
     setProductVariants([]);
     setImageUploadError(null);
     setShowAddVariantForm(false);
@@ -458,23 +466,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setProdWidth(p.width !== null && p.width !== undefined ? String(p.width) : '');
     setProdHeight(p.height !== null && p.height !== undefined ? String(p.height) : '');
     setProductFormError(null);
+    setPendingProductImages([]);
 
     loadProductImagesAndVariants(p.id);
     setShowProductModal(true);
   };
 
-  // Upload Product Image (File Upload)
-  const handleUploadImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!editingProductId || !e.target.files || e.target.files.length === 0) return;
-    const file = e.target.files[0];
+  // Handle Multi-file Upload for Existing Product
+  const handleUploadImageFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const files: File[] = Array.from(e.target.files);
+
+    if (!editingProductId) {
+      // Pick pending files for new product creation
+      const newPending = files.map((f, idx) => ({
+        file: f,
+        url: URL.createObjectURL(f),
+        isPrimary: pendingProductImages.length === 0 && idx === 0
+      }));
+      setPendingProductImages((prev) => [...prev, ...newPending]);
+      e.target.value = '';
+      return;
+    }
+
     setIsUploadingImage(true);
     setImageUploadError(null);
 
     const formData = new FormData();
-    formData.append('image', file);
+    files.forEach((file) => {
+      formData.append('images', file);
+    });
 
     try {
-      const res = await fetch(`/api/products/${editingProductId}/images`, {
+      const res = await fetch(`/api/products/${editingProductId}/images/batch`, {
         method: 'POST',
         headers: getAuthHeadersForFormData(),
         credentials: 'include',
@@ -482,7 +506,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       const data = await res.json();
       if (!res.ok) {
-        setImageUploadError(data.error || 'Failed to upload image');
+        setImageUploadError(data.error || 'Failed to upload images');
       } else {
         await loadProductImagesAndVariants(editingProductId);
         onRefreshData();
@@ -491,6 +515,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setImageUploadError(err.message || 'Image upload failed');
     } finally {
       setIsUploadingImage(false);
+      e.target.value = '';
+    }
+  };
+
+  // Reorder Images
+  const handleReorderImage = async (index: number, direction: 'left' | 'right') => {
+    if (!editingProductId) {
+      // Reorder pending images
+      const targetIdx = direction === 'left' ? index - 1 : index + 1;
+      if (targetIdx < 0 || targetIdx >= pendingProductImages.length) return;
+      const updated = [...pendingProductImages];
+      const temp = updated[index];
+      updated[index] = updated[targetIdx];
+      updated[targetIdx] = temp;
+      setPendingProductImages(updated);
+      return;
+    }
+
+    if (productImages.length <= 1) return;
+    const targetIdx = direction === 'left' ? index - 1 : index + 1;
+    if (targetIdx < 0 || targetIdx >= productImages.length) return;
+
+    const newImgs = [...productImages];
+    const temp = newImgs[index];
+    newImgs[index] = newImgs[targetIdx];
+    newImgs[targetIdx] = temp;
+
+    setProductImages(newImgs);
+
+    try {
+      const imageOrders = newImgs.map((img, i) => ({ id: img.id, sortOrder: i }));
+      await fetch(`/api/products/${editingProductId}/images/reorder`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ imageOrders })
+      });
+    } catch (err) {
+      console.error('Reorder error:', err);
     }
   };
 
@@ -528,6 +591,83 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Lamp Matrix Generation Functions
+  const handleGenerateLampMatrix = () => {
+    const cols = lampColours.length > 0 ? lampColours : ['Warm White', 'Cool White', 'Neutral White'];
+    const watts = lampWattages.length > 0 ? lampWattages : ['5W', '7W', '9W', '12W'];
+    const base = Number(prodPrice || 1499);
+    const baseMrp = Number(prodMrp || base * 1.2);
+
+    const generated: any[] = [];
+    cols.forEach((col) => {
+      watts.forEach((watt) => {
+        let delta = 0;
+        const w = watt.toUpperCase().trim();
+        if (w === '7W') delta = 100;
+        if (w === '9W') delta = 150;
+        if (w === '12W') delta = 200;
+        if (w === '15W') delta = 250;
+        if (w === 'NO BULB' || w === 'NONE') delta = -100;
+
+        if (col.toUpperCase().includes('RGB') || col.toUpperCase().includes('MULTI')) delta += 200;
+
+        const price = Math.max(0, base + delta);
+        const mrp = Math.max(price, baseMrp + delta);
+        const cleanSku = `${prodSku || 'LAMP'}-${col.replace(/[^a-zA-Z0-9]/g, '')}-${watt.replace(/[^a-zA-Z0-9]/g, '')}`.toUpperCase();
+        const name = `${col} - ${watt}`;
+
+        // Check if an existing variant matches
+        const existingMatch = productVariants.find(
+          (v) => (v.colour === col || v.attributes?.colour === col) && (v.wattage === watt || v.attributes?.wattage === watt)
+        );
+
+        generated.push({
+          id: existingMatch?.id,
+          sku: cleanSku,
+          name,
+          price,
+          mrp,
+          stockQuantity: Number(prodStock || 10),
+          colour: col,
+          wattage: watt,
+          isActive: true
+        });
+      });
+    });
+
+    setProductVariants(generated);
+  };
+
+  const handleSaveLampMatrix = async () => {
+    if (!editingProductId) {
+      setVariantError('Please save the main product first before saving variant matrix to database.');
+      return;
+    }
+    if (productVariants.length === 0) {
+      setVariantError('No variants generated. Click "Generate Matrix" first.');
+      return;
+    }
+
+    setVariantError(null);
+    try {
+      const res = await fetch(`/api/products/${editingProductId}/variants/matrix`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ variants: productVariants })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setVariantError(data.error || 'Failed to save variant matrix');
+      } else {
+        await loadProductImagesAndVariants(editingProductId);
+        onRefreshData();
+      }
+    } catch (err: any) {
+      setVariantError(err.message || 'Error saving variant matrix');
     }
   };
 
@@ -694,6 +834,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (!res.ok) {
         setProductFormError(data.error || 'Failed to save product');
         return;
+      }
+
+      const savedProductId = editingProductId || data.id;
+
+      // Upload pending images if new product was created or pending images exist
+      if (savedProductId && pendingProductImages.length > 0) {
+        const formData = new FormData();
+        pendingProductImages.forEach((item) => {
+          if (item.file) {
+            formData.append('images', item.file);
+          }
+        });
+
+        if (formData.has('images')) {
+          try {
+            await fetch(`/api/products/${savedProductId}/images/batch`, {
+              method: 'POST',
+              headers: getAuthHeadersForFormData(),
+              credentials: 'include',
+              body: formData
+            });
+          } catch (uploadErr) {
+            console.error('Batch upload error for new product:', uploadErr);
+          }
+        }
       }
 
       setShowProductModal(false);
@@ -1473,70 +1638,136 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     />
                   </div>
 
-                  {/* Stage 5: Product Image Gallery & Management */}
-                  {editingProductId && (
-                    <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h5 className="font-bold text-indigo-400 text-xs flex items-center gap-1.5">
-                            <Tag className="w-4 h-4" />
-                            <span>Product Gallery & Image Upload</span>
-                          </h5>
-                          <p className="text-[10px] text-slate-400">
-                            Upload high-res images (Cloudinary supported). Max 10 images.
-                          </p>
-                        </div>
-
-                        <label className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1 transition-colors">
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>{isUploadingImage ? 'Uploading...' : 'Upload Image File'}</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleUploadImageFile}
-                            disabled={isUploadingImage}
-                            className="hidden"
-                          />
-                        </label>
+                  {/* Stage 5: Product Image Gallery & Multi-Upload Management */}
+                  <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h5 className="font-bold text-indigo-400 text-xs flex items-center gap-1.5">
+                          <Tag className="w-4 h-4" />
+                          <span>Multiple Product Images Gallery</span>
+                        </h5>
+                        <p className="text-[10px] text-slate-400">
+                          Select multiple image files at once to upload to Cloudinary. Drag or reorder thumbnails.
+                        </p>
                       </div>
 
-                      {imageUploadError && (
-                        <div className="bg-rose-500/20 text-rose-300 text-xs p-2 rounded-xl border border-rose-500/30">
-                          {imageUploadError}
+                      <label className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl cursor-pointer flex items-center gap-1.5 transition-colors shadow-xs">
+                        <Plus className="w-4 h-4" />
+                        <span>{isUploadingImage ? 'Uploading...' : 'Select Multiple Images'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={handleUploadImageFiles}
+                          disabled={isUploadingImage}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+
+                    {imageUploadError && (
+                      <div className="bg-rose-500/20 text-rose-300 text-xs p-2 rounded-xl border border-rose-500/30">
+                        {imageUploadError}
+                      </div>
+                    )}
+
+                    {/* Image Thumbnails Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+                      {/* Saved Images for Existing Product */}
+                      {productImages.map((img, idx) => (
+                        <div
+                          key={img.id}
+                          className="relative aspect-4/3 bg-slate-800 rounded-xl overflow-hidden border border-slate-700 group shadow-xs"
+                        >
+                          <img src={img.url} alt={img.altText || 'Product'} className="w-full h-full object-cover" />
+
+                          {img.isPrimary && (
+                            <span className="absolute top-1.5 left-1.5 bg-emerald-500 text-slate-950 font-black text-[9px] px-1.5 py-0.5 rounded shadow-xs">
+                              PRIMARY
+                            </span>
+                          )}
+
+                          <div className="absolute inset-0 bg-slate-950/75 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 p-1">
+                            {idx > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => handleReorderImage(idx, 'left')}
+                                className="bg-slate-800 text-white text-[10px] font-bold px-1.5 py-1 rounded hover:bg-slate-700"
+                                title="Move Left"
+                              >
+                                &larr;
+                              </button>
+                            )}
+                            {idx < productImages.length - 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleReorderImage(idx, 'right')}
+                                className="bg-slate-800 text-white text-[10px] font-bold px-1.5 py-1 rounded hover:bg-slate-700"
+                                title="Move Right"
+                              >
+                                &rarr;
+                              </button>
+                            )}
+                            {!img.isPrimary && (
+                              <button
+                                type="button"
+                                onClick={() => handleSetPrimaryImage(img.id)}
+                                className="bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] font-bold px-2 py-1 rounded cursor-pointer"
+                                title="Set as primary product image"
+                              >
+                                Primary
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteImage(img.id)}
+                              className="bg-rose-600 hover:bg-rose-500 text-white p-1 rounded cursor-pointer"
+                              title="Delete image"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
-                      )}
+                      ))}
 
-                      {/* Image Thumbnails Grid */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
-                        {productImages.map((img) => (
+                      {/* Pending Images for New Product Creation */}
+                      {!editingProductId &&
+                        pendingProductImages.map((item, idx) => (
                           <div
-                            key={img.id}
-                            className="relative aspect-4/3 bg-slate-800 rounded-xl overflow-hidden border border-slate-700 group"
+                            key={idx}
+                            className="relative aspect-4/3 bg-slate-800 rounded-xl overflow-hidden border border-slate-700 group shadow-xs"
                           >
-                            <img src={img.url} alt={img.altText || 'Product'} className="w-full h-full object-cover" />
-
-                            {img.isPrimary && (
+                            <img src={item.url} alt={`Pending ${idx}`} className="w-full h-full object-cover" />
+                            {item.isPrimary && (
                               <span className="absolute top-1.5 left-1.5 bg-emerald-500 text-slate-950 font-black text-[9px] px-1.5 py-0.5 rounded shadow-xs">
                                 PRIMARY
                               </span>
                             )}
-
-                            <div className="absolute inset-0 bg-slate-950/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-1">
-                              {!img.isPrimary && (
+                            <div className="absolute inset-0 bg-slate-950/75 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 p-1">
+                              {idx > 0 && (
                                 <button
                                   type="button"
-                                  onClick={() => handleSetPrimaryImage(img.id)}
-                                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] font-bold px-2 py-1 rounded cursor-pointer"
-                                  title="Set as primary product image"
+                                  onClick={() => handleReorderImage(idx, 'left')}
+                                  className="bg-slate-800 text-white text-[10px] font-bold px-1.5 py-1 rounded hover:bg-slate-700"
                                 >
-                                  Make Primary
+                                  &larr;
+                                </button>
+                              )}
+                              {idx < pendingProductImages.length - 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleReorderImage(idx, 'right')}
+                                  className="bg-slate-800 text-white text-[10px] font-bold px-1.5 py-1 rounded hover:bg-slate-700"
+                                >
+                                  &rarr;
                                 </button>
                               )}
                               <button
                                 type="button"
-                                onClick={() => handleDeleteImage(img.id)}
-                                className="bg-rose-600 hover:bg-rose-500 text-white p-1 rounded cursor-pointer"
-                                title="Delete image"
+                                onClick={() =>
+                                  setPendingProductImages(pendingProductImages.filter((_, i) => i !== idx))
+                                }
+                                className="bg-rose-600 text-white p-1 rounded cursor-pointer"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -1544,163 +1775,215 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                         ))}
 
-                        {productImages.length === 0 && (
-                          <div className="col-span-full text-slate-500 text-xs italic p-3 text-center bg-slate-950/40 rounded-xl border border-dashed border-slate-800">
-                            No secondary gallery images uploaded yet.
-                          </div>
+                      {productImages.length === 0 && pendingProductImages.length === 0 && (
+                        <div className="col-span-full text-slate-500 text-xs italic p-4 text-center bg-slate-950/40 rounded-xl border border-dashed border-slate-800">
+                          No images attached yet. Click "Select Multiple Images" to add product photos.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Stage 6: Lamp Category Configurator & Variant Matrix Generator */}
+                  <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h5 className="font-bold text-amber-400 text-xs flex items-center gap-1.5">
+                          <Layers className="w-4 h-4" />
+                          <span>Lamp Configurator & Variant Price Matrix</span>
+                        </h5>
+                        <p className="text-[10px] text-slate-400">
+                          Configure Lamp Colours (Warm White, Cool White, Neutral White) & Bulb Wattages (5W, 7W, 9W, 12W)
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleGenerateLampMatrix}
+                          className="bg-amber-600 hover:bg-amber-500 text-slate-950 font-black text-xs px-3 py-1.5 rounded-xl cursor-pointer shadow-xs"
+                        >
+                          Generate Matrix
+                        </button>
+                        {editingProductId && productVariants.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleSaveLampMatrix}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer shadow-xs"
+                          >
+                            Save Matrix to Database
+                          </button>
                         )}
                       </div>
                     </div>
-                  )}
 
-                  {/* Stage 5: Product Variants Management */}
-                  {editingProductId && (
-                    <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h5 className="font-bold text-amber-400 text-xs flex items-center gap-1.5">
-                            <Layers className="w-4 h-4" />
-                            <span>Product Variants (Size, Color, Bundles)</span>
-                          </h5>
-                          <p className="text-[10px] text-slate-400">
-                            Configure distinct SKUs, prices, stock levels and attribute options
-                          </p>
-                        </div>
+                    {/* Colour Options Config */}
+                    <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 space-y-2">
+                      <span className="text-[11px] font-bold text-slate-300 block">Configured Lamp Colours:</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {lampColours.map((col, idx) => (
+                          <span
+                            key={idx}
+                            className="bg-slate-800 text-amber-300 border border-slate-700 text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5"
+                          >
+                            <span>{col}</span>
+                            <button
+                              type="button"
+                              onClick={() => setLampColours(lampColours.filter((_, i) => i !== idx))}
+                              className="text-slate-400 hover:text-rose-400 text-xs"
+                            >
+                              &times;
+                            </button>
+                          </span>
+                        ))}
+                      </div>
 
+                      <div className="flex gap-2 pt-1">
+                        <input
+                          type="text"
+                          placeholder="Add new colour option (e.g. RGB Multi-Colour)"
+                          value={newLampColourInput}
+                          onChange={(e) => setNewLampColourInput(e.target.value)}
+                          className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white flex-1"
+                        />
                         <button
                           type="button"
-                          onClick={() => setShowAddVariantForm(!showAddVariantForm)}
-                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1 border border-slate-700"
+                          onClick={() => {
+                            if (newLampColourInput.trim()) {
+                              setLampColours([...lampColours, newLampColourInput.trim()]);
+                              setNewLampColourInput('');
+                            }
+                          }}
+                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3 py-1 rounded-lg"
                         >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>{showAddVariantForm ? 'Cancel Variant' : 'Add Variant'}</span>
+                          + Add Colour
                         </button>
                       </div>
+                    </div>
 
-                      {/* Add Variant Sub-form */}
-                      {showAddVariantForm && (
-                        <div className="bg-slate-950/80 border border-slate-700 rounded-xl p-3 space-y-3">
-                          {variantError && (
-                            <div className="bg-rose-500/20 text-rose-300 text-xs p-2 rounded-lg">
-                              {variantError}
-                            </div>
-                          )}
-
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            <div>
-                              <label className="block text-[10px] text-slate-400 font-semibold mb-0.5">Variant SKU *</label>
-                              <input
-                                type="text"
-                                placeholder="e.g. VAR-RED-XL"
-                                value={varSku}
-                                onChange={(e) => setVarSku(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white text-xs font-mono"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] text-slate-400 font-semibold mb-0.5">Variant Name *</label>
-                              <input
-                                type="text"
-                                placeholder="e.g. Crimson Red - XL"
-                                value={varName}
-                                onChange={(e) => setVarName(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white text-xs"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] text-slate-400 font-semibold mb-0.5">Price (₹) *</label>
-                              <input
-                                type="number"
-                                placeholder="e.g. 4999"
-                                value={varPrice}
-                                onChange={(e) => setVarPrice(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white text-xs"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] text-slate-400 font-semibold mb-0.5">MRP (₹)</label>
-                              <input
-                                type="number"
-                                placeholder="e.g. 5999"
-                                value={varMrp}
-                                onChange={(e) => setVarMrp(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white text-xs"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] text-slate-400 font-semibold mb-0.5">Stock Qty</label>
-                              <input
-                                type="number"
-                                value={varStock}
-                                onChange={(e) => setVarStock(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white text-xs"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] text-slate-400 font-semibold mb-0.5">Color Attribute</label>
-                              <input
-                                type="text"
-                                placeholder="e.g. Red"
-                                value={varColor}
-                                onChange={(e) => setVarColor(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white text-xs"
-                              />
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={handleCreateVariant}
-                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-1.5 rounded-lg cursor-pointer"
+                    {/* Wattage Options Config */}
+                    <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 space-y-2">
+                      <span className="text-[11px] font-bold text-slate-300 block">Configured Bulb Wattages:</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {lampWattages.map((watt, idx) => (
+                          <span
+                            key={idx}
+                            className="bg-slate-800 text-amber-300 border border-slate-700 text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5"
                           >
-                            Save Variant
-                          </button>
-                        </div>
-                      )}
+                            <span>{watt}</span>
+                            <button
+                              type="button"
+                              onClick={() => setLampWattages(lampWattages.filter((_, i) => i !== idx))}
+                              className="text-slate-400 hover:text-rose-400 text-xs"
+                            >
+                              &times;
+                            </button>
+                          </span>
+                        ))}
+                      </div>
 
-                      {/* Existing Variants Table */}
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-[11px]">
-                          <thead>
-                            <tr className="text-slate-400 font-bold border-b border-slate-800">
-                              <th className="py-1.5">SKU</th>
-                              <th className="py-1.5">Name</th>
-                              <th className="py-1.5">Price</th>
-                              <th className="py-1.5">Stock</th>
-                              <th className="py-1.5 text-right">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {productVariants.map((v) => (
-                              <tr key={v.id} className="border-b border-slate-800/60 text-slate-200">
-                                <td className="py-1.5 font-mono text-indigo-300">{v.sku}</td>
-                                <td className="py-1.5 font-bold">{v.name}</td>
-                                <td className="py-1.5 font-semibold">₹{Number(v.price).toLocaleString('en-IN')}</td>
-                                <td className="py-1.5 font-medium">{v.stockQuantity}</td>
-                                <td className="py-1.5 text-right">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteVariant(v.id)}
-                                    className="text-rose-400 hover:text-rose-300 p-1 cursor-pointer"
-                                    title="Delete Variant"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                            {productVariants.length === 0 && (
-                              <tr>
-                                <td colSpan={5} className="py-2 text-slate-500 italic text-center">
-                                  No variants defined for this product yet.
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
+                      <div className="flex gap-2 pt-1">
+                        <input
+                          type="text"
+                          placeholder="Add wattage option (e.g. 15W)"
+                          value={newLampWattageInput}
+                          onChange={(e) => setNewLampWattageInput(e.target.value)}
+                          className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white flex-1"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (newLampWattageInput.trim()) {
+                              setLampWattages([...lampWattages, newLampWattageInput.trim()]);
+                              setNewLampWattageInput('');
+                            }
+                          }}
+                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3 py-1 rounded-lg"
+                        >
+                          + Add Wattage
+                        </button>
                       </div>
                     </div>
-                  )}
+
+                    {variantError && (
+                      <div className="bg-rose-500/20 text-rose-300 text-xs p-2 rounded-lg border border-rose-500/30">
+                        {variantError}
+                      </div>
+                    )}
+
+                    {/* Variant Matrix Table */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-[11px]">
+                        <thead>
+                          <tr className="text-slate-400 font-bold border-b border-slate-800">
+                            <th className="py-1.5">SKU</th>
+                            <th className="py-1.5">Colour</th>
+                            <th className="py-1.5">Wattage</th>
+                            <th className="py-1.5">Price (₹)</th>
+                            <th className="py-1.5">Stock</th>
+                            <th className="py-1.5 text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {productVariants.map((v, idx) => (
+                            <tr key={v.id || idx} className="border-b border-slate-800/60 text-slate-200">
+                              <td className="py-1.5 font-mono text-indigo-300">{v.sku}</td>
+                              <td className="py-1.5 font-bold text-amber-300">{v.colour || v.attributes?.colour || 'Standard'}</td>
+                              <td className="py-1.5 font-bold text-amber-400">{v.wattage || v.attributes?.wattage || 'Base'}</td>
+                              <td className="py-1.5">
+                                <input
+                                  type="number"
+                                  value={v.price}
+                                  onChange={(e) => {
+                                    const val = Number(e.target.value);
+                                    const updated = [...productVariants];
+                                    updated[idx].price = val;
+                                    setProductVariants(updated);
+                                  }}
+                                  className="w-20 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs font-bold text-emerald-400"
+                                />
+                              </td>
+                              <td className="py-1.5 font-medium">
+                                <input
+                                  type="number"
+                                  value={v.stockQuantity}
+                                  onChange={(e) => {
+                                    const val = Number(e.target.value);
+                                    const updated = [...productVariants];
+                                    updated[idx].stockQuantity = val;
+                                    setProductVariants(updated);
+                                  }}
+                                  className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white"
+                                />
+                              </td>
+                              <td className="py-1.5 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (v.id && editingProductId) {
+                                      handleDeleteVariant(v.id);
+                                    } else {
+                                      setProductVariants(productVariants.filter((_, i) => i !== idx));
+                                    }
+                                  }}
+                                  className="text-rose-400 hover:text-rose-300 p-1 cursor-pointer"
+                                  title="Delete Variant"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {productVariants.length === 0 && (
+                            <tr>
+                              <td colSpan={6} className="py-3 text-slate-500 italic text-center">
+                                No variants generated. Click "Generate Matrix" above to auto-create Colour & Wattage combinations.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
 
                   {/* Toggles */}
                   <div className="flex flex-wrap gap-4 pt-2 border-t border-slate-700 font-bold">

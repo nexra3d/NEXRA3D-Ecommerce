@@ -69,7 +69,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   // Reviews state
   const [reviews, setReviews] = useState<ProductReview[]>([]);
   const [ratingSummary, setRatingSummary] = useState({
-    averageRating: product?.rating || 5.0,
+    averageRating: (product?.reviewCount && product?.reviewCount > 0) ? (product?.rating || 0) : 0,
     totalCount: product?.reviewCount || 0,
     distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } as Record<number, number>
   });
@@ -124,7 +124,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     // Reset reviews state immediately for new product
     setReviews([]);
     setRatingSummary({
-      averageRating: Number(product.rating || 5.0),
+      averageRating: (product.reviewCount && product.reviewCount > 0) ? Number(product.rating || 0) : 0,
       totalReviews: product.reviewCount || 0
     });
 
@@ -162,7 +162,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
             const avg = Number((revs.reduce((acc: number, r: any) => acc + (r.rating || 5), 0) / revs.length).toFixed(1));
             setRatingSummary({ averageRating: avg, totalReviews: revs.length });
           } else {
-            setRatingSummary({ averageRating: Number(product.rating || 5.0), totalReviews: 0 });
+            setRatingSummary({ averageRating: (product.reviewCount && product.reviewCount > 0) ? Number(product.rating || 0) : 0, totalReviews: 0 });
           }
         }
       })
@@ -179,10 +179,82 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     }
   }, [product?.id]);
 
+  const isLampProduct = (product?.category?.name || '').toLowerCase().includes('lamp') ||
+    (product?.name || '').toLowerCase().includes('lamp') ||
+    variantsList.some((v) => v.colour || v.wattage || (v.attributes as any)?.colour || (v.attributes as any)?.wattage);
+
+  // Extract distinct colors and wattages from variantsList or default defaults
+  const availableColoursFromVariants = Array.from(
+    new Set(
+      variantsList
+        .map((v) => v.colour || (v.attributes as any)?.colour)
+        .filter(Boolean) as string[]
+    )
+  );
+
+  const availableWattagesFromVariants = Array.from(
+    new Set(
+      variantsList
+        .map((v) => v.wattage || (v.attributes as any)?.wattage)
+        .filter(Boolean) as string[]
+    )
+  );
+
+  const colourOptions = availableColoursFromVariants.length > 0
+    ? availableColoursFromVariants
+    : ['Warm White', 'Cool White', 'Neutral White'];
+
+  const wattageOptions = availableWattagesFromVariants.length > 0
+    ? availableWattagesFromVariants
+    : ['5W', '7W', '9W', '12W'];
+
+  const [selectedColour, setSelectedColour] = useState<string>(colourOptions[0] || 'Warm White');
+  const [selectedWattage, setSelectedWattage] = useState<string>(wattageOptions[0] || '5W');
+
+  // Sync selected variant when colour or wattage changes
+  useEffect(() => {
+    if (variantsList.length > 0) {
+      const match = variantsList.find(
+        (v) =>
+          (v.colour === selectedColour || (v.attributes as any)?.colour === selectedColour) &&
+          (v.wattage === selectedWattage || (v.attributes as any)?.wattage === selectedWattage)
+      );
+      if (match) {
+        setSelectedVariant(match);
+      } else if (!selectedVariant) {
+        setSelectedVariant(variantsList[0]);
+      }
+    }
+  }, [selectedColour, selectedWattage, variantsList]);
+
+  // Compute fallback price addition if no database variant record is found
+  const getWattageDelta = (watt: string) => {
+    const w = watt.toUpperCase().trim();
+    if (w === '7W') return 100;
+    if (w === '9W') return 150;
+    if (w === '12W') return 200;
+    if (w === '15W') return 250;
+    if (w === 'NO BULB' || w === 'NONE') return -100;
+    return 0;
+  };
+
+  const getColourDelta = (col: string) => {
+    const c = col.toUpperCase().trim();
+    if (c.includes('RGB') || c.includes('MULTI')) return 200;
+    return 0;
+  };
+
   if (!product) return null;
 
-  const activePrice = selectedVariant ? selectedVariant.price : Number(product.price || 0);
-  const activeMrp = selectedVariant ? selectedVariant.mrp : (product.mrp ? Number(product.mrp) : activePrice);
+  const calculatedBasePrice = Number(product.price || 0);
+  const calculatedPrice = selectedVariant
+    ? selectedVariant.price
+    : calculatedBasePrice + getWattageDelta(selectedWattage) + getColourDelta(selectedColour);
+
+  const activePrice = calculatedPrice;
+  const activeMrp = selectedVariant
+    ? selectedVariant.mrp
+    : (product.mrp ? Number(product.mrp) + getWattageDelta(selectedWattage) + getColourDelta(selectedColour) : activePrice);
   const activeSku = selectedVariant ? selectedVariant.sku : product.sku;
 
   const formatINR = (val: number) => {
@@ -395,8 +467,86 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                 <span className="text-xs text-slate-500 font-medium">({reviews.length} Verified Customer Reviews)</span>
               </div>
 
-              {/* Variant Selector (if available) */}
-              {variantsList.length > 0 && (
+              {/* Lamp Options or Standard Variant Selector */}
+              {isLampProduct ? (
+                <div className="space-y-4 bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200">
+                  {/* Lamp Colour Selector */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Lamp Light Colour:</span>
+                      </span>
+                      <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                        {selectedColour}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {colourOptions.map((col) => {
+                        const isSel = selectedColour === col;
+                        let bgDot = 'bg-amber-300';
+                        if (col.toLowerCase().includes('cool')) bgDot = 'bg-sky-200';
+                        if (col.toLowerCase().includes('neutral')) bgDot = 'bg-orange-100';
+                        if (col.toLowerCase().includes('rgb')) bgDot = 'bg-gradient-to-r from-red-500 via-green-500 to-blue-500';
+
+                        return (
+                          <button
+                            key={col}
+                            type="button"
+                            onClick={() => setSelectedColour(col)}
+                            className={`p-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 cursor-pointer ${
+                              isSel
+                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                                : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-100'
+                            }`}
+                          >
+                            <span className={`w-3 h-3 rounded-full shrink-0 ${bgDot} border border-slate-300`} />
+                            <span className="truncate">{col}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Bulb Wattage Selector */}
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Bulb Wattage Option:</span>
+                      </span>
+                      <span className="text-xs font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
+                        {selectedWattage}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {wattageOptions.map((watt) => {
+                        const isSel = selectedWattage === watt;
+                        const delta = getWattageDelta(watt);
+                        return (
+                          <button
+                            key={watt}
+                            type="button"
+                            onClick={() => setSelectedWattage(watt)}
+                            className={`p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer text-center ${
+                              isSel
+                                ? 'bg-amber-500 border-amber-500 text-slate-950 font-black shadow-xs'
+                                : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-100'
+                            }`}
+                          >
+                            <div>{watt}</div>
+                            <div className="text-[10px] font-normal opacity-80">
+                              {delta === 0 ? 'Included' : delta > 0 ? `+₹${delta}` : `-₹${Math.abs(delta)}`}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : variantsList.length > 0 ? (
                 <div className="space-y-2">
                   <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
                     <Layers className="w-3.5 h-3.5 text-indigo-600" />
@@ -418,7 +568,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                     ))}
                   </div>
                 </div>
-              )}
+              ) : null}
 
               {/* Price Display */}
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-baseline justify-between">

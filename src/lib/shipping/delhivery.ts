@@ -16,6 +16,7 @@ export interface ServiceabilityResult {
   error?: string;
   errorType?: string;
   statusCode?: number;
+  diagnostic?: any;
 }
 
 export interface ShippingOption {
@@ -45,6 +46,7 @@ export interface ShippingEstimateResult {
   error?: string;
   errorType?: string;
   statusCode?: number;
+  diagnostic?: any;
 }
 
 export interface CreateShipmentResult {
@@ -417,7 +419,7 @@ async function fetchDelhiveryRate(params: {
   dimensions?: { length?: number; width?: number; height?: number };
   paymentType: 'Pre-paid' | 'COD';
   orderValue?: number;
-}): Promise<{ charge?: number; estimatedDays?: number; edd?: string; error?: string; errorType?: string; statusCode?: number }> {
+}): Promise<{ charge?: number; estimatedDays?: number; edd?: string; error?: string; errorType?: string; statusCode?: number; diagnostic?: any }> {
   const token = process.env.DELHIVERY_API_TOKEN || DELHIVERY_API_TOKEN || '';
   if (!token) {
     return {

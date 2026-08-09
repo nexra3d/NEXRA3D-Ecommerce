@@ -119,6 +119,28 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   <div className="flex-1 min-w-0 space-y-1">
                     <span className="text-[10px] font-bold text-indigo-600 uppercase">{item.product.brand}</span>
                     <h4 className="text-xs font-bold text-slate-900 truncate">{item.product.title}</h4>
+
+                    {/* Variant & Lamp Attribute Badges */}
+                    {(item.selectedColour || item.selectedWattage || item.variant?.colour || item.variant?.wattage || item.variant?.name) && (
+                      <div className="flex flex-wrap gap-1 py-1">
+                        {(item.selectedColour || item.variant?.colour) && (
+                          <span className="bg-indigo-50 text-indigo-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-indigo-100">
+                            Colour: {item.selectedColour || item.variant?.colour}
+                          </span>
+                        )}
+                        {(item.selectedWattage || item.variant?.wattage) && (
+                          <span className="bg-amber-50 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-100">
+                            Wattage: {item.selectedWattage || item.variant?.wattage}
+                          </span>
+                        )}
+                        {!item.selectedColour && !item.selectedWattage && item.variant?.name && (
+                          <span className="bg-slate-100 text-slate-700 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                            {item.variant.name}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     <span className="text-xs font-black text-slate-900 block">
                       ₹{Number(itemPrice || 0).toLocaleString('en-IN')}
                     </span>

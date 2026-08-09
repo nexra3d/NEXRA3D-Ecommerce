@@ -17,6 +17,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onAddToCart,
   onQuickView
 }) => {
+  if (!product) return null;
+
   // Financial formatting using en-IN locale
   const formatINR = (val: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -141,7 +143,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <span className="text-xs font-bold text-slate-800">
               {product.reviewCount && product.reviewCount > 0
                 ? (product.rating || 0).toFixed(1)
-                : (product.rating ? product.rating.toFixed(1) : '0.0')}
+                : '0.0'}
             </span>
             <span className="text-[11px] text-slate-400">({product.reviewCount ?? 0})</span>
           </div>

@@ -79,9 +79,23 @@ function safeToISOString(val: any): string {
 // Formatters for API responses
 function formatPrismaProductResponse(p: any) {
   if (!p) return null;
-  const imageList = p.images && p.images.length > 0
-    ? p.images.map((img: any) => img.url)
+  const rawImages = p.images && p.images.length > 0 ? [...p.images].sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)) : [];
+  const primaryImgObj = rawImages.find((img: any) => img.isPrimary) || rawImages[0];
+  const primaryUrl = primaryImgObj?.url || p.imageUrl || '';
+
+  const imageList = rawImages.length > 0
+    ? rawImages.map((img: any) => img.url)
     : (p.imageUrl ? [p.imageUrl] : []);
+
+  const productImagesList = rawImages.map((img: any) => ({
+    id: img.id,
+    productId: img.productId,
+    url: img.url,
+    publicId: img.publicId || null,
+    altText: img.altText || '',
+    sortOrder: img.sortOrder ?? 0,
+    isPrimary: Boolean(img.isPrimary)
+  }));
 
   const priceNum = Number(p.price) || 0;
   const mrpNum = Number(p.mrp) || priceNum;
@@ -90,7 +104,7 @@ function formatPrismaProductResponse(p: any) {
   const reviewCount = reviewList.length;
   const avgRating = reviewCount > 0
     ? Number((reviewList.reduce((acc: number, r: any) => acc + Number(r.rating || 5), 0) / reviewCount).toFixed(1))
-    : 5.0;
+    : 0.0;
 
   return {
     id: p.id,
@@ -112,8 +126,9 @@ function formatPrismaProductResponse(p: any) {
     width: p.width !== null && p.width !== undefined ? Number(p.width) : null,
     height: p.height !== null && p.height !== undefined ? Number(p.height) : null,
     specifications: p.specifications || {},
-    imageUrl: p.imageUrl || imageList[0] || '',
+    imageUrl: primaryUrl || imageList[0] || '',
     images: imageList,
+    productImages: productImagesList,
     rating: avgRating,
     reviewCount: reviewCount,
     reviews: reviewList,
@@ -135,6 +150,8 @@ function formatPrismaProductResponse(p: any) {
       price: Number(v.price),
       mrp: Number(v.mrp),
       stockQuantity: v.stockQuantity,
+      colour: v.colour || (v.attributes as any)?.colour || null,
+      wattage: v.wattage || (v.attributes as any)?.wattage || null,
       attributes: v.attributes || {},
       isActive: v.isActive
     })),
@@ -285,7 +302,7 @@ async function calculateServerShippingFee(input: {
     select: { id: true, name: true, weight: true, length: true, width: true, height: true }
   }).catch(() => []);
 
-  const productsById = new Map(dbProducts.map((product) => [product.id, product]));
+  const productsById = new Map<string, any>(dbProducts.map((product) => [product.id, product] as [string, any]));
   const parcel = calculateParcelFromProducts(input.items.map((item) => ({
     quantity: item.quantity,
     product: productsById.get(item.productId || item.id || '') || item.product || null
@@ -469,12 +486,17 @@ async function getFormattedCart(userId: string) {
         images: [img],
         taxPercentage: itemTaxPercentage
       },
+      selectedColour: v?.colour || (v?.attributes as any)?.colour || null,
+      selectedWattage: v?.wattage || (v?.attributes as any)?.wattage || null,
       variant: v ? {
         id: v.id,
         name: v.name,
         sku: v.sku,
         price: Number(v.price),
         mrp: Number(v.mrp),
+        colour: v.colour || (v.attributes as any)?.colour || null,
+        wattage: v.wattage || (v.attributes as any)?.wattage || null,
+        attributes: v.attributes || {},
         stockQuantity: v.stockQuantity ?? 100
       } : null
     };
@@ -1997,7 +2019,8 @@ app.get('/api/products/:id/images', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/products/:id/images', requireAdminMiddleware, upload.single('image'), async (req: Request, res: Response) => {
+// Single or multiple file/URL image upload endpoint
+app.post(['/api/products/:id/images', '/api/products/:id/images/batch'], requireAdminMiddleware, upload.array('images', 10), async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const product = await prisma.product.findUnique({ where: { id } });
@@ -2005,46 +2028,178 @@ app.post('/api/products/:id/images', requireAdminMiddleware, upload.single('imag
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    let url = req.body?.url;
-    if (req.file) {
-      const uploadRes = await uploadImageToCloudinary(req.file.buffer, 'products');
-      if (uploadRes?.url) url = uploadRes.url;
-    }
+    const uploadedImages: any[] = [];
+    const files = (req.files as Express.Multer.File[]) || (req.file ? [req.file] : []);
+    const urlsFromBody: string[] = Array.isArray(req.body?.urls) ? req.body.urls : (req.body?.url ? [req.body.url] : []);
 
-    if (!url) {
-      return res.status(400).json({ error: 'Image file or URL is required' });
-    }
-
-    const count = await prisma.productImage.count({ where: { productId: id } });
-
-    const newImg = await prisma.productImage.create({
-      data: {
-        productId: id,
-        url,
-        altText: product.name,
-        sortOrder: count,
-        isPrimary: count === 0
+    // Process files uploaded via Multer
+    for (const file of files) {
+      const uploadRes = await uploadImageToCloudinary(file.buffer, 'products');
+      if (uploadRes?.url) {
+        uploadedImages.push({ url: uploadRes.url, publicId: uploadRes.publicId || (uploadRes as any).public_id || null });
       }
+    }
+
+    // Process URLs sent in body
+    for (const urlStr of urlsFromBody) {
+      if (typeof urlStr === 'string' && urlStr.trim() !== '') {
+        uploadedImages.push({ url: urlStr.trim(), publicId: null });
+      }
+    }
+
+    if (uploadedImages.length === 0) {
+      return res.status(400).json({ error: 'At least one image file or URL is required' });
+    }
+
+    const currentCount = await prisma.productImage.count({ where: { productId: id } });
+
+    const createdRecords: any[] = [];
+    for (let i = 0; i < uploadedImages.length; i++) {
+      const img = uploadedImages[i];
+      const isFirst = currentCount === 0 && i === 0;
+      const created = await prisma.productImage.create({
+        data: {
+          productId: id,
+          url: img.url,
+          publicId: img.publicId,
+          altText: product.name,
+          sortOrder: currentCount + i,
+          isPrimary: isFirst
+        }
+      });
+      createdRecords.push(created);
+
+      if (isFirst) {
+        await prisma.product.update({
+          where: { id },
+          data: { imageUrl: img.url }
+        });
+      }
+    }
+
+    const allImages = await prisma.productImage.findMany({
+      where: { productId: id },
+      orderBy: { sortOrder: 'asc' }
     });
 
-    if (count === 0) {
-      await prisma.product.update({
-        where: { id },
-        data: { imageUrl: url }
-      });
-    }
-
-    return res.status(201).json(newImg);
+    return res.status(201).json({ success: true, newImages: createdRecords, images: allImages });
   } catch (err: any) {
-    return res.status(500).json({ error: 'Failed to add product image' });
+    console.error('Error adding product images:', err);
+    return res.status(500).json({ error: 'Failed to add product image: ' + (err.message || String(err)) });
   }
 });
 
-app.delete('/api/products/:id/images/:imageId', requireAdminMiddleware, async (req: Request, res: Response) => {
-  const { imageId } = req.params;
+// Reorder product images
+app.put('/api/products/:id/images/reorder', requireAdminMiddleware, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { imageOrders, imageIds } = req.body;
+
   try {
+    if (Array.isArray(imageOrders)) {
+      for (const item of imageOrders) {
+        if (item.id && typeof item.sortOrder === 'number') {
+          await prisma.productImage.update({
+            where: { id: item.id },
+            data: { sortOrder: item.sortOrder }
+          }).catch(() => {});
+        }
+      }
+    } else if (Array.isArray(imageIds)) {
+      for (let i = 0; i < imageIds.length; i++) {
+        await prisma.productImage.update({
+          where: { id: imageIds[i] },
+          data: { sortOrder: i }
+        }).catch(() => {});
+      }
+    }
+
+    const updatedImages = await prisma.productImage.findMany({
+      where: { productId: id },
+      orderBy: { sortOrder: 'asc' }
+    });
+
+    return res.json({ success: true, images: updatedImages });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to reorder images' });
+  }
+});
+
+// Set primary product image
+app.put('/api/products/:id/images/:imageId/primary', requireAdminMiddleware, async (req: Request, res: Response) => {
+  const { id, imageId } = req.params;
+
+  try {
+    const targetImage = await prisma.productImage.findUnique({ where: { id: imageId } });
+    if (!targetImage || targetImage.productId !== id) {
+      return res.status(404).json({ error: 'Image not found for this product' });
+    }
+
+    await prisma.productImage.updateMany({
+      where: { productId: id },
+      data: { isPrimary: false }
+    });
+
+    const updatedImage = await prisma.productImage.update({
+      where: { id: imageId },
+      data: { isPrimary: true }
+    });
+
+    await prisma.product.update({
+      where: { id },
+      data: { imageUrl: updatedImage.url }
+    });
+
+    const allImages = await prisma.productImage.findMany({
+      where: { productId: id },
+      orderBy: { sortOrder: 'asc' }
+    });
+
+    return res.json({ success: true, primaryImage: updatedImage, images: allImages });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to set primary image' });
+  }
+});
+
+// Delete product image
+app.delete('/api/products/:id/images/:imageId', requireAdminMiddleware, async (req: Request, res: Response) => {
+  const { id, imageId } = req.params;
+  try {
+    const target = await prisma.productImage.findUnique({ where: { id: imageId } });
+    if (!target) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    const wasPrimary = target.isPrimary;
     await prisma.productImage.delete({ where: { id: imageId } });
-    return res.json({ success: true });
+
+    if (wasPrimary) {
+      const remaining = await prisma.productImage.findFirst({
+        where: { productId: id },
+        orderBy: { sortOrder: 'asc' }
+      });
+      if (remaining) {
+        await prisma.productImage.update({
+          where: { id: remaining.id },
+          data: { isPrimary: true }
+        });
+        await prisma.product.update({
+          where: { id },
+          data: { imageUrl: remaining.url }
+        });
+      } else {
+        await prisma.product.update({
+          where: { id },
+          data: { imageUrl: null }
+        });
+      }
+    }
+
+    const updatedImages = await prisma.productImage.findMany({
+      where: { productId: id },
+      orderBy: { sortOrder: 'asc' }
+    });
+
+    return res.json({ success: true, images: updatedImages });
   } catch (err) {
     return res.status(500).json({ error: 'Failed to delete product image' });
   }
@@ -2055,7 +2210,8 @@ app.get('/api/products/:id/variants', async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const variants = await prisma.productVariant.findMany({
-      where: { productId: id }
+      where: { productId: id },
+      orderBy: { createdAt: 'asc' }
     });
     return res.json(variants);
   } catch (err) {
@@ -2065,13 +2221,11 @@ app.get('/api/products/:id/variants', async (req: Request, res: Response) => {
 
 app.post('/api/products/:id/variants', requireAdminMiddleware, async (req: Request, res: Response) => {
   const { id } = req.params;
-  const parseResult = productVariantCreateSchema.safeParse(req.body);
-  if (!parseResult.success) {
-    const errorMsg = parseResult.error.issues.map((e) => e.message).join('. ');
-    return res.status(400).json({ error: errorMsg });
-  }
+  const { sku, name, price, mrp, stockQuantity, colour, wattage, attributes, isActive } = req.body;
 
-  const { sku, name, price, mrp, stockQuantity, attributes, isActive } = parseResult.data;
+  if (!sku || !name || price === undefined) {
+    return res.status(400).json({ error: 'SKU, name, and price are required for a variant' });
+  }
 
   try {
     const product = await prisma.product.findUnique({ where: { id } });
@@ -2082,19 +2236,115 @@ app.post('/api/products/:id/variants', requireAdminMiddleware, async (req: Reque
     const newVariant = await prisma.productVariant.create({
       data: {
         productId: id,
-        sku,
-        name,
-        price,
-        mrp,
-        stockQuantity: stockQuantity ?? 0,
-        attributes: attributes || null,
-        isActive: isActive !== undefined ? isActive : true
+        sku: String(sku).trim(),
+        name: String(name).trim(),
+        price: Number(price),
+        mrp: mrp !== undefined ? Number(mrp) : Number(price),
+        stockQuantity: stockQuantity !== undefined ? Number(stockQuantity) : 10,
+        colour: colour || attributes?.colour || null,
+        wattage: wattage || attributes?.wattage || null,
+        attributes: attributes || (colour || wattage ? { colour, wattage } : null),
+        isActive: isActive !== undefined ? Boolean(isActive) : true
       }
     });
 
     return res.status(201).json(newVariant);
   } catch (err: any) {
-    return res.status(500).json({ error: 'Failed to create product variant' });
+    console.error('Error creating variant:', err);
+    return res.status(500).json({ error: 'Failed to create product variant: ' + (err.message || String(err)) });
+  }
+});
+
+// Batch create or replace variant matrix
+app.post('/api/products/:id/variants/matrix', requireAdminMiddleware, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { variants } = req.body;
+
+  if (!Array.isArray(variants)) {
+    return res.status(400).json({ error: 'variants array is required' });
+  }
+
+  try {
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const savedVariants: any[] = [];
+    for (const v of variants) {
+      const vSku = v.sku || `${product.sku}-${v.colour || ''}-${v.wattage || ''}`.replace(/[^a-zA-Z0-9-]/g, '-').toUpperCase();
+      const vName = v.name || `${v.colour || ''} ${v.wattage || ''}`.trim() || 'Variant';
+
+      if (v.id) {
+        const updated = await prisma.productVariant.update({
+          where: { id: v.id },
+          data: {
+            sku: vSku,
+            name: vName,
+            price: Number(v.price),
+            mrp: v.mrp !== undefined ? Number(v.mrp) : Number(v.price),
+            stockQuantity: v.stockQuantity !== undefined ? Number(v.stockQuantity) : 10,
+            colour: v.colour || v.attributes?.colour || null,
+            wattage: v.wattage || v.attributes?.wattage || null,
+            attributes: v.attributes || (v.colour || v.wattage ? { colour: v.colour, wattage: v.wattage } : null),
+            isActive: v.isActive !== undefined ? Boolean(v.isActive) : true
+          }
+        });
+        savedVariants.push(updated);
+      } else {
+        const created = await prisma.productVariant.create({
+          data: {
+            productId: id,
+            sku: vSku,
+            name: vName,
+            price: Number(v.price),
+            mrp: v.mrp !== undefined ? Number(v.mrp) : Number(v.price),
+            stockQuantity: v.stockQuantity !== undefined ? Number(v.stockQuantity) : 10,
+            colour: v.colour || v.attributes?.colour || null,
+            wattage: v.wattage || v.attributes?.wattage || null,
+            attributes: v.attributes || (v.colour || v.wattage ? { colour: v.colour, wattage: v.wattage } : null),
+            isActive: v.isActive !== undefined ? Boolean(v.isActive) : true
+          }
+        });
+        savedVariants.push(created);
+      }
+    }
+
+    return res.json({ success: true, variants: savedVariants });
+  } catch (err: any) {
+    console.error('Matrix save error:', err);
+    return res.status(500).json({ error: 'Failed to save variant matrix: ' + (err.message || String(err)) });
+  }
+});
+
+app.put('/api/products/:id/variants/:variantId', requireAdminMiddleware, async (req: Request, res: Response) => {
+  const { variantId } = req.params;
+  const { sku, name, price, mrp, stockQuantity, colour, wattage, attributes, isActive } = req.body;
+
+  try {
+    const existing = await prisma.productVariant.findUnique({ where: { id: variantId } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Variant not found' });
+    }
+
+    const updated = await prisma.productVariant.update({
+      where: { id: variantId },
+      data: {
+        sku: sku !== undefined ? String(sku).trim() : existing.sku,
+        name: name !== undefined ? String(name).trim() : existing.name,
+        price: price !== undefined ? Number(price) : existing.price,
+        mrp: mrp !== undefined ? Number(mrp) : existing.mrp,
+        stockQuantity: stockQuantity !== undefined ? Number(stockQuantity) : existing.stockQuantity,
+        colour: colour !== undefined ? colour : existing.colour,
+        wattage: wattage !== undefined ? wattage : existing.wattage,
+        attributes: attributes !== undefined ? attributes : existing.attributes,
+        isActive: isActive !== undefined ? Boolean(isActive) : existing.isActive
+      }
+    });
+
+    return res.json(updated);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to update variant' });
   }
 });
 
@@ -2560,16 +2810,24 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
       const total = price * ci.quantity;
       subtotal += total;
 
-      const customNameFromCart = ci.customizationText || (clientItems || []).find((item: any) => (item.productId || item.product?.id) === p.id)?.customizationText || '';
+      const customNameFromCart = (ci as any).customizationText || (clientItems || []).find((item: any) => (item.productId || item.product?.id) === p.id)?.customizationText || '';
       const displayName = customNameFromCart ? `${p.name} • For: ${customNameFromCart}` : p.name;
+
+      const selectedColour = v?.colour || (v?.attributes as any)?.colour || null;
+      const selectedWattage = v?.wattage || (v?.attributes as any)?.wattage || null;
+      const skuSnapshot = v?.sku || p.sku || '';
 
       orderItemsData.push({
         productId: p.id,
         variantId: ci.variantId || null,
+        skuSnapshot,
+        selectedColour,
+        selectedWattage,
         productTitle: displayName,
         price,
         quantity: ci.quantity,
         total,
+        subtotal: total,
         imageUrl: (p.images && p.images[0]?.url) || p.imageUrl || ''
       });
     }
@@ -2833,6 +3091,10 @@ const formatOrder = (o: any) => {
     const title = it.productTitle || p.name || p.title || 'Product';
     return {
       ...it,
+      variantId: it.variantId || null,
+      skuSnapshot: it.skuSnapshot || it.variant?.sku || p.sku || '',
+      selectedColour: it.selectedColour || it.variant?.colour || (it.variant?.attributes as any)?.colour || null,
+      selectedWattage: it.selectedWattage || it.variant?.wattage || (it.variant?.attributes as any)?.wattage || null,
       productTitle: title,
       productImage: img,
       imageUrl: img,
@@ -3606,7 +3868,7 @@ app.get('/api/products/:id/reviews', async (req: Request, res: Response) => {
     const totalReviews = reviews.length;
     const averageRating = totalReviews > 0
       ? Number((reviews.reduce((sum, r) => sum + r.rating, 0) / totalReviews).toFixed(1))
-      : 5.0;
+      : 0.0;
 
     return res.json({
       reviews,
@@ -3616,7 +3878,7 @@ app.get('/api/products/:id/reviews', async (req: Request, res: Response) => {
       }
     });
   } catch (err) {
-    return res.json({ reviews: [], summary: { averageRating: 5.0, totalReviews: 0 } });
+    return res.json({ reviews: [], summary: { averageRating: 0.0, totalReviews: 0 } });
   }
 });
 
