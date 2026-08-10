@@ -999,6 +999,13 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                           </span>
                         </div>
 
+                        {(order.razorpayPaymentId || (order as any).paymentId) && (
+                          <div>
+                            <span className="text-slate-400 text-[10px] uppercase tracking-wider block font-bold">Payment ID</span>
+                            <span className="font-mono text-emerald-600 font-bold text-xs">{order.razorpayPaymentId || (order as any).paymentId}</span>
+                          </div>
+                        )}
+
                         <div>
                           <span className="text-slate-400 text-[10px] uppercase tracking-wider block font-bold">Total Amount</span>
                           <span className="font-black text-indigo-600 text-sm">₹{Number(order.totalAmount || 0).toLocaleString('en-IN')}</span>

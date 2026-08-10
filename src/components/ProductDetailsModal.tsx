@@ -197,6 +197,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
 
   const [dbColours, setDbColours] = useState<LampOptionItem[]>([]);
   const [dbWattages, setDbWattages] = useState<LampOptionItem[]>([]);
+  const [hasLoadedDbOptions, setHasLoadedDbOptions] = useState<boolean>(false);
   const [selectedColour, setSelectedColour] = useState<string>('Warm White');
   const [selectedWattage, setSelectedWattage] = useState<string>('5W');
 
@@ -205,14 +206,22 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     fetch(`/api/products/${product.id}/lamp-options`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data && ((data.colours && data.colours.length > 0) || (data.wattages && data.wattages.length > 0))) {
-          setDbColours(data.colours || []);
-          setDbWattages(data.wattages || []);
-          if (data.colours && data.colours.length > 0) {
-            setSelectedColour(data.colours[0].value);
+        if (data && (Array.isArray(data.colours) || Array.isArray(data.wattages))) {
+          const fetchedColours = data.colours || [];
+          const fetchedWattages = data.wattages || [];
+          setDbColours(fetchedColours);
+          setDbWattages(fetchedWattages);
+          setHasLoadedDbOptions(true);
+
+          if (fetchedColours.length > 0) {
+            setSelectedColour((prev) =>
+              fetchedColours.some((c: any) => c.value === prev) ? prev : fetchedColours[0].value
+            );
           }
-          if (data.wattages && data.wattages.length > 0) {
-            setSelectedWattage(data.wattages[0].value);
+          if (fetchedWattages.length > 0) {
+            setSelectedWattage((prev) =>
+              fetchedWattages.some((w: any) => w.value === prev) ? prev : fetchedWattages[0].value
+            );
           }
         } else {
           setDbColours([]);
@@ -241,32 +250,36 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     )
   );
 
-  const colourOptionsList: LampOptionItem[] = dbColours.length > 0
+  const colourOptionsList: LampOptionItem[] = hasLoadedDbOptions
     ? dbColours
-    : (availableColoursFromVariants.length > 0 ? availableColoursFromVariants : ['Warm White', 'Cool White', 'Neutral White']).map((c, idx) => ({
-        id: `col-${idx}`,
-        value: c,
-        priceDelta: c.toUpperCase().includes('RGB') ? 200 : 0,
-        sortOrder: idx + 1,
-        isActive: true
-      }));
+    : (dbColours.length > 0
+        ? dbColours
+        : (availableColoursFromVariants.length > 0 ? availableColoursFromVariants : ['Warm White', 'Cool White', 'Neutral White']).map((c, idx) => ({
+            id: `col-${idx}`,
+            value: c,
+            priceDelta: c.toUpperCase().includes('RGB') ? 200 : 0,
+            sortOrder: idx + 1,
+            isActive: true
+          })));
 
-  const wattageOptionsList: LampOptionItem[] = dbWattages.length > 0
+  const wattageOptionsList: LampOptionItem[] = hasLoadedDbOptions
     ? dbWattages
-    : (availableWattagesFromVariants.length > 0 ? availableWattagesFromVariants : ['5W', '7W', '9W', '12W']).map((w, idx) => {
-        let delta = 0;
-        const upper = w.toUpperCase().trim();
-        if (upper === '7W') delta = 100;
-        else if (upper === '9W') delta = 150;
-        else if (upper === '12W') delta = 200;
-        return {
-          id: `wat-${idx}`,
-          value: w,
-          priceDelta: delta,
-          sortOrder: idx + 1,
-          isActive: true
-        };
-      });
+    : (dbWattages.length > 0
+        ? dbWattages
+        : (availableWattagesFromVariants.length > 0 ? availableWattagesFromVariants : ['5W', '7W', '9W', '12W']).map((w, idx) => {
+            let delta = 0;
+            const upper = w.toUpperCase().trim();
+            if (upper === '7W') delta = 100;
+            else if (upper === '9W') delta = 150;
+            else if (upper === '12W') delta = 200;
+            return {
+              id: `wat-${idx}`,
+              value: w,
+              priceDelta: delta,
+              sortOrder: idx + 1,
+              isActive: true
+            };
+          }));
 
   // Sync selected variant when colour or wattage changes
   useEffect(() => {

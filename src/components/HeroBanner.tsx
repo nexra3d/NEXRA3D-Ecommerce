@@ -1,7 +1,6 @@
 import React from 'react';
 import { ArrowRight, Sparkles, Send } from 'lucide-react';
 import { Category } from '../types';
-import { INITIAL_CATEGORIES } from '../data/mockData';
 
 interface HeroBannerProps {
   categories: Category[];
@@ -18,7 +17,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({
   onRequestQuoteClick,
   onExploreServices
 }) => {
-  const displayCategories = (Array.isArray(categories) && categories.length > 0) ? categories : INITIAL_CATEGORIES;
+  const displayCategories = Array.isArray(categories) ? categories : [];
   return (
     <div className="space-y-8">
       {/* Main Hero Banner */}

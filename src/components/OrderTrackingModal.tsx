@@ -118,7 +118,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
             <div>
               <span className="text-slate-500 font-medium block">Payment Status</span>
               <span className={`inline-block font-extrabold text-xs px-2 py-0.5 rounded mt-0.5 ${
-                order.paymentStatus === 'CAPTURED' || order.paymentStatus === 'SUCCESS'
+                order.paymentStatus === 'CAPTURED' || order.paymentStatus === 'SUCCESS' || order.paymentStatus === 'PAID'
                   ? 'bg-emerald-100 text-emerald-800'
                   : order.paymentStatus === 'FAILED'
                   ? 'bg-rose-100 text-rose-800'
@@ -126,6 +126,11 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
               }`}>
                 {order.paymentStatus}
               </span>
+              {(order.razorpayPaymentId || (order as any).paymentId) && (
+                <div className="mt-1 font-mono text-[11px] text-emerald-700 font-bold">
+                  ID: {order.razorpayPaymentId || (order as any).paymentId}
+                </div>
+              )}
             </div>
             <div>
               <span className="text-slate-500 font-medium block">Courier Partner</span>

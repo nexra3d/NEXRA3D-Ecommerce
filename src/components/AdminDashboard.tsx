@@ -1404,7 +1404,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               {/* Add/Edit Product Modal Form */}
-              {showProductModal && (
+              {showProductModal && (() => {
+                const selectedCatObj = categories.find((c) => c.id === prodCategoryId || c.slug === prodCategoryId);
+                const isLampCategory = Boolean(
+                  (selectedCatObj?.name || '').toLowerCase().includes('lamp') ||
+                  (selectedCatObj?.slug || '').toLowerCase().includes('lamp') ||
+                  (selectedCatObj?.id || '').toLowerCase().includes('lamp') ||
+                  (selectedCatObj?.name || '').toLowerCase().includes('light') ||
+                  (selectedCatObj?.slug || '').toLowerCase().includes('light') ||
+                  (selectedCatObj?.id || '').toLowerCase().includes('light') ||
+                  prodCategoryId.toLowerCase().includes('lamp') ||
+                  prodCategoryId.toLowerCase().includes('light') ||
+                  prodName.toLowerCase().includes('lamp') ||
+                  prodName.toLowerCase().includes('light') ||
+                  editingProductId.toLowerCase().includes('lamp')
+                );
+
+                return (
                 <form
                   onSubmit={handleSaveProduct}
                   className="bg-slate-800 border border-slate-700 rounded-2xl p-5 space-y-4 text-xs"
@@ -1783,7 +1799,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   </div>
 
-                  {/* Stage 6: Lamp Category Configurator & Variant Matrix Generator */}
+                  {/* Stage 6: Lamp Category Configurator & Variant Matrix Generator (ONLY shown for Lamp & Light category products) */}
+                  {isLampCategory && (
                   <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <div>
@@ -1984,6 +2001,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </table>
                     </div>
                   </div>
+                  )}
 
                   {/* Toggles */}
                   <div className="flex flex-wrap gap-4 pt-2 border-t border-slate-700 font-bold">
@@ -2041,7 +2059,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </button>
                   </div>
                 </form>
-              )}
+                );
+              })()}
 
               {/* Product List Table */}
               <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl overflow-x-auto text-xs">
@@ -2446,7 +2465,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                     <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 gap-2">
                       <span>
-                        Shipping to: {ord.shippingAddress?.streetAddress}, {ord.shippingAddress?.city} • Payment: {ord.paymentMethod}
+                        Shipping to: {ord.shippingAddress?.streetAddress}, {ord.shippingAddress?.city} • Payment: {ord.paymentMethod} • Payment ID: <span className="font-mono text-emerald-400 font-bold">{(ord as any).razorpayPaymentId || (ord as any).paymentId || 'N/A'}</span>
                       </span>
 
                       <button
@@ -2884,7 +2903,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </td>
                         <td className="p-3 font-semibold text-slate-300">{o.paymentMethod}</td>
                         <td className="p-3 font-mono text-[11px] text-slate-300">{o.razorpayOrderId || 'N/A'}</td>
-                        <td className="p-3 font-mono text-[11px] text-slate-300">{o.paymentId || 'N/A'}</td>
+                        <td className="p-3 font-mono text-[11px] text-slate-300">{o.razorpayPaymentId || o.paymentId || 'N/A'}</td>
                         <td className="p-3 font-extrabold text-slate-100">₹{Number(o.totalAmount || 0).toLocaleString('en-IN')}</td>
                         <td className="p-3">
                           <span className={`inline-block font-extrabold text-[10px] px-2 py-0.5 rounded ${

@@ -22,28 +22,72 @@ export function calculateNimbusWeightBasedOptions(
   
   // Billable Weight in KG = max(deadWeight, volumetricWeight)
   const billableKg = Math.max(0.25, Math.max(deadWeightKg, volWeightKg));
-  const roundedWeightKg = Number(billableKg.toFixed(2));
 
   // Determine Distance Zone based on Pincode Prefixes
   const cleanOrigin = (originPin || '500032').replace(/\D/g, '');
   const cleanDest = (destPin || '500001').replace(/\D/g, '');
-  const isLocal = cleanOrigin.slice(0, 2) === cleanDest.slice(0, 2);
-  const isRegional = cleanOrigin.slice(0, 1) === cleanDest.slice(0, 1);
+
+  const isLocalCity = cleanOrigin.slice(0, 3) === cleanDest.slice(0, 3); // e.g. 500xxx
+  const isSameState = cleanOrigin.slice(0, 2) === cleanDest.slice(0, 2); // e.g. 50xxxx
+  const isSameZone = cleanOrigin.slice(0, 1) === cleanDest.slice(0, 1);   // e.g. 5xxxxx
+  
+  // Special Remote Zones (North-East: 78, 79, J&K: 19, Andaman: 744)
+  const destPrefix2 = cleanDest.slice(0, 2);
+  const isRemoteZone = ['78', '79', '19', '74'].includes(destPrefix2);
 
   // Additional 0.5kg slabs after first 0.5kg
   const additionalSlabs = Math.max(0, Math.ceil((billableKg - 0.5) / 0.5));
 
-  // Base and increment rates per slab (0.5kg)
-  const surfaceBase = isLocal ? 35 : isRegional ? 45 : 55;
-  const surfaceAdd = isLocal ? 20 : isRegional ? 25 : 35;
-  const calculatedSurfaceCharge = Math.round(surfaceBase + (additionalSlabs * surfaceAdd));
+  // Base and increment rates per slab (0.5kg) depending on Zone distance
+  let surfaceBase = 60;
+  let surfaceAdd = 30;
+  let airBase = 100;
+  let airAdd = 50;
+  let eddText = '3–5 days';
+  let airEddText = '1–2 days';
 
-  const airBase = isLocal ? 65 : isRegional ? 85 : 110;
-  const airAdd = isLocal ? 35 : isRegional ? 45 : 55;
-  const calculatedAirCharge = Math.round(airBase + (additionalSlabs * airAdd));
+  if (isLocalCity) {
+    surfaceBase = 40;
+    surfaceAdd = 20;
+    airBase = 65;
+    airAdd = 30;
+    eddText = '1–2 days';
+    airEddText = '1 day';
+  } else if (isSameState) {
+    surfaceBase = 55;
+    surfaceAdd = 25;
+    airBase = 85;
+    airAdd = 35;
+    eddText = '2–3 days';
+    airEddText = '1–2 days';
+  } else if (isSameZone) {
+    surfaceBase = 70;
+    surfaceAdd = 35;
+    airBase = 110;
+    airAdd = 45;
+    eddText = '2–4 days';
+    airEddText = '1–2 days';
+  } else if (isRemoteZone) {
+    surfaceBase = 120;
+    surfaceAdd = 55;
+    airBase = 180;
+    airAdd = 75;
+    eddText = '5–7 days';
+    airEddText = '2–3 days';
+  } else {
+    // Metro / National interstate long distance (e.g., Hyderabad 500 -> Delhi 110 or Mumbai 400 or Kolkata 700)
+    // Add dynamic variance based on absolute pincode zone difference so different cities give distinct rates
+    const zoneDiff = Math.abs(Number(cleanOrigin.slice(0, 1)) - Number(cleanDest.slice(0, 1)));
+    surfaceBase = 80 + (zoneDiff * 5); // e.g. zoneDiff 4 (500 to 110) => 100
+    surfaceAdd = 40;
+    airBase = 130 + (zoneDiff * 8);    // e.g. zoneDiff 4 => 162
+    airAdd = 55;
+    eddText = '3–5 days';
+    airEddText = '1–2 days';
+  }
 
-  const finalSurfaceCharge = calculatedSurfaceCharge;
-  const finalAirCharge = calculatedAirCharge;
+  const finalSurfaceCharge = Math.round(surfaceBase + (additionalSlabs * surfaceAdd));
+  const finalAirCharge = Math.round(airBase + (additionalSlabs * airAdd));
 
   return [
     {
@@ -54,8 +98,8 @@ export function calculateNimbusWeightBasedOptions(
       name: 'NimbusPost — Surface Express',
       provider: 'nimbuspost',
       charge: finalSurfaceCharge,
-      edd: isLocal ? '1–2 days' : isRegional ? '2–3 days' : '3–5 days',
-      etaText: `Est. Delivery: ${isLocal ? '1–2' : isRegional ? '2–3' : '3–5'} Business Days`,
+      edd: eddText,
+      etaText: `Est. Delivery: ${eddText} Business Days`,
       description: 'Ground shipping',
       codAvailable: true
     },
@@ -67,8 +111,8 @@ export function calculateNimbusWeightBasedOptions(
       name: 'NimbusPost — Air Priority',
       provider: 'nimbuspost',
       charge: finalAirCharge,
-      edd: isLocal ? '1 day' : '1–2 days',
-      etaText: `Est. Delivery: ${isLocal ? '1' : '1–2'} Business Days`,
+      edd: airEddText,
+      etaText: `Est. Delivery: ${airEddText} Business Days`,
       description: 'Priority air courier',
       codAvailable: true
     }

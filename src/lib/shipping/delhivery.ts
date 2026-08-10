@@ -682,12 +682,35 @@ export async function createShipment(orderData: {
   totalAmount: number;
   paymentMethod?: string;
   weightInGrams: number;
+  pickupLocation?: string;
+  warehouseName?: string;
 }): Promise<CreateShipmentResult> {
+  const token = (process.env.DELHIVERY_API_TOKEN || DELHIVERY_API_TOKEN || '').trim();
+  const baseUrl = (process.env.DELHIVERY_BASE_URL || DELHIVERY_BASE_URL || 'https://track.delhivery.com').replace(/\/$/, '');
+  
+  // Pickup location name / company name / registered warehouse name
+  const pickupName = (
+    orderData.pickupLocation ||
+    orderData.warehouseName ||
+    process.env.DELHIVERY_PICKUP_LOCATION ||
+    process.env.DELHIVERY_WAREHOUSE_NAME ||
+    process.env.STORE_NAME ||
+    'NEXRA 3D Primary Hub'
+  ).trim();
+
+  // Pickup address / Google Maps link
+  const rawMapsLinkOrAddr = (process.env.DELHIVERY_PICKUP_ADDRESS || process.env.DELHIVERY_PICKUP_MAPS_LINK || '').trim();
+  const pickupAdd = rawMapsLinkOrAddr || 'Plot 42, Tech Enclave, Gachibowli';
+  const pickupCity = (process.env.DELHIVERY_PICKUP_CITY || 'Hyderabad').trim();
+  const pickupState = (process.env.DELHIVERY_PICKUP_STATE || 'Telangana').trim();
+  const pickupPin = (process.env.DELHIVERY_ORIGIN_PINCODE || DEFAULT_ORIGIN_PINCODE || '500032').trim();
+  const pickupPhone = (process.env.DELHIVERY_PICKUP_PHONE || '9876543210').trim();
+  const sellerName = (process.env.DELHIVERY_SELLER_NAME || process.env.STORE_NAME || '3D Forge Printing').trim();
+
   const addr = orderData.shippingAddress || {};
-  const isCOD = orderData.paymentMethod?.toUpperCase() === 'COD';
-  const weight = orderData.weightInGrams;
-  const awbNumber = `DLHV${Date.now()}${Math.floor(Math.random() * 100)}`;
-  const trackingNumber = awbNumber;
+  const isCOD = orderData.paymentMethod?.toUpperCase() === 'COD' || orderData.paymentMethod?.toUpperCase() === 'CASH_ON_DELIVERY';
+  const weight = orderData.weightInGrams || 500;
+  const dummyAwb = `DLHV${Date.now()}${Math.floor(Math.random() * 100)}`;
   const shipmentId = `SHIP-${orderData.orderNumber}`;
 
   const etaDate = new Date();
@@ -698,8 +721,8 @@ export async function createShipment(orderData: {
     shipments: [
       {
         name: addr.fullName || addr.name || 'Customer',
-        add: `${addr.streetAddress || addr.addressLine1 || ''} ${addr.landmark || ''}`.trim(),
-        pin: addr.postalCode || addr.pincode || '500032',
+        add: `${addr.streetAddress || addr.addressLine1 || ''} ${addr.landmark || ''}`.trim() || 'Delivery Address',
+        pin: (addr.postalCode || addr.pincode || '500032').trim(),
         city: addr.city || 'Hyderabad',
         state: addr.state || 'Telangana',
         country: addr.country || 'India',
@@ -709,67 +732,91 @@ export async function createShipment(orderData: {
         total_amount: orderData.totalAmount,
         cod_amount: isCOD ? orderData.totalAmount : 0,
         weight: weight,
-        quantity: orderData.items.reduce((sum, item) => sum + (item.quantity || 1), 0),
-        products_desc: orderData.items.map((i) => i.productTitle || i.name || 'NEXRA Product').join(', ').slice(0, 200),
-        seller_name: 'NEXRA 3D Printing'
+        quantity: orderData.items?.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0) || 1,
+        products_desc: orderData.items?.map((i: any) => i.productTitle || i.name || 'Product').join(', ').slice(0, 200) || '3D Printed Product',
+        seller_name: sellerName
       }
     ],
     pickup_location: {
-      name: 'NEXRA 3D Primary Hub',
-      add: 'Plot 42, Tech Enclave, Gachibowli',
-      city: 'Hyderabad',
-      pin: DEFAULT_ORIGIN_PINCODE,
-      phone: '9876543210'
+      name: pickupName,
+      add: pickupAdd,
+      city: pickupCity,
+      pin: pickupPin,
+      phone: pickupPhone
     }
   };
 
-  if (DELHIVERY_API_TOKEN) {
+  if (token) {
     try {
+      console.log('[Delhivery Create Shipment Request]:', {
+        url: `${baseUrl}/api/cmu/create.json`,
+        pickupLocation: pickupName,
+        orderNumber: orderData.orderNumber,
+        pin: payloadData.shipments[0].pin
+      });
+
       const params = new URLSearchParams();
       params.append('format', 'json');
       params.append('data', JSON.stringify(payloadData));
 
-      const response = await axios.post(`${DELHIVERY_BASE_URL}/api/cmu/create.json`, params, {
+      const response = await axios.post(`${baseUrl}/api/cmu/create.json`, params, {
         headers: {
-          'Authorization': `Token ${DELHIVERY_API_TOKEN}`,
+          'Authorization': `Token ${token}`,
           'Content-Type': 'application/x-www-form-urlencoded'
         },
-        timeout: 8000
+        timeout: 10000
       });
 
-      if (response.data && response.data.packages && response.data.packages.length > 0) {
-        const pkg = response.data.packages[0];
-        const realAwb = pkg.waybill || awbNumber;
-        return {
-          success: true,
-          awbNumber: realAwb,
-          trackingNumber: realAwb,
-          shipmentId: pkg.upload_wbn || shipmentId,
-          trackingUrl: `${DELHIVERY_BASE_URL}/track/package/${realAwb}`,
-          labelUrl: `/api/shipping/label/${realAwb}`,
-          manifestUrl: `/api/shipping/manifest/${realAwb}`,
-          estimatedDelivery,
-          status: 'CREATED',
-          message: 'Delhivery shipment created successfully'
-        };
+      console.log('[Delhivery Create Shipment Raw Response]:', JSON.stringify(response.data));
+
+      if (response.data) {
+        const pkgs = response.data.packages || [];
+        if (pkgs.length > 0) {
+          const pkg = pkgs[0];
+
+          // Check if Delhivery rejected or failed
+          if (pkg.status === 'Fail' || pkg.status === 'Failure' || !pkg.waybill) {
+            const rawRemarks = Array.isArray(pkg.remarks) ? pkg.remarks.join(', ') : (pkg.remarks || response.data.rmk || 'Delhivery order creation rejected');
+            console.error('[Delhivery Order Creation Error]:', rawRemarks, response.data);
+            throw new Error(`Delhivery rejected order creation: ${rawRemarks}. (Ensure your registered warehouse name in Delhivery One portal matches DELHIVERY_PICKUP_LOCATION='${pickupName}')`);
+          }
+
+          const realAwb = pkg.waybill;
+          return {
+            success: true,
+            awbNumber: realAwb,
+            trackingNumber: realAwb,
+            shipmentId: pkg.upload_wbn || shipmentId,
+            trackingUrl: `${baseUrl}/track/package/${realAwb}`,
+            labelUrl: `/api/shipping/label/${realAwb}`,
+            manifestUrl: `/api/shipping/manifest/${realAwb}`,
+            estimatedDelivery,
+            status: 'CREATED',
+            message: 'Delhivery shipment created successfully on Delhivery portal'
+          };
+        } else if (response.data.success === false || response.data.error || response.data.rmk) {
+          throw new Error(`Delhivery API error: ${response.data.rmk || response.data.error || 'Invalid creation payload'}`);
+        }
       }
     } catch (err: any) {
-      console.warn('Delhivery create shipment API call failed, generated fallback order shipment:', err.message);
+      console.error('[Delhivery Create Shipment Failed]:', err.response?.data || err.message);
+      throw new Error(err.message || 'Delhivery shipment creation failed');
     }
   }
 
-  // Fallback creation for sandbox / missing token
+  // Fallback creation for dev sandbox when DELHIVERY_API_TOKEN is not set
+  console.warn('[Delhivery Notice] DELHIVERY_API_TOKEN is missing. Generated simulated local shipment.');
   return {
     success: true,
-    awbNumber,
-    trackingNumber,
+    awbNumber: dummyAwb,
+    trackingNumber: dummyAwb,
     shipmentId,
-    trackingUrl: `${DELHIVERY_BASE_URL}/track/package/${awbNumber}`,
-    labelUrl: `/api/shipping/label/${awbNumber}`,
-    manifestUrl: `/api/shipping/manifest/${awbNumber}`,
+    trackingUrl: `${baseUrl}/track/package/${dummyAwb}`,
+    labelUrl: `/api/shipping/label/${dummyAwb}`,
+    manifestUrl: `/api/shipping/manifest/${dummyAwb}`,
     estimatedDelivery,
-    status: 'CREATED',
-    message: 'Shipment generated and ready for pickup'
+    status: 'SIMULATED',
+    message: 'Simulated dev shipment generated (DELHIVERY_API_TOKEN not set)'
   };
 }
 
@@ -817,12 +864,20 @@ export async function requestPickup(pickupData?: {
   const pickupId = `PU-${Date.now()}`;
   const scheduledDate = pickupData?.pickupDate || new Date().toISOString().split('T')[0];
 
+  const pickupLocName = (
+    pickupData?.warehouseName ||
+    process.env.DELHIVERY_PICKUP_LOCATION ||
+    process.env.DELHIVERY_WAREHOUSE_NAME ||
+    process.env.STORE_NAME ||
+    'NEXRA 3D Primary Hub'
+  ).trim();
+
   if (DELHIVERY_API_TOKEN) {
     try {
       const response = await axios.post(`${DELHIVERY_BASE_URL}/fm/request/new/`, {
         pickup_time: pickupData?.pickupTime || '10:00:00',
         pickup_date: scheduledDate,
-        pickup_location: pickupData?.warehouseName || 'NEXRA 3D Primary Hub',
+        pickup_location: pickupLocName,
         expected_package_count: pickupData?.packageCount || 1
       }, {
         headers: {

@@ -29,7 +29,6 @@ import { WhatsAppFloatingButton } from './components/WhatsAppFloatingButton';
 import { AdminLoginPage } from './components/AdminLoginPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
-import { INITIAL_CATEGORIES } from './data/mockData';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { ShieldCheck, ArrowRight } from 'lucide-react';
 import { apiFetch, getStoredToken, getStoredUser, clearStoredAuth, setStoredAuth } from './lib/api';
@@ -362,7 +361,7 @@ export default function App() {
 
       // 1. Fetch Categories
       const catData = await safeFetchJson('/api/categories');
-      setCategories(Array.isArray(catData) && catData.length > 0 ? catData : INITIAL_CATEGORIES);
+      setCategories(Array.isArray(catData) ? catData : []);
 
       // 1a. Fetch All Products
       await fetchAllProducts();

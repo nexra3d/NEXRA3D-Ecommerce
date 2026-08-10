@@ -10,7 +10,7 @@ import Razorpay from 'razorpay';
 import multer from 'multer';
 import { prisma } from './src/lib/prisma.js';
 import { sendEmail } from './src/lib/resend.js';
-import { uploadImageToCloudinary, deleteImageFromCloudinary } from './src/lib/cloudinary.js';
+import { uploadImageToCloudinary, deleteImageFromCloudinary, getCloudinaryConfig } from './src/lib/cloudinary.js';
 import {
   INITIAL_CATEGORIES,
   INITIAL_PRODUCTS,
@@ -416,29 +416,6 @@ async function calculateLampOptionPrice(
     console.warn('[LampOptions] Error querying product_lamp_options:', err);
   }
 
-  if (options.length === 0 && productId === 'prod-spiral-ambient-lamp') {
-    const defaultOptions = [
-      { productId, optionType: 'COLOUR', optionValue: 'Warm White', priceDelta: 0, sortOrder: 1, isActive: true },
-      { productId, optionType: 'COLOUR', optionValue: 'Cool White', priceDelta: 0, sortOrder: 2, isActive: true },
-      { productId, optionType: 'COLOUR', optionValue: 'Neutral White', priceDelta: 0, sortOrder: 3, isActive: true },
-      { productId, optionType: 'WATTAGE', optionValue: '5W', priceDelta: 0, sortOrder: 1, isActive: true },
-      { productId, optionType: 'WATTAGE', optionValue: '7W', priceDelta: 100, sortOrder: 2, isActive: true },
-      { productId, optionType: 'WATTAGE', optionValue: '9W', priceDelta: 150, sortOrder: 3, isActive: true },
-      { productId, optionType: 'WATTAGE', optionValue: '12W', priceDelta: 200, sortOrder: 4, isActive: true },
-    ];
-    try {
-      for (const opt of defaultOptions) {
-        await prisma.productLampOption.create({ data: opt }).catch(() => {});
-      }
-      options = await prisma.productLampOption.findMany({
-        where: { productId, isActive: true },
-        orderBy: { sortOrder: 'asc' }
-      });
-    } catch (e) {
-      // ignore
-    }
-  }
-
   let colourDelta = 0;
   let wattageDelta = 0;
   let verifiedColour = selectedColour || undefined;
@@ -679,17 +656,7 @@ async function getFormattedWishlist(userId: string) {
 async function ensureCategoryExists(categoryId: string): Promise<string> {
   if (!categoryId) {
     const fallback = await prisma.category.findFirst();
-    if (fallback) return fallback.id;
-    const created = await prisma.category.create({
-      data: {
-        id: 'cat-general',
-        name: 'General',
-        slug: 'general',
-        description: 'General Category',
-        isActive: true
-      }
-    });
-    return created.id;
+    return fallback ? fallback.id : 'cat-general';
   }
 
   const existing = await prisma.category.findFirst({
@@ -697,33 +664,7 @@ async function ensureCategoryExists(categoryId: string): Promise<string> {
   });
   if (existing) return existing.id;
 
-  const foundInInitial = INITIAL_CATEGORIES.find(c => c.id === categoryId || c.slug === categoryId);
-  if (foundInInitial) {
-    const created = await prisma.category.create({
-      data: {
-        id: foundInInitial.id,
-        name: foundInInitial.name,
-        slug: foundInInitial.slug,
-        description: foundInInitial.description || null,
-        imageUrl: foundInInitial.imageUrl || null,
-        isActive: true
-      }
-    });
-    return created.id;
-  }
-
-  const nameFromId = categoryId.replace(/^cat-/, '').replace(/-/g, ' ');
-  const formattedName = nameFromId.charAt(0).toUpperCase() + nameFromId.slice(1);
-  const createdDefault = await prisma.category.create({
-    data: {
-      id: categoryId,
-      name: formattedName,
-      slug: categoryId,
-      description: `${formattedName} Category`,
-      isActive: true
-    }
-  });
-  return createdDefault.id;
+  return categoryId;
 }
 
 // Seed initial database records if empty
@@ -1147,8 +1088,8 @@ async function requireAdminMiddleware(req: AuthenticatedRequest, res: Response, 
 
 export const app = express();
 
-// Execute DB Seeding
-seedInitialDatabase().catch((e) => console.warn('[DB Seed Warning]:', e));
+// Automatic DB seeding on server startup is DISABLED to ensure Supabase PostgreSQL is the sole source of truth.
+// seedInitialDatabase().catch((e) => console.warn('[DB Seed Warning]:', e));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -1212,7 +1153,7 @@ app.get('/api/integrations/status', (req: Request, res: Response) => {
     services: [
       { id: 'database', name: 'Database (Prisma)', configured: true, description: 'PostgreSQL / Prisma ORM' },
       { id: 'razorpay', name: 'Razorpay Gateway', configured: Boolean(process.env.RAZORPAY_KEY_ID), description: 'Payments' },
-      { id: 'cloudinary', name: 'Cloudinary CDN', configured: Boolean(process.env.CLOUDINARY_CLOUD_NAME), description: 'Media' }
+      { id: 'cloudinary', name: 'Cloudinary CDN', configured: getCloudinaryConfig().configured, description: 'Media' }
     ]
   });
 });
@@ -1221,7 +1162,7 @@ app.get('/api/integrations/status', (req: Request, res: Response) => {
 app.post('/api/upload', upload.single('image'), async (req: Request, res: Response) => {
   try {
     if (req.file) {
-      const cloudinaryResult = await uploadImageToCloudinary(req.file.buffer, 'products');
+      const cloudinaryResult = await uploadImageToCloudinary(req.file.buffer, req.file.mimetype || 'image/jpeg', 'products');
       if (cloudinaryResult && cloudinaryResult.url) {
         return res.json({
           success: true,
@@ -1977,30 +1918,6 @@ app.get('/api/products', async (req: Request, res: Response) => {
       skip: offset ? parseInt(String(offset), 10) : undefined
     });
 
-    if (products.length === 0) {
-      try {
-        const totalCount = await prisma.product.count();
-        if (totalCount === 0) {
-          console.log('[API Products] Database is empty. Seeding initial products...');
-          await seedInitialDatabase();
-          products = await prisma.product.findMany({
-            where: whereClause,
-            include: {
-              category: true,
-              images: { orderBy: { sortOrder: 'asc' } },
-              variants: { where: { isActive: true } },
-              reviews: true
-            },
-            orderBy: { createdAt: 'desc' },
-            take: limit ? parseInt(String(limit), 10) : undefined,
-            skip: offset ? parseInt(String(offset), 10) : undefined
-          });
-        }
-      } catch (seedErr) {
-        console.warn('[API Products Auto-Seed Check Error]:', seedErr);
-      }
-    }
-
     const formattedProducts = products.map(formatPrismaProductResponse);
     return res.json(formattedProducts);
   } catch (err: any) {
@@ -2245,7 +2162,7 @@ app.post(['/api/products/:id/images', '/api/products/:id/images/batch'], require
 
     // Process files uploaded via Multer
     for (const file of files) {
-      const uploadRes = await uploadImageToCloudinary(file.buffer, 'products');
+      const uploadRes = await uploadImageToCloudinary(file.buffer, file.mimetype || 'image/jpeg', 'products');
       if (uploadRes?.url) {
         uploadedImages.push({ url: uploadRes.url, publicId: uploadRes.publicId || (uploadRes as any).public_id || null });
       }
@@ -2591,35 +2508,11 @@ app.get('/api/products/:id/lamp-options', async (req: Request, res: Response) =>
       ]
     });
 
-    // If no options exist for prod-spiral-ambient-lamp, seed default options
-    if (rawOptions.length === 0 && id === 'prod-spiral-ambient-lamp') {
-      const defaultOptions = [
-        { productId: id, optionType: 'COLOUR', optionValue: 'Warm White', priceDelta: 0, sortOrder: 1, isActive: true },
-        { productId: id, optionType: 'COLOUR', optionValue: 'Cool White', priceDelta: 0, sortOrder: 2, isActive: true },
-        { productId: id, optionType: 'COLOUR', optionValue: 'Neutral White', priceDelta: 0, sortOrder: 3, isActive: true },
-        { productId: id, optionType: 'WATTAGE', optionValue: '5W', priceDelta: 0, sortOrder: 1, isActive: true },
-        { productId: id, optionType: 'WATTAGE', optionValue: '7W', priceDelta: 100, sortOrder: 2, isActive: true },
-        { productId: id, optionType: 'WATTAGE', optionValue: '9W', priceDelta: 150, sortOrder: 3, isActive: true },
-        { productId: id, optionType: 'WATTAGE', optionValue: '12W', priceDelta: 200, sortOrder: 4, isActive: true },
-      ];
-      try {
-        for (const opt of defaultOptions) {
-          await prisma.productLampOption.create({ data: opt }).catch(() => {});
-        }
-        rawOptions = await prisma.productLampOption.findMany({
-          where: whereClause,
-          orderBy: [
-            { optionType: 'asc' },
-            { sortOrder: 'asc' }
-          ]
-        });
-      } catch (e) {
-        console.warn('Failed to seed default lamp options:', e);
-      }
-    }
-
     const colours = rawOptions
-      .filter((o) => String(o.optionType).toUpperCase().includes('COL'))
+      .filter((o) => {
+        const type = String(o.optionType || '').toUpperCase();
+        return type.includes('COL') || type.includes('COLOR') || type.includes('COLOUR') || type.includes('LIGHT');
+      })
       .map((o) => ({
         id: o.id,
         value: o.optionValue,
@@ -2629,7 +2522,10 @@ app.get('/api/products/:id/lamp-options', async (req: Request, res: Response) =>
       }));
 
     const wattages = rawOptions
-      .filter((o) => String(o.optionType).toUpperCase().includes('WAT'))
+      .filter((o) => {
+        const type = String(o.optionType || '').toUpperCase();
+        return type.includes('WAT') || type.includes('WATT') || type.includes('POWER') || type.includes('BULB') || (!type.includes('COL') && !type.includes('LIGHT'));
+      })
       .map((o) => ({
         id: o.id,
         value: o.optionValue,
@@ -3524,7 +3420,10 @@ const formatOrder = (o: any) => {
     shipments: shipmentsList,
     customerName: addr.fullName || o.user?.name || 'Customer',
     customerEmail: addr.email || o.user?.email || '',
-    customerPhone: addr.phone || o.user?.phone || ''
+    customerPhone: addr.phone || o.user?.phone || '',
+    paymentId: o.razorpayPaymentId || o.paymentId || null,
+    razorpayPaymentId: o.razorpayPaymentId || o.paymentId || null,
+    razorpayOrderId: o.razorpayOrderId || null
   };
 };
 
@@ -3535,6 +3434,7 @@ app.get('/api/orders', requireAuthMiddleware, async (req: AuthenticatedRequest, 
     req.headers['x-admin-bypass'] === 'true' ||
     req.query.admin === 'true' ||
     (req.headers['x-user-email'] && String(req.headers['x-user-email']).includes('admin'));
+  const includePending = req.query.includePending === 'true';
 
   try {
     const whereClause: any = {};
@@ -3546,6 +3446,18 @@ app.get('/api/orders', requireAuthMiddleware, async (req: AuthenticatedRequest, 
       whereClause.OR = orConditions;
     } else if (req.query.userId) {
       whereClause.userId = String(req.query.userId);
+    }
+
+    if (!includePending) {
+      whereClause.AND = [
+        {
+          OR: [
+            { paymentMethod: { in: ['COD', 'CASH_ON_DELIVERY'] } },
+            { paymentStatus: { in: ['PAID', 'COD'] } },
+            { status: { in: ['CONFIRMED', 'PROCESSING', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED'] } }
+          ]
+        }
+      ];
     }
 
     const rawOrders = await prisma.order.findMany({
@@ -3666,8 +3578,8 @@ const handleRazorpayCreateOrder = async (req: AuthenticatedRequest, res: Respons
       return res.status(400).json({ error: 'Invalid amount provided' });
     }
 
-    // Convert amount to paise if specified in rupees, minimum 100 paise (₹1)
-    const amountInPaise = rawNum < 1000 ? Math.round(rawNum * 100) : Math.round(rawNum);
+    // Convert amount in Rupees to paise (1 INR = 100 paise), minimum 100 paise (₹1)
+    const amountInPaise = Math.round(rawNum * 100);
     if (amountInPaise < 100) {
       return res.status(400).json({ error: 'Minimum amount must be at least 100 paise (₹1)' });
     }

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { NexraLogo } from './NexraLogo';
-import { INITIAL_CATEGORIES } from '../data/mockData';
 import {
   ShoppingBag,
   Heart,
@@ -141,7 +140,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   };
 
-  const safeCategories = (Array.isArray(categories) && categories.length > 0) ? categories : INITIAL_CATEGORIES;
+  const safeCategories = Array.isArray(categories) ? categories : [];
 
   // Filter main categories for Mega Menu
   const mainCategories = safeCategories.filter(c =>
