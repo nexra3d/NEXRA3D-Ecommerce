@@ -27,13 +27,21 @@ import { Product, ProductReview, ProductVariant } from '../types';
 import { useSEO } from '../hooks/useSEO';
 import { isNameKeychainProduct } from '../lib/personalization';
 
+interface LampOptionItem {
+  id: string;
+  value: string;
+  priceDelta: number;
+  sortOrder: number;
+  isActive: boolean;
+}
+
 interface ProductDetailsModalProps {
   product: Product | null;
   onClose: () => void;
   isWishlisted: boolean;
   onToggleWishlist: (p: Product) => void;
-  onAddToCart: (p: Product, variantId?: string, quantity?: number, customizationText?: string) => void;
-  onBuyNow: (p: Product, customizationText?: string) => void;
+  onAddToCart: (p: Product, variantId?: string, quantity?: number, customizationText?: string, selectedColour?: string, selectedWattage?: string) => void;
+  onBuyNow: (p: Product, customizationText?: string, selectedColour?: string, selectedWattage?: string) => void;
   onSelectRelatedProduct?: (p: Product) => void;
 }
 
@@ -187,7 +195,36 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     (product?.name || '').toLowerCase().includes('lamp') ||
     variantsList.some((v) => v.colour || v.wattage || (v.attributes as any)?.colour || (v.attributes as any)?.wattage);
 
-  // Extract distinct colors and wattages from variantsList or default defaults
+  const [dbColours, setDbColours] = useState<LampOptionItem[]>([]);
+  const [dbWattages, setDbWattages] = useState<LampOptionItem[]>([]);
+  const [selectedColour, setSelectedColour] = useState<string>('Warm White');
+  const [selectedWattage, setSelectedWattage] = useState<string>('5W');
+
+  useEffect(() => {
+    if (!product?.id) return;
+    fetch(`/api/products/${product.id}/lamp-options`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && ((data.colours && data.colours.length > 0) || (data.wattages && data.wattages.length > 0))) {
+          setDbColours(data.colours || []);
+          setDbWattages(data.wattages || []);
+          if (data.colours && data.colours.length > 0) {
+            setSelectedColour(data.colours[0].value);
+          }
+          if (data.wattages && data.wattages.length > 0) {
+            setSelectedWattage(data.wattages[0].value);
+          }
+        } else {
+          setDbColours([]);
+          setDbWattages([]);
+        }
+      })
+      .catch((err) => {
+        console.warn('Error loading lamp options:', err);
+      });
+  }, [product?.id]);
+
+  // Fallback options if database table is not yet loaded or empty
   const availableColoursFromVariants = Array.from(
     new Set(
       variantsList
@@ -204,16 +241,32 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     )
   );
 
-  const colourOptions = availableColoursFromVariants.length > 0
-    ? availableColoursFromVariants
-    : ['Warm White', 'Cool White', 'Neutral White'];
+  const colourOptionsList: LampOptionItem[] = dbColours.length > 0
+    ? dbColours
+    : (availableColoursFromVariants.length > 0 ? availableColoursFromVariants : ['Warm White', 'Cool White', 'Neutral White']).map((c, idx) => ({
+        id: `col-${idx}`,
+        value: c,
+        priceDelta: c.toUpperCase().includes('RGB') ? 200 : 0,
+        sortOrder: idx + 1,
+        isActive: true
+      }));
 
-  const wattageOptions = availableWattagesFromVariants.length > 0
-    ? availableWattagesFromVariants
-    : ['5W', '7W', '9W', '12W'];
-
-  const [selectedColour, setSelectedColour] = useState<string>(colourOptions[0] || 'Warm White');
-  const [selectedWattage, setSelectedWattage] = useState<string>(wattageOptions[0] || '5W');
+  const wattageOptionsList: LampOptionItem[] = dbWattages.length > 0
+    ? dbWattages
+    : (availableWattagesFromVariants.length > 0 ? availableWattagesFromVariants : ['5W', '7W', '9W', '12W']).map((w, idx) => {
+        let delta = 0;
+        const upper = w.toUpperCase().trim();
+        if (upper === '7W') delta = 100;
+        else if (upper === '9W') delta = 150;
+        else if (upper === '12W') delta = 200;
+        return {
+          id: `wat-${idx}`,
+          value: w,
+          priceDelta: delta,
+          sortOrder: idx + 1,
+          isActive: true
+        };
+      });
 
   // Sync selected variant when colour or wattage changes
   useEffect(() => {
@@ -231,35 +284,18 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     }
   }, [selectedColour, selectedWattage, variantsList]);
 
-  // Compute fallback price addition if no database variant record is found
-  const getWattageDelta = (watt: string) => {
-    const w = watt.toUpperCase().trim();
-    if (w === '7W') return 100;
-    if (w === '9W') return 150;
-    if (w === '12W') return 200;
-    if (w === '15W') return 250;
-    if (w === 'NO BULB' || w === 'NONE') return -100;
-    return 0;
-  };
-
-  const getColourDelta = (col: string) => {
-    const c = col.toUpperCase().trim();
-    if (c.includes('RGB') || c.includes('MULTI')) return 200;
-    return 0;
-  };
-
   if (!product) return null;
 
-  const calculatedBasePrice = Number(product.price || 0);
-  const calculatedPrice = selectedVariant
-    ? selectedVariant.price
-    : calculatedBasePrice + getWattageDelta(selectedWattage) + getColourDelta(selectedColour);
+  const currentColourItem = colourOptionsList.find((c) => c.value === selectedColour);
+  const currentWattageItem = wattageOptionsList.find((w) => w.value === selectedWattage);
 
-  const activePrice = calculatedPrice;
-  const activeMrp = selectedVariant
-    ? selectedVariant.mrp
-    : (product.mrp ? Number(product.mrp) + getWattageDelta(selectedWattage) + getColourDelta(selectedColour) : activePrice);
-  const activeSku = selectedVariant ? selectedVariant.sku : product.sku;
+  const colourDelta = currentColourItem ? Number(currentColourItem.priceDelta) : 0;
+  const wattageDelta = currentWattageItem ? Number(currentWattageItem.priceDelta) : 0;
+
+  const calculatedBasePrice = Number(product.price || 0);
+  const activePrice = (selectedVariant ? Number(selectedVariant.price) : calculatedBasePrice) + colourDelta + wattageDelta;
+  const activeMrp = (selectedVariant ? Number(selectedVariant.mrp) : (product.mrp ? Number(product.mrp) : calculatedBasePrice)) + colourDelta + wattageDelta;
+  const activeSku = selectedVariant ? selectedVariant.sku : (product.sku || 'NX-LMP-SPRL');
 
   const formatINR = (val: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -291,7 +327,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     if (needsCustomization && !customizationText.trim()) {
       return;
     }
-    onAddToCart(product, selectedVariant?.id, quantity, customizationText.trim());
+    onAddToCart(product, selectedVariant?.id, quantity, customizationText.trim(), selectedColour, selectedWattage);
   };
 
   const handleAddReview = async (e: React.FormEvent) => {
@@ -487,7 +523,8 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {colourOptions.map((col) => {
+                      {colourOptionsList.map((colObj) => {
+                        const col = colObj.value;
                         const isSel = selectedColour === col;
                         let bgDot = 'bg-amber-300';
                         if (col.toLowerCase().includes('cool')) bgDot = 'bg-sky-200';
@@ -496,7 +533,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
 
                         return (
                           <button
-                            key={col}
+                            key={colObj.id || col}
                             type="button"
                             onClick={() => setSelectedColour(col)}
                             className={`p-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 cursor-pointer ${
@@ -507,6 +544,11 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                           >
                             <span className={`w-3 h-3 rounded-full shrink-0 ${bgDot} border border-slate-300`} />
                             <span className="truncate">{col}</span>
+                            {Number(colObj.priceDelta) > 0 && (
+                              <span className={`text-[10px] ml-auto px-1 rounded ${isSel ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-100 text-slate-600'}`}>
+                                +₹{colObj.priceDelta}
+                              </span>
+                            )}
                           </button>
                         );
                       })}
@@ -526,12 +568,13 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {wattageOptions.map((watt) => {
+                      {wattageOptionsList.map((wattObj) => {
+                        const watt = wattObj.value;
                         const isSel = selectedWattage === watt;
-                        const delta = getWattageDelta(watt);
+                        const delta = Number(wattObj.priceDelta || 0);
                         return (
                           <button
-                            key={watt}
+                            key={wattObj.id || watt}
                             type="button"
                             onClick={() => setSelectedWattage(watt)}
                             className={`p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer text-center ${
@@ -654,7 +697,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                   <button
                     onClick={() => {
                       if (needsCustomization && !customizationText.trim()) return;
-                      onBuyNow(product, customizationText.trim());
+                      onBuyNow(product, customizationText.trim(), selectedColour, selectedWattage);
                       onClose();
                     }}
                     disabled={stockQty <= 0}

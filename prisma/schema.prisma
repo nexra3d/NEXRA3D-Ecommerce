@@ -167,6 +167,7 @@ model Product {
   wishlistItems      WishlistItem[]
   orderItems         OrderItem[]
   reviews            Review[]
+  lampOptions        ProductLampOption[]
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
@@ -238,11 +239,12 @@ model CartItem {
   product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
   variantId String?
   variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
-  quantity  Int             @default(1)
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  quantity        Int             @default(1)
+  selectedColour  String?
+  selectedWattage String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
-  @@unique([cartId, productId, variantId])
   @@index([cartId])
   @@index([productId])
   @@index([variantId])
@@ -609,4 +611,23 @@ model ShipmentStatusHistory {
   @@index([shipmentId])
   @@index([status])
   @@map("shipment_status_histories")
+}
+
+model ProductLampOption {
+  id          String   @id @default(uuid())
+  productId   String   @map("product_id")
+  optionType  String   @map("option_type")
+  optionValue String   @map("option_value")
+  priceDelta  Decimal  @default(0) @map("price_delta")
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([optionType])
+  @@index([isActive])
+  @@map("product_lamp_options")
 }

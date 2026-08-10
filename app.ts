@@ -396,6 +396,94 @@ async function formatUserResponse(user: any) {
   };
 }
 
+async function calculateLampOptionPrice(
+  productId: string,
+  basePrice: number,
+  selectedColour?: string | null,
+  selectedWattage?: string | null
+): Promise<{ unitPrice: number; colourDelta: number; wattageDelta: number; selectedColour?: string; selectedWattage?: string }> {
+  if (!selectedColour && !selectedWattage) {
+    return { unitPrice: basePrice, colourDelta: 0, wattageDelta: 0 };
+  }
+
+  let options: any[] = [];
+  try {
+    options = await prisma.productLampOption.findMany({
+      where: { productId, isActive: true },
+      orderBy: { sortOrder: 'asc' }
+    });
+  } catch (err) {
+    console.warn('[LampOptions] Error querying product_lamp_options:', err);
+  }
+
+  if (options.length === 0 && productId === 'prod-spiral-ambient-lamp') {
+    const defaultOptions = [
+      { productId, optionType: 'COLOUR', optionValue: 'Warm White', priceDelta: 0, sortOrder: 1, isActive: true },
+      { productId, optionType: 'COLOUR', optionValue: 'Cool White', priceDelta: 0, sortOrder: 2, isActive: true },
+      { productId, optionType: 'COLOUR', optionValue: 'Neutral White', priceDelta: 0, sortOrder: 3, isActive: true },
+      { productId, optionType: 'WATTAGE', optionValue: '5W', priceDelta: 0, sortOrder: 1, isActive: true },
+      { productId, optionType: 'WATTAGE', optionValue: '7W', priceDelta: 100, sortOrder: 2, isActive: true },
+      { productId, optionType: 'WATTAGE', optionValue: '9W', priceDelta: 150, sortOrder: 3, isActive: true },
+      { productId, optionType: 'WATTAGE', optionValue: '12W', priceDelta: 200, sortOrder: 4, isActive: true },
+    ];
+    try {
+      for (const opt of defaultOptions) {
+        await prisma.productLampOption.create({ data: opt }).catch(() => {});
+      }
+      options = await prisma.productLampOption.findMany({
+        where: { productId, isActive: true },
+        orderBy: { sortOrder: 'asc' }
+      });
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  let colourDelta = 0;
+  let wattageDelta = 0;
+  let verifiedColour = selectedColour || undefined;
+  let verifiedWattage = selectedWattage || undefined;
+
+  if (selectedColour) {
+    const cMatch = options.find((o: any) =>
+      String(o.optionType).toUpperCase().includes('COL') &&
+      String(o.optionValue).trim().toLowerCase() === String(selectedColour).trim().toLowerCase()
+    );
+    if (cMatch) {
+      colourDelta = Number(cMatch.priceDelta || 0);
+      verifiedColour = cMatch.optionValue;
+    } else if (options.some((o: any) => String(o.optionType).toUpperCase().includes('COL'))) {
+      const err: any = new Error(`Selected colour '${selectedColour}' is invalid or inactive for product ${productId}`);
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  if (selectedWattage) {
+    const wMatch = options.find((o: any) =>
+      String(o.optionType).toUpperCase().includes('WAT') &&
+      String(o.optionValue).trim().toLowerCase() === String(selectedWattage).trim().toLowerCase()
+    );
+    if (wMatch) {
+      wattageDelta = Number(wMatch.priceDelta || 0);
+      verifiedWattage = wMatch.optionValue;
+    } else if (options.some((o: any) => String(o.optionType).toUpperCase().includes('WAT'))) {
+      const err: any = new Error(`Selected wattage '${selectedWattage}' is invalid or inactive for product ${productId}`);
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  const unitPrice = basePrice + colourDelta + wattageDelta;
+  return {
+    unitPrice,
+    colourDelta,
+    wattageDelta,
+    selectedColour: verifiedColour,
+    selectedWattage: verifiedWattage
+  };
+}
+
 async function getFormattedCart(userId: string) {
   let cart = await prisma.cart.findUnique({
     where: { userId },
@@ -424,11 +512,33 @@ async function getFormattedCart(userId: string) {
   }
 
   let subtotal = 0;
-  const items = (cart.items || []).map((ci: any) => {
+  const items = [];
+
+  for (const ci of (cart.items || [])) {
     const p = ci.product;
     const v = ci.variant;
-    const itemPrice = v ? Number(v.price) : (p ? Number(p.price) : 0);
-    const itemMrp = v ? Number(v.mrp) : (p ? Number(p.mrp) : itemPrice);
+    const basePrice = v ? Number(v.price) : (p ? Number(p.price) : 0);
+    const baseMrp = v ? Number(v.mrp) : (p ? Number(p.mrp) : basePrice);
+
+    let itemPrice = basePrice;
+    let effectiveColour = ci.selectedColour || v?.colour || (v?.attributes as any)?.colour || null;
+    let effectiveWattage = ci.selectedWattage || v?.wattage || (v?.attributes as any)?.wattage || null;
+
+    try {
+      const priceCalc = await calculateLampOptionPrice(
+        ci.productId,
+        basePrice,
+        effectiveColour,
+        effectiveWattage
+      );
+      itemPrice = priceCalc.unitPrice;
+      if (priceCalc.selectedColour) effectiveColour = priceCalc.selectedColour;
+      if (priceCalc.selectedWattage) effectiveWattage = priceCalc.selectedWattage;
+    } catch (e) {
+      itemPrice = basePrice;
+    }
+
+    const itemMrp = baseMrp + Math.max(0, itemPrice - basePrice);
     const itemTotal = itemPrice * ci.quantity;
     subtotal += itemTotal;
 
@@ -453,7 +563,7 @@ async function getFormattedCart(userId: string) {
       formattedProduct.stockQuantity = availableStock;
     }
 
-    return {
+    items.push({
       id: ci.id,
       cartId: ci.cartId,
       productId: ci.productId,
@@ -486,8 +596,8 @@ async function getFormattedCart(userId: string) {
         images: [img],
         taxPercentage: itemTaxPercentage
       },
-      selectedColour: v?.colour || (v?.attributes as any)?.colour || null,
-      selectedWattage: v?.wattage || (v?.attributes as any)?.wattage || null,
+      selectedColour: effectiveColour,
+      selectedWattage: effectiveWattage,
       variant: v ? {
         id: v.id,
         name: v.name,
@@ -499,8 +609,8 @@ async function getFormattedCart(userId: string) {
         attributes: v.attributes || {},
         stockQuantity: v.stockQuantity ?? 100
       } : null
-    };
-  });
+    });
+  }
 
   const tax = Math.round(
     items.reduce((total: number, item: any) => {
@@ -2383,6 +2493,151 @@ app.delete('/api/products/:id/variants/:variantId', requireAdminMiddleware, asyn
 });
 
 // ==================================================
+// LAMP OPTIONS ENDPOINTS
+// ==================================================
+
+app.get('/api/products/:id/lamp-options', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const includeInactive = req.query.includeInactive === 'true';
+
+  try {
+    let whereClause: any = { productId: id };
+    if (!includeInactive) {
+      whereClause.isActive = true;
+    }
+
+    let rawOptions = await prisma.productLampOption.findMany({
+      where: whereClause,
+      orderBy: [
+        { optionType: 'asc' },
+        { sortOrder: 'asc' }
+      ]
+    });
+
+    // If no options exist for prod-spiral-ambient-lamp, seed default options
+    if (rawOptions.length === 0 && id === 'prod-spiral-ambient-lamp') {
+      const defaultOptions = [
+        { productId: id, optionType: 'COLOUR', optionValue: 'Warm White', priceDelta: 0, sortOrder: 1, isActive: true },
+        { productId: id, optionType: 'COLOUR', optionValue: 'Cool White', priceDelta: 0, sortOrder: 2, isActive: true },
+        { productId: id, optionType: 'COLOUR', optionValue: 'Neutral White', priceDelta: 0, sortOrder: 3, isActive: true },
+        { productId: id, optionType: 'WATTAGE', optionValue: '5W', priceDelta: 0, sortOrder: 1, isActive: true },
+        { productId: id, optionType: 'WATTAGE', optionValue: '7W', priceDelta: 100, sortOrder: 2, isActive: true },
+        { productId: id, optionType: 'WATTAGE', optionValue: '9W', priceDelta: 150, sortOrder: 3, isActive: true },
+        { productId: id, optionType: 'WATTAGE', optionValue: '12W', priceDelta: 200, sortOrder: 4, isActive: true },
+      ];
+      try {
+        for (const opt of defaultOptions) {
+          await prisma.productLampOption.create({ data: opt }).catch(() => {});
+        }
+        rawOptions = await prisma.productLampOption.findMany({
+          where: whereClause,
+          orderBy: [
+            { optionType: 'asc' },
+            { sortOrder: 'asc' }
+          ]
+        });
+      } catch (e) {
+        console.warn('Failed to seed default lamp options:', e);
+      }
+    }
+
+    const colours = rawOptions
+      .filter((o) => String(o.optionType).toUpperCase().includes('COL'))
+      .map((o) => ({
+        id: o.id,
+        value: o.optionValue,
+        priceDelta: Number(o.priceDelta),
+        sortOrder: o.sortOrder,
+        isActive: o.isActive
+      }));
+
+    const wattages = rawOptions
+      .filter((o) => String(o.optionType).toUpperCase().includes('WAT'))
+      .map((o) => ({
+        id: o.id,
+        value: o.optionValue,
+        priceDelta: Number(o.priceDelta),
+        sortOrder: o.sortOrder,
+        isActive: o.isActive
+      }));
+
+    return res.json({ colours, wattages, all: rawOptions });
+  } catch (err: any) {
+    console.error('Error fetching lamp options:', err);
+    return res.status(500).json({ error: 'Failed to fetch product lamp options' });
+  }
+});
+
+app.post('/api/products/:id/lamp-options', requireAdminMiddleware, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { optionType, optionValue, priceDelta = 0, sortOrder = 0, isActive = true } = req.body;
+
+  if (!optionType || !optionValue) {
+    return res.status(400).json({ error: 'optionType and optionValue are required' });
+  }
+
+  try {
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const newOption = await prisma.productLampOption.create({
+      data: {
+        productId: id,
+        optionType: String(optionType).toUpperCase().trim(),
+        optionValue: String(optionValue).trim(),
+        priceDelta: Number(priceDelta),
+        sortOrder: Number(sortOrder),
+        isActive: Boolean(isActive)
+      }
+    });
+
+    return res.status(201).json(newOption);
+  } catch (err: any) {
+    console.error('Error creating lamp option:', err);
+    return res.status(500).json({ error: 'Failed to create lamp option' });
+  }
+});
+
+app.put('/api/products/:id/lamp-options/:optionId', requireAdminMiddleware, async (req: Request, res: Response) => {
+  const { optionId } = req.params;
+  const { optionType, optionValue, priceDelta, sortOrder, isActive } = req.body;
+
+  try {
+    const existing = await prisma.productLampOption.findUnique({ where: { id: optionId } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Lamp option not found' });
+    }
+
+    const updated = await prisma.productLampOption.update({
+      where: { id: optionId },
+      data: {
+        optionType: optionType !== undefined ? String(optionType).toUpperCase().trim() : existing.optionType,
+        optionValue: optionValue !== undefined ? String(optionValue).trim() : existing.optionValue,
+        priceDelta: priceDelta !== undefined ? Number(priceDelta) : existing.priceDelta,
+        sortOrder: sortOrder !== undefined ? Number(sortOrder) : existing.sortOrder,
+        isActive: isActive !== undefined ? Boolean(isActive) : existing.isActive
+      }
+    });
+
+    return res.json(updated);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to update lamp option' });
+  }
+});
+
+app.delete('/api/products/:id/lamp-options/:optionId', requireAdminMiddleware, async (req: Request, res: Response) => {
+  const { optionId } = req.params;
+  try {
+    await prisma.productLampOption.delete({ where: { id: optionId } });
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to delete lamp option' });
+  }
+});
+
+// ==================================================
 // 7. CATEGORIES
 // ==================================================
 
@@ -2495,7 +2750,7 @@ app.get('/api/cart', requireAuthMiddleware, async (req: AuthenticatedRequest, re
 
 app.post(['/api/cart/items', '/api/cart'], requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user.id;
-  const { productId, variantId, quantity = 1 } = req.body;
+  const { productId, variantId, quantity = 1, selectedColour, selectedWattage } = req.body;
 
   if (!productId) {
     return res.status(400).json({ error: 'productId is required' });
@@ -2517,18 +2772,37 @@ app.post(['/api/cart/items', '/api/cart'], requireAuthMiddleware, async (req: Au
       return res.status(400).json({ error: 'Product is not available' });
     }
 
+    // Validate lamp option selections & calculate price
+    const basePrice = Number(product.price);
+    let verifiedColour = selectedColour || null;
+    let verifiedWattage = selectedWattage || null;
+    try {
+      const priceCalc = await calculateLampOptionPrice(
+        productId,
+        basePrice,
+        selectedColour,
+        selectedWattage
+      );
+      if (priceCalc.selectedColour) verifiedColour = priceCalc.selectedColour;
+      if (priceCalc.selectedWattage) verifiedWattage = priceCalc.selectedWattage;
+    } catch (valErr: any) {
+      return res.status(valErr.statusCode || 400).json({ error: valErr.message || 'Invalid lamp option selected' });
+    }
+
     // 4. Get or create cart in Prisma
     let cart = await prisma.cart.findUnique({ where: { userId } });
     if (!cart) {
       cart = await prisma.cart.create({ data: { userId } });
     }
 
-    // 5. Add or update cart item in Prisma
+    // 5. Add or update cart item in Prisma matching product, variant, colour, and wattage
     const existingItem = await prisma.cartItem.findFirst({
       where: {
         cartId: cart.id,
         productId,
-        variantId: variantId || null
+        variantId: variantId || null,
+        selectedColour: verifiedColour,
+        selectedWattage: verifiedWattage
       }
     });
 
@@ -2543,6 +2817,8 @@ app.post(['/api/cart/items', '/api/cart'], requireAuthMiddleware, async (req: Au
           cartId: cart.id,
           productId,
           variantId: variantId || null,
+          selectedColour: verifiedColour,
+          selectedWattage: verifiedWattage,
           quantity: Number(quantity)
         }
       });
@@ -2830,16 +3106,31 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
       const v = ci.variant;
       if (!p) continue;
 
-      const price = v ? Number(v.price) : Number(p.price);
-      const total = price * ci.quantity;
+      const basePrice = v ? Number(v.price) : Number(p.price);
+      let selectedColour = ci.selectedColour || v?.colour || (v?.attributes as any)?.colour || null;
+      let selectedWattage = ci.selectedWattage || v?.wattage || (v?.attributes as any)?.wattage || null;
+
+      let unitPrice = basePrice;
+      try {
+        const priceCalc = await calculateLampOptionPrice(
+          p.id,
+          basePrice,
+          selectedColour,
+          selectedWattage
+        );
+        unitPrice = priceCalc.unitPrice;
+        if (priceCalc.selectedColour) selectedColour = priceCalc.selectedColour;
+        if (priceCalc.selectedWattage) selectedWattage = priceCalc.selectedWattage;
+      } catch (valErr: any) {
+        return res.status(valErr.statusCode || 400).json({ error: valErr.message || 'Invalid option selection during checkout' });
+      }
+
+      const total = unitPrice * ci.quantity;
       subtotal += total;
 
       const customNameFromCart = (ci as any).customizationText || (clientItems || []).find((item: any) => (item.productId || item.product?.id) === p.id)?.customizationText || '';
       const displayName = customNameFromCart ? `${p.name} • For: ${customNameFromCart}` : p.name;
-
-      const selectedColour = v?.colour || (v?.attributes as any)?.colour || null;
-      const selectedWattage = v?.wattage || (v?.attributes as any)?.wattage || null;
-      const skuSnapshot = v?.sku || p.sku || '';
+      const skuSnapshot = v?.sku || p.sku || 'NX-LMP-SPRL';
 
       orderItemsData.push({
         productId: p.id,
@@ -2848,7 +3139,7 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
         selectedColour,
         selectedWattage,
         productTitle: displayName,
-        price,
+        price: unitPrice,
         quantity: ci.quantity,
         total,
         subtotal: total,

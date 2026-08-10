@@ -249,6 +249,8 @@ export default function App() {
         quantity: i.quantity,
         variantId: i.variantId,
         variant: i.variant,
+        selectedColour: i.selectedColour || i.variant?.colour || null,
+        selectedWattage: i.selectedWattage || i.variant?.wattage || null,
         taxPercentage: Number(i.taxPercentage ?? p.taxPercentage ?? 0)
       };
     });
@@ -667,7 +669,14 @@ export default function App() {
   };
 
   // Cart Actions
-  const handleAddToCart = async (productOrId: Product | string, variantIdOrQty?: string | number, quantity = 1, customizationText?: string) => {
+  const handleAddToCart = async (
+    productOrId: Product | string,
+    variantIdOrQty?: string | number,
+    quantity = 1,
+    customizationText?: string,
+    selectedColour?: string,
+    selectedWattage?: string
+  ) => {
     if (!user) {
       setIsAuthOpen(true);
       showToast('Please log in or create an account to add items to cart');
@@ -694,7 +703,9 @@ export default function App() {
           productId: prodId,
           variantId: actualVariantId,
           quantity: actualQty,
-          customizationText: trimmedCustomization
+          customizationText: trimmedCustomization,
+          selectedColour,
+          selectedWattage
         })
       });
       const data = await res.json();
@@ -1278,9 +1289,11 @@ export default function App() {
           }}
           isWishlisted={wishlistProductIds.includes(quickViewProduct.id)}
           onToggleWishlist={handleToggleWishlist}
-          onAddToCart={(p, qty, _unused, customizationText) => handleAddToCart(p, qty, 1, customizationText)}
-          onBuyNow={(p, customizationText) => {
-            handleAddToCart(p, 1, 1, customizationText);
+          onAddToCart={(p, variantId, qty, customizationText, selectedColour, selectedWattage) =>
+            handleAddToCart(p, variantId, qty || 1, customizationText, selectedColour, selectedWattage)
+          }
+          onBuyNow={(p, customizationText, selectedColour, selectedWattage) => {
+            handleAddToCart(p, undefined, 1, customizationText, selectedColour, selectedWattage);
             handleProceedToCheckout();
           }}
           onSelectRelatedProduct={(p) => setQuickViewProduct(p)}

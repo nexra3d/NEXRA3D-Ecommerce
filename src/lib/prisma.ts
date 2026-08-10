@@ -64,6 +64,9 @@ export async function ensureDbSchema() {
     `ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "selectedColour" TEXT;`,
     `ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "selectedWattage" TEXT;`,
 
+    `ALTER TABLE "cart_items" ADD COLUMN IF NOT EXISTS "selectedColour" TEXT;`,
+    `ALTER TABLE "cart_items" ADD COLUMN IF NOT EXISTS "selectedWattage" TEXT;`,
+
     `CREATE TABLE IF NOT EXISTS "product_images" (
       "id" TEXT NOT NULL,
       "productId" TEXT NOT NULL,
@@ -90,6 +93,19 @@ export async function ensureDbSchema() {
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "reviews_pkey" PRIMARY KEY ("id")
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS "product_lamp_options" (
+      "id" TEXT NOT NULL,
+      "product_id" TEXT NOT NULL,
+      "option_type" TEXT NOT NULL,
+      "option_value" TEXT NOT NULL,
+      "price_delta" DECIMAL(10,2) NOT NULL DEFAULT 0,
+      "is_active" BOOLEAN NOT NULL DEFAULT true,
+      "sort_order" INTEGER NOT NULL DEFAULT 0,
+      "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "product_lamp_options_pkey" PRIMARY KEY ("id")
     );`
   ];
 
