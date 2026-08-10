@@ -28,7 +28,8 @@ import {
   Printer,
   MapPin,
   Clock,
-  ExternalLink
+  ExternalLink,
+  Building2
 } from 'lucide-react';
 import {
   Product,
@@ -74,6 +75,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [shipmentFilterStatus, setShipmentFilterStatus] = useState<string>('ALL');
   const [shipmentFilterProvider, setShipmentFilterProvider] = useState<string>('ALL');
   const [shipmentSearchQuery, setShipmentSearchQuery] = useState<string>('');
+  const [orderFulfillmentFilter, setOrderFulfillmentFilter] = useState<'ALL' | 'PICKUP' | 'DELIVERY'>('ALL');
 
   // Create Shipment Modal
   const [showCreateShipmentModal, setShowCreateShipmentModal] = useState(false);
@@ -1157,7 +1159,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   if (!isOpen) return null;
 
-  const displayOrders = adminOrders;
+  const checkIsStorePickup = (ord: any): boolean => {
+    if (!ord) return false;
+    const prov = String(ord.shippingProvider || '').toLowerCase();
+    const courier = String(ord.courierName || '').toLowerCase();
+    const opt = String(ord.selectedShippingOptionId || '').toLowerCase();
+    const addr = ord.shippingAddress || {};
+    return (
+      prov.includes('store') ||
+      prov.includes('pickup') ||
+      courier.includes('store') ||
+      courier.includes('pickup') ||
+      opt === 'pickup-store' ||
+      addr.deliveryMethod === 'PICKUP' ||
+      addr.fulfillmentType === 'STORE_PICKUP' ||
+      addr.isStorePickup === true ||
+      Boolean(addr.pickupFromStore)
+    );
+  };
+
+  const displayOrders = adminOrders.filter((ord) => {
+    if (orderFulfillmentFilter === 'PICKUP') return checkIsStorePickup(ord);
+    if (orderFulfillmentFilter === 'DELIVERY') return !checkIsStorePickup(ord);
+    return true;
+  });
   const overviewRevenue = (analytics && typeof analytics.totalRevenue === 'number' && analytics.totalRevenue > 0)
     ? analytics.totalRevenue
     : displayOrders.reduce((acc, o) => acc + Number(o.totalAmount || 0), 0);
@@ -2459,82 +2484,169 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* TAB 4: ORDERS MANAGEMENT */}
           {activeTab === 'orders' && (
             <div className="space-y-4 text-xs">
-              <h3 className="text-sm font-bold text-slate-200">Customer Orders Control</h3>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                <h3 className="text-sm font-bold text-slate-200">Customer Orders Control</h3>
+
+                {/* Fulfillment Filter Pills */}
+                <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setOrderFulfillmentFilter('ALL')}
+                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                      orderFulfillmentFilter === 'ALL'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    All Orders ({adminOrders.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderFulfillmentFilter('PICKUP')}
+                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1 ${
+                      orderFulfillmentFilter === 'PICKUP'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-emerald-400/80 hover:text-emerald-300'
+                    }`}
+                  >
+                    <Building2 className="w-3 h-3" />
+                    <span>Store Pickup ({adminOrders.filter(checkIsStorePickup).length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderFulfillmentFilter('DELIVERY')}
+                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1 ${
+                      orderFulfillmentFilter === 'DELIVERY'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-indigo-400/80 hover:text-indigo-300'
+                    }`}
+                  >
+                    <Truck className="w-3 h-3" />
+                    <span>Home Delivery ({adminOrders.filter(o => !checkIsStorePickup(o)).length})</span>
+                  </button>
+                </div>
+              </div>
 
               <div className="space-y-3">
                 {displayOrders.length === 0 ? (
                   <div className="text-center py-8 bg-slate-800/40 border border-slate-700/50 rounded-2xl">
-                    <p className="text-slate-400 font-medium">No customer orders placed yet.</p>
+                    <p className="text-slate-400 font-medium">No matching orders found.</p>
                   </div>
                 ) : (
                   displayOrders.map((ord) => {
                     const custName = ord.customerName || (ord as any).user?.name || (ord as any).shippingAddress?.fullName || 'Customer';
                     const custEmail = ord.customerEmail || (ord as any).user?.email || (ord as any).shippingAddress?.email || 'N/A';
+                    const custPhone = (ord as any).shippingAddress?.phone || (ord as any).shippingAddress?.phoneNumber || (ord as any).user?.phone || 'N/A';
+                    const isPickup = checkIsStorePickup(ord);
+
                     return (
-                  <div key={ord.id || ord.orderNumber} className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 space-y-3">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-700 pb-2">
-                      <div>
-                        <span className="font-bold text-amber-400 text-sm font-mono">{ord.orderNumber}</span>
-                        <span className="text-slate-400 block">Customer: {custName} ({custEmail})</span>
-                      </div>
+                      <div key={ord.id || ord.orderNumber} className={`border rounded-2xl p-4 space-y-3 transition-all ${
+                        isPickup 
+                          ? 'bg-slate-800/90 border-emerald-500/40 hover:border-emerald-500/70' 
+                          : 'bg-slate-800/80 border-slate-700/80 hover:border-indigo-500/50'
+                      }`}>
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-700 pb-2.5">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-amber-400 text-sm font-mono">{ord.orderNumber}</span>
 
-                      <div className="flex items-center space-x-3">
-                        <span className="text-slate-200 font-bold">₹{Number(ord.totalAmount || 0).toLocaleString('en-IN')}</span>
-
-                        {/* Order Status Select */}
-                        <select
-                          value={ord.orderStatus}
-                          onChange={(e) => handleUpdateOrderStatus(ord.id, e.target.value as OrderStatus)}
-                          className="bg-slate-900 border border-slate-700 text-indigo-400 font-bold text-xs rounded-xl px-2.5 py-1.5"
-                        >
-                          <option value="PENDING">PENDING</option>
-                          <option value="PROCESSING">PROCESSING</option>
-                          <option value="SHIPPED">SHIPPED</option>
-                          <option value="OUT_FOR_DELIVERY">OUT_FOR_DELIVERY</option>
-                          <option value="DELIVERED">DELIVERED</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 gap-2">
-                      <span>
-                        Shipping to: {ord.shippingAddress?.streetAddress}, {ord.shippingAddress?.city} • Payment: {ord.paymentMethod} • Payment ID: <span className="font-mono text-emerald-400 font-bold">{(ord as any).razorpayPaymentId || (ord as any).paymentId || 'N/A'}</span>
-                      </span>
-
-                      <button
-                        onClick={() => {
-                          setSelectedOrderForShipment(ord);
-                          setShowCreateShipmentModal(true);
-                        }}
-                        className="bg-indigo-600/80 hover:bg-indigo-600 text-white font-bold text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
-                      >
-                        <Truck className="w-3 h-3" />
-                        <span>Dispatch Shipment</span>
-                      </button>
-                    </div>
-
-                    {(ord.items || []).length > 0 && (
-                      <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-2.5 space-y-1.5">
-                        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Items / Personalization</div>
-                        {(ord.items || []).map((item: any) => {
-                          const itemTitle = item.productTitle || item.product?.name || item.product?.title || 'Product';
-                          const customName = itemTitle.includes('• For:') ? itemTitle.split('• For:')[1]?.trim() : '';
-                          return (
-                            <div key={item.id || `${ord.id}-${item.productId}`} className="flex justify-between gap-3 text-[11px] text-slate-200">
-                              <span className="font-medium">{itemTitle}</span>
-                              <span className="text-slate-400">Qty: {item.quantity || 1}</span>
+                              {/* Prominent Fulfillment Badge */}
+                              {isPickup ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse">
+                                  <Building2 className="w-3 h-3 text-emerald-400" />
+                                  🏪 PICKUP FROM STORE (Hyderabad)
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                                  <Truck className="w-3 h-3 text-indigo-400" />
+                                  🚚 HOME DELIVERY ADDRESS
+                                </span>
+                              )}
                             </div>
-                          );
-                        })}
-                        {(ord.items || []).some((item: any) => (item.productTitle || item.product?.name || '').includes('• For:')) && (
-                          <div className="text-[10px] text-emerald-300 font-semibold pt-1 border-t border-slate-800">
-                            Custom name logged for production: {(ord.items || []).find((item: any) => (item.productTitle || item.product?.name || '').includes('• For:'))?.productTitle?.split('• For:')[1]?.trim()}
+                            <span className="text-slate-400 block text-xs">
+                              Customer: <strong className="text-slate-200">{custName}</strong> ({custEmail}) • 📞 {custPhone}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center space-x-3">
+                            <span className="text-slate-200 font-extrabold text-sm font-mono">₹{Number(ord.totalAmount || 0).toLocaleString('en-IN')}</span>
+
+                            {/* Order Status Select */}
+                            <select
+                              value={ord.orderStatus}
+                              onChange={(e) => handleUpdateOrderStatus(ord.id, e.target.value as OrderStatus)}
+                              className="bg-slate-900 border border-slate-700 text-indigo-400 font-bold text-xs rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                            >
+                              <option value="PENDING">PENDING</option>
+                              <option value="PROCESSING">PROCESSING</option>
+                              <option value="SHIPPED">SHIPPED (Ready for Pickup)</option>
+                              <option value="OUT_FOR_DELIVERY">OUT_FOR_DELIVERY</option>
+                              <option value="DELIVERED">DELIVERED (Collected)</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Fulfillment Location Details Box */}
+                        {isPickup ? (
+                          <div className="bg-emerald-950/50 border border-emerald-800/50 rounded-xl p-3 text-xs space-y-1">
+                            <div className="flex items-center justify-between text-emerald-300 font-bold">
+                              <span className="flex items-center gap-1.5"><Building2 className="w-4 h-4 text-emerald-400" /> Fulfillment Method: Customer Store Collection</span>
+                              <span className="text-[10px] text-emerald-300 bg-emerald-900/80 px-2 py-0.5 rounded font-mono font-bold">Store: Gachibowli, Hyderabad</span>
+                            </div>
+                            <p className="text-emerald-100/90 text-[11px] leading-relaxed">
+                              📍 <strong>Collection Location:</strong> NEXRA 3D Store, Plot 42, Tech Enclave, Gachibowli, Hyderabad - 500032
+                              <span className="block mt-0.5 text-emerald-300 font-medium">Customer Contact: {custPhone} • Email: {custEmail}</span>
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3 text-xs space-y-1">
+                            <div className="flex items-center justify-between text-indigo-300 font-bold">
+                              <span className="flex items-center gap-1.5"><Truck className="w-4 h-4 text-indigo-400" /> Fulfillment Method: Courier Delivery</span>
+                              <span className="text-[10px] text-slate-300 bg-slate-800 px-2 py-0.5 rounded font-mono">{ord.shippingProvider || 'Courier Partner'}</span>
+                            </div>
+                            <p className="text-slate-300 text-[11px] leading-relaxed">
+                              🏠 <strong>Ship To Address:</strong> {ord.shippingAddress?.streetAddress || ord.shippingAddress?.addressLine1 || 'Address details logged'}, {ord.shippingAddress?.city}, {ord.shippingAddress?.state} - {ord.shippingAddress?.postalCode || ord.shippingAddress?.pincode}
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 gap-2 pt-1 border-t border-slate-800">
+                          <span>
+                            Payment: <strong>{ord.paymentMethod}</strong> • Payment ID: <span className="font-mono text-emerald-400 font-bold">{(ord as any).razorpayPaymentId || (ord as any).paymentId || 'N/A'}</span>
+                          </span>
+
+                          <button
+                            onClick={() => {
+                              setSelectedOrderForShipment(ord);
+                              setShowCreateShipmentModal(true);
+                            }}
+                            className={`font-bold text-[11px] px-3 py-1.5 rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm ${
+                              isPickup 
+                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white' 
+                                : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                            }`}
+                          >
+                            {isPickup ? <Building2 className="w-3.5 h-3.5" /> : <Truck className="w-3.5 h-3.5" />}
+                            <span>{isPickup ? '🏪 Manage Store Pickup' : '🚚 Dispatch Shipment'}</span>
+                          </button>
+                        </div>
+
+                        {(ord.items || []).length > 0 && (
+                          <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-2.5 space-y-1.5">
+                            <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Items / Personalization</div>
+                            {(ord.items || []).map((item: any) => {
+                              const itemTitle = item.productTitle || item.product?.name || item.product?.title || 'Product';
+                              return (
+                                <div key={item.id || `${ord.id}-${item.productId}`} className="flex justify-between gap-3 text-[11px] text-slate-200">
+                                  <span className="font-medium">{itemTitle}</span>
+                                  <span className="text-slate-400">Qty: {item.quantity || 1} • ₹{Number(item.price || item.total || 0).toLocaleString('en-IN')}</span>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
-                    )}
-                  </div>
-                );
+                    );
                   })
                 )}
               </div>
@@ -3065,11 +3177,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* MODAL: CREATE SHIPMENT */}
         {showCreateShipmentModal && (
           <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-700 w-full max-w-md rounded-2xl p-6 space-y-4 text-xs text-slate-100 shadow-2xl">
+            <div className="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-2xl p-6 space-y-4 text-xs text-slate-100 shadow-2xl">
               <div className="flex justify-between items-center border-b border-slate-800 pb-3">
                 <h3 className="font-extrabold text-sm text-indigo-400 flex items-center gap-2">
                   <Truck className="w-4 h-4" />
-                  <span>Create Courier Shipment</span>
+                  <span>Fulfillment & Shipment Control</span>
                 </h3>
                 <button
                   onClick={() => setShowCreateShipmentModal(false)}
@@ -3079,29 +3191,107 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </div>
 
-              <form onSubmit={handleCreateShipmentSubmit} className="space-y-3">
-                <div>
-                  <label className="block text-slate-400 font-medium mb-1">Select Order *</label>
-                  <select
-                    value={selectedOrderForShipment?.id || selectedOrderForShipment?.orderNumber || (adminOrders[0]?.id || '')}
-                    onChange={(e) => {
-                      const activeList = adminOrders;
-                      const o = activeList.find((ord) => ord.id === e.target.value || ord.orderNumber === e.target.value);
-                      if (o) setSelectedOrderForShipment(o);
-                    }}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono text-xs focus:outline-none focus:border-indigo-500"
-                  >
-                    {displayOrders.map((o) => {
-                      const displayName = o.customerName || (o as any).user?.name || (o as any).shippingAddress?.fullName || 'Customer';
-                      return (
-                        <option key={o.id || o.orderNumber} value={o.id || o.orderNumber}>
-                          {o.orderNumber} - {displayName} (₹{Number(o.totalAmount || 0).toLocaleString('en-IN')})
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
+              {/* Order Selection */}
+              <div>
+                <label className="block text-slate-400 font-medium mb-1">Select Customer Order *</label>
+                <select
+                  value={selectedOrderForShipment?.id || selectedOrderForShipment?.orderNumber || (adminOrders[0]?.id || '')}
+                  onChange={(e) => {
+                    const activeList = adminOrders;
+                    const o = activeList.find((ord) => ord.id === e.target.value || ord.orderNumber === e.target.value);
+                    if (o) setSelectedOrderForShipment(o);
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono text-xs focus:outline-none focus:border-indigo-500"
+                >
+                  {adminOrders.map((o) => {
+                    const displayName = o.customerName || (o as any).user?.name || (o as any).shippingAddress?.fullName || 'Customer';
+                    const isPick = checkIsStorePickup(o);
+                    return (
+                      <option key={o.id || o.orderNumber} value={o.id || o.orderNumber}>
+                        {isPick ? '🏪 [STORE PICKUP]' : '🚚 [DELIVERY]'} {o.orderNumber} - {displayName} (₹{Number(o.totalAmount || 0).toLocaleString('en-IN')})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
 
+              {/* STORE PICKUP ORDER HIGHLIGHT & QUICK ACTIONS */}
+              {selectedOrderForShipment && checkIsStorePickup(selectedOrderForShipment) && (
+                <div className="bg-emerald-950/80 border border-emerald-500/50 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-emerald-300 font-extrabold text-sm border-b border-emerald-800/60 pb-2">
+                    <Building2 className="w-5 h-5 text-emerald-400 animate-pulse" />
+                    <span>🏪 STORE PICKUP ORDER (Gachibowli, Hyderabad)</span>
+                  </div>
+                  <p className="text-xs text-emerald-100/90 leading-relaxed">
+                    This customer selected <strong>Pickup from Store</strong>. No courier AWB or external shipping label is needed. You can update status and send live email notifications to the customer directly below:
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`/api/admin/orders/${selectedOrderForShipment.id}/status`, {
+                            method: 'PUT',
+                            headers: getAuthHeaders(),
+                            body: JSON.stringify({
+                              status: 'SHIPPED',
+                              title: 'Ready for Store Pickup',
+                              description: 'Your order is ready for collection at NEXRA 3D Store (Plot 42, Tech Enclave, Gachibowli, Hyderabad - 500032). Helpline: +91 8886159998.'
+                            })
+                          });
+                          if (res.ok) {
+                            alert(`Order #${selectedOrderForShipment.orderNumber} status updated to "Ready for Store Pickup". Live update email dispatched to customer!`);
+                            setShowCreateShipmentModal(false);
+                            onRefreshData();
+                          } else {
+                            alert('Failed to update status');
+                          }
+                        } catch (err: any) {
+                          alert(err.message);
+                        }
+                      }}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs transition-colors cursor-pointer shadow-md"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Mark Ready for Store Pickup</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`/api/admin/orders/${selectedOrderForShipment.id}/status`, {
+                            method: 'PUT',
+                            headers: getAuthHeaders(),
+                            body: JSON.stringify({
+                              status: 'DELIVERED',
+                              title: 'Collected from Store',
+                              description: 'Order handed over to customer at NEXRA 3D Store counter in Hyderabad.'
+                            })
+                          });
+                          if (res.ok) {
+                            alert(`Order #${selectedOrderForShipment.orderNumber} marked as "Collected / Delivered". Live update email dispatched to customer!`);
+                            setShowCreateShipmentModal(false);
+                            onRefreshData();
+                          } else {
+                            alert('Failed to update status');
+                          }
+                        } catch (err: any) {
+                          alert(err.message);
+                        }
+                      }}
+                      className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs transition-colors cursor-pointer shadow-md"
+                    >
+                      <Package className="w-4 h-4" />
+                      <span>Mark Handed Over / Collected</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={handleCreateShipmentSubmit} className="space-y-3 pt-2 border-t border-slate-800">
+                <div className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">Courier Dispatch (For Home Delivery Orders)</div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-slate-400 font-medium mb-1">Courier Provider</label>

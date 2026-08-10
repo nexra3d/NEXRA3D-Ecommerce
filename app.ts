@@ -304,6 +304,164 @@ function buildProviderDiagnostic(provider: 'delhivery' | 'nimbuspost', status: n
   };
 }
 
+async function sendOrderStatusEmail(order: any, newStatus: string, customMessage?: string) {
+  try {
+    if (!order) return;
+
+    const customerEmail = (order.shippingAddress as any)?.email || order.customerEmail || order.user?.email;
+    const customerName = (order.shippingAddress as any)?.fullName || order.customerName || order.user?.name || 'Valued Customer';
+
+    const isStorePickup = (
+      String(order.shippingProvider || '').toLowerCase().includes('store') ||
+      String(order.shippingProvider || '').toLowerCase().includes('pickup') ||
+      String(order.courierName || '').toLowerCase().includes('store') ||
+      String(order.courierName || '').toLowerCase().includes('pickup') ||
+      order.selectedShippingOptionId === 'pickup-store' ||
+      (order.shippingAddress as any)?.deliveryMethod === 'PICKUP' ||
+      (order.shippingAddress as any)?.fulfillmentType === 'STORE_PICKUP' ||
+      (order.shippingAddress as any)?.isStorePickup === true
+    );
+
+    let subject = `Order #${order.orderNumber} Update - ${newStatus} | NEXRA 3D`;
+    let statusHeading = `Order Status Updated: ${newStatus}`;
+    let statusDetailsHtml = ``;
+
+    if (newStatus === 'CONFIRMED' || newStatus === 'PENDING') {
+      subject = `Order Confirmed #${order.orderNumber} — NEXRA 3D`;
+      statusHeading = `Order Confirmed!`;
+      statusDetailsHtml = `
+        <p>We have successfully received and confirmed your order <strong>#${order.orderNumber}</strong>.</p>
+        <p>${isStorePickup ? 'Your order is assigned for <strong>Store Collection at our Hyderabad lab</strong>. We are preparing your 3D models for printing.' : 'Your order is assigned for <strong>Home Delivery</strong> and will be processed for shipping.'}</p>
+      `;
+    } else if (newStatus === 'PROCESSING') {
+      subject = `Order #${order.orderNumber} is in Production — NEXRA 3D`;
+      statusHeading = `Order In Production / Processing`;
+      statusDetailsHtml = `
+        <p>Your 3D prints are currently on our printing machines undergoing precision 3D printing and post-processing quality inspection.</p>
+        ${isStorePickup ? '<p>Once printing and quality checks finish, we will send you an email notification that your package is <strong>Ready for Store Pickup</strong>.</p>' : '<p>Once packed, we will dispatch your parcel via courier and send you live tracking details.</p>'}
+      `;
+    } else if (newStatus === 'SHIPPED' || newStatus === 'READY_FOR_PICKUP') {
+      if (isStorePickup) {
+        subject = `🎉 Your Order #${order.orderNumber} is READY FOR STORE PICKUP! — NEXRA 3D`;
+        statusHeading = `Ready for Collection at NEXRA 3D Store!`;
+        statusDetailsHtml = `
+          <div style="background-color: #ecfdf5; border: 2px solid #10b981; border-radius: 12px; padding: 18px; margin: 16px 0;">
+            <h4 style="margin: 0 0 8px 0; color: #065f46; font-size: 16px; font-weight: bold;">📍 Store Collection Location:</h4>
+            <p style="margin: 0 0 4px 0; font-weight: bold; color: #064e3b; font-size: 14px;">NEXRA 3D Store & Production Lab</p>
+            <p style="margin: 0 0 6px 0; color: #047857; font-size: 13px; line-height: 1.4;">Plot 42, Tech Enclave, Gachibowli, Hyderabad, Telangana - 500032</p>
+            <p style="margin: 0 0 8px 0; color: #047857; font-size: 13px;">📞 Helpline / WhatsApp: <strong>+91 8886159998 / +91 8886149998</strong></p>
+            <div style="background-color: #ffffff; padding: 8px 12px; border-radius: 6px; display: inline-block; border: 1px solid #a7f3d0; font-size: 12px; font-weight: bold; color: #065f46;">
+              ⏱️ Store Hours: Mon - Sat (10:00 AM - 7:30 PM)
+            </div>
+          </div>
+          <p>Please present this email notification or state your Order ID <strong>#${order.orderNumber}</strong> when arriving at our store counter.</p>
+        `;
+      } else {
+        const courier = order.shippingProvider || order.courierName || 'Courier Partner';
+        const awb = order.awbNumber || order.trackingNumber || 'Assigned';
+        subject = `🚀 Order Dispatched #${order.orderNumber} via ${courier} — NEXRA 3D`;
+        statusHeading = `Order Dispatched & In Transit!`;
+        statusDetailsHtml = `
+          <div style="background-color: #f0f9ff; border: 1px solid #0284c7; border-radius: 10px; padding: 16px; margin: 16px 0;">
+            <p style="margin: 0 0 6px 0; font-size: 14px;"><strong>Courier Partner:</strong> ${courier}</p>
+            <p style="margin: 0 0 8px 0; font-size: 14px;"><strong>AWB Number:</strong> ${awb}</p>
+            ${order.trackingUrl ? `<a href="${order.trackingUrl}" style="display: inline-block; background-color: #0284c7; color: white; padding: 10px 18px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 13px;">Track Package Live</a>` : ''}
+          </div>
+        `;
+      }
+    } else if (newStatus === 'OUT_FOR_DELIVERY') {
+      subject = `📦 Order #${order.orderNumber} Out for Delivery Today! — NEXRA 3D`;
+      statusHeading = `Out for Delivery Today!`;
+      statusDetailsHtml = `<p>The courier delivery agent is delivering your package today. Please ensure someone is available at your shipping address to receive it.</p>`;
+    } else if (newStatus === 'DELIVERED') {
+      if (isStorePickup) {
+        subject = `✅ Order #${order.orderNumber} Handed Over / Picked Up — NEXRA 3D`;
+        statusHeading = `Order Collected from Store!`;
+        statusDetailsHtml = `<p>Your order has been successfully collected from our Hyderabad store. Thank you for visiting NEXRA 3D!</p>`;
+      } else {
+        subject = `🎉 Order #${order.orderNumber} Delivered Successfully! — NEXRA 3D`;
+        statusHeading = `Order Delivered!`;
+        statusDetailsHtml = `<p>Your order has been safely delivered to your address. Thank you for choosing NEXRA 3D!</p>`;
+      }
+    } else if (newStatus === 'CANCELLED') {
+      subject = `Order #${order.orderNumber} Cancelled — NEXRA 3D`;
+      statusHeading = `Order Cancelled`;
+      statusDetailsHtml = `<p>Your order has been cancelled. If a refund is applicable, it will be credited back within 3-5 business days.</p>`;
+    }
+
+    const itemsListHtml = (order.items || []).map((item: any) => `
+      <tr>
+        <td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9;">${item.productTitle || item.product?.name || '3D Printed Product'}</td>
+        <td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; text-align: center;">${item.quantity || 1}</td>
+        <td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: bold;">₹${Number(item.price || item.total || 0).toLocaleString('en-IN')}</td>
+      </tr>
+    `).join('');
+
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
+        <div style="background-color: #0f172a; padding: 22px; text-align: center; border-bottom: 4px solid #0284c7;">
+          <h2 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: bold;">NEXRA 3D</h2>
+          <p style="color: #38bdf8; margin: 4px 0 0 0; font-size: 14px; font-weight: bold;">${statusHeading}</p>
+        </div>
+        <div style="padding: 24px; color: #334155; line-height: 1.6; font-size: 14px;">
+          <p style="margin-top: 0;">Hello <strong>${customerName}</strong>,</p>
+
+          ${statusDetailsHtml}
+
+          ${customMessage ? `<div style="background-color: #f8fafc; padding: 12px 16px; border-left: 4px solid #0284c7; margin: 16px 0; font-style: italic; border-radius: 0 8px 8px 0;">Note: ${customMessage}</div>` : ''}
+
+          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 20px 0;">
+            <h4 style="margin: 0 0 10px 0; color: #0f172a; font-size: 14px; border-bottom: 1px solid #cbd5e1; padding-bottom: 6px;">Order Summary (#${order.orderNumber})</h4>
+            <p style="margin: 0 0 6px 0; font-size: 13px;"><strong>Fulfillment Mode:</strong> ${isStorePickup ? '🏪 STORE PICKUP (Hyderabad Lab)' : '🚚 HOME DELIVERY'}</p>
+            <p style="margin: 0 0 10px 0; font-size: 13px;"><strong>Payment Method:</strong> ${order.paymentMethod || 'Prepaid'}</p>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px;">
+              <thead>
+                <tr style="text-align: left; color: #64748b; font-size: 11px; text-transform: uppercase;">
+                  <th style="padding-bottom: 6px;">Item</th>
+                  <th style="padding-bottom: 6px; text-align: center;">Qty</th>
+                  <th style="padding-bottom: 6px; text-align: right;">Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsListHtml}
+              </tbody>
+            </table>
+
+            <div style="margin-top: 12px; pt-8px; border-top: 1px solid #cbd5e1; text-align: right; font-size: 15px; font-weight: bold; color: #0f172a;">
+              Total Paid: <span style="color: #0284c7;">₹${Number(order.totalAmount || 0).toLocaleString('en-IN')}</span>
+            </div>
+          </div>
+
+          <p style="margin-top: 24px; font-size: 12px; color: #64748b; border-top: 1px solid #f1f5f9; padding-top: 14px;">
+            Need assistance? Reach NEXRA 3D Support at <strong>+91 8886159998 / +91 8886149998</strong> or email <a href="mailto:nexra3d@gmail.com" style="color: #0284c7; font-weight: bold;">nexra3d@gmail.com</a>.
+          </p>
+        </div>
+      </div>
+    `;
+
+    // Send email directly to customer
+    if (customerEmail && customerEmail.includes('@') && !customerEmail.includes('@store.com')) {
+      await sendEmail({
+        to: customerEmail,
+        subject,
+        html: emailHtml
+      });
+      console.log(`[Status Email] Live update email sent to customer ${customerEmail} for order #${order.orderNumber} (${newStatus})`);
+    }
+
+    // Copy to nexra3d@gmail.com
+    await sendEmail({
+      to: 'nexra3d@gmail.com',
+      subject: `[ADMIN NOTIFY] Order #${order.orderNumber} Status -> ${newStatus}`,
+      html: emailHtml
+    }).catch(() => {});
+
+  } catch (err: any) {
+    console.error(`[Status Email] Failed to send order status email:`, err?.message || err);
+  }
+}
+
 async function calculateServerShippingFee(input: {
   items: Array<{ productId?: string; id?: string; quantity?: number; product?: ShippingProduct | null }>;
   destinationPincode: string;
@@ -312,6 +470,15 @@ async function calculateServerShippingFee(input: {
   selectedShippingOptionId?: string;
   orderValue?: number;
 }) {
+  if (
+    input.selectedShippingOptionId === 'pickup-store' ||
+    input.shippingProvider === 'Store Pickup' ||
+    input.shippingProvider === 'Pickup from Store' ||
+    input.shippingProvider === 'pickup-store'
+  ) {
+    return 0;
+  }
+
   if (!Array.isArray(input.items) || input.items.length === 0) {
     throw new Error('Shipping estimate requires at least one cart item.');
   }
@@ -3513,6 +3680,68 @@ async function autoProcessShipment(orderId: string, preferredProvider?: string, 
       return order;
     }
 
+    const isStorePickup = (
+      String(order.shippingProvider || '').toLowerCase().includes('store') ||
+      String(order.shippingProvider || '').toLowerCase().includes('pickup') ||
+      String(order.courierName || '').toLowerCase().includes('store') ||
+      String(order.courierName || '').toLowerCase().includes('pickup') ||
+      order.selectedShippingOptionId === 'pickup-store' ||
+      (order.shippingAddress as any)?.deliveryMethod === 'PICKUP' ||
+      (order.shippingAddress as any)?.fulfillmentType === 'STORE_PICKUP' ||
+      (order.shippingAddress as any)?.isStorePickup === true
+    );
+
+    if (isStorePickup) {
+      const updatedOrder = await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          shippingProvider: 'Store Pickup',
+          courierName: 'Pickup from Store',
+          awbNumber: 'STORE-PICKUP',
+          trackingNumber: 'STORE-PICKUP',
+          shipmentId: `PICKUP-${order.orderNumber}`,
+          shippingCharge: 0,
+          estimatedDelivery: null,
+          shipmentStatus: 'CREATED',
+          pickupRequested: true,
+          lastTrackingUpdate: new Date(),
+          trackingHistory: [
+            {
+              date: new Date().toISOString(),
+              status: 'Store Pickup Order Registered',
+              location: 'NEXRA 3D Gachibowli Store, Hyderabad',
+              remark: 'Customer selected store collection in Hyderabad.'
+            }
+          ]
+        },
+        include: { items: { include: { product: true } }, user: true, shipment: true }
+      });
+
+      await prisma.shipment.upsert({
+        where: { orderId: order.id },
+        create: {
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          shipmentNumber: `PICKUP-${order.orderNumber}`,
+          provider: 'Store Pickup',
+          courier: 'Customer Store Collection (Hyderabad)',
+          awbNumber: 'STORE-PICKUP',
+          trackingNumber: 'STORE-PICKUP',
+          status: 'CREATED',
+          shippingCost: 0
+        },
+        update: {
+          provider: 'Store Pickup',
+          courier: 'Customer Store Collection (Hyderabad)',
+          awbNumber: 'STORE-PICKUP',
+          trackingNumber: 'STORE-PICKUP',
+          status: 'CREATED'
+        }
+      }).catch(() => {});
+
+      return updatedOrder;
+    }
+
     const providerName = (preferredProvider || order.shippingProvider || '').toLowerCase().includes('nimbus') ? 'NimbusPost' : 'Delhivery';
     const isNimbus = providerName === 'NimbusPost';
 
@@ -3817,6 +4046,10 @@ app.put(['/api/orders/:id/status', '/api/admin/orders/:id/status'], requireAuthM
         shipment: true
       }
     });
+
+    if (status) {
+      sendOrderStatusEmail(updated, status, description || title).catch((e) => console.error('Error sending status email:', e));
+    }
 
     return res.json({ success: true, message: 'Order status updated successfully', order: updated });
   } catch (err: any) {
@@ -4779,10 +5012,12 @@ app.put('/api/admin/shipments/:id/status', requireAdminMiddleware, async (req: R
     }
 
     if (shipment.orderId) {
-      await prisma.order.update({
+      const updatedOrder = await prisma.order.update({
         where: { id: shipment.orderId },
-        data: { status: mappedOrderStatus }
+        data: { status: mappedOrderStatus },
+        include: { items: { include: { product: true } }, user: true, shipment: true }
       });
+      sendOrderStatusEmail(updatedOrder, mappedOrderStatus, description).catch((e) => console.error('Error sending status email from shipment update:', e));
     }
 
     return res.json(shipment);
