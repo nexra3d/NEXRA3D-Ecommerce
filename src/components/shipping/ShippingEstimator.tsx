@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Truck, MapPin, CheckCircle2, AlertCircle, Clock, ShieldCheck, Loader2 } from 'lucide-react';
+import { Truck, MapPin, CheckCircle2, AlertCircle, Clock, ShieldCheck, Loader2, Info } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 
 interface ShippingEstimatorProps {
@@ -152,23 +152,31 @@ export const ShippingEstimator: React.FC<ShippingEstimatorProps> = ({
           </div>
 
           {shippingEstimate && (
-            <div className="grid grid-cols-2 gap-2 mt-2 pt-2 bg-white p-3 rounded-xl border border-slate-200/60">
-              <div>
-                <span className="text-slate-500 text-[11px] block">Estimated Delivery</span>
-                <span className="font-semibold text-slate-800 flex items-center gap-1 mt-0.5">
-                  <Clock className="w-3.5 h-3.5 text-indigo-600" />
-                  {shippingEstimate.estimatedDeliveryDate || `${shippingEstimate.estimatedDays} Business Days`}
-                </span>
-              </div>
-              <div className="text-right">
-                <span className="text-slate-500 text-[11px] block">Shipping Charge</span>
-                <span className="font-bold text-slate-900 mt-0.5 block">
-                  {shippingEstimate.isFreeShipping ? (
-                    <span className="text-emerald-600 uppercase text-xs">FREE SHIPPING</span>
-                  ) : (
-                    `₹${shippingEstimate.shippingCharge}`
-                  )}
-                </span>
+            <div className="space-y-2 mt-2">
+              {shippingEstimate.hasMissingWeightOrDims && (
+                <div className="bg-amber-50/90 border border-amber-200/80 rounded-xl p-2 flex items-start space-x-1.5 text-[11px] text-amber-800">
+                  <Info className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                  <span>Standard parcel estimate (0.5 kg) used as item weight/dimensions are not specified.</span>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-2 pt-1 bg-white p-3 rounded-xl border border-slate-200/60">
+                <div>
+                  <span className="text-slate-500 text-[11px] block">Estimated Delivery</span>
+                  <span className="font-semibold text-slate-800 flex items-center gap-1 mt-0.5">
+                    <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                    {shippingEstimate.estimatedDeliveryDate || `${shippingEstimate.estimatedDays} Business Days`}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-slate-500 text-[11px] block">Shipping Charge</span>
+                  <span className="font-bold text-slate-900 mt-0.5 block">
+                    {shippingEstimate.isFreeShipping ? (
+                      <span className="text-emerald-600 uppercase text-xs">FREE SHIPPING</span>
+                    ) : (
+                      `₹${shippingEstimate.shippingCharge}`
+                    )}
+                  </span>
+                </div>
               </div>
             </div>
           )}

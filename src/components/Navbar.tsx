@@ -162,16 +162,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <div className="flex items-center gap-4">
             <a
-              href="https://wa.me/918886159998?text=Hello%20NEXRA%203D%2C%20I%20have%20an%20inquiry%20regarding%203D%20printing%20services."
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-emerald-400 font-bold hover:text-emerald-300 transition-colors"
-            >
-              <WhatsAppIcon className="w-3.5 h-3.5 fill-[#25D366]" />
-              <span>+91 8886159998</span>
-            </a>
-            <span className="text-slate-700">|</span>
-            <a
               href="https://wa.me/918886149998?text=Hello%20NEXRA%203D%2C%20I%20have%20an%20inquiry%20regarding%203D%20printing%20services."
               target="_blank"
               rel="noopener noreferrer"
@@ -179,6 +169,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <WhatsAppIcon className="w-3.5 h-3.5 fill-[#25D366]" />
               <span>+91 8886149998</span>
+            </a>
+            <span className="text-slate-700">|</span>
+            <a
+              href="https://wa.me/918886159998?text=Hello%20NEXRA%203D%2C%20I%20have%20an%20inquiry%20regarding%203D%20printing%20services."
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-emerald-400 font-bold hover:text-emerald-300 transition-colors"
+            >
+              <WhatsAppIcon className="w-3.5 h-3.5 fill-[#25D366]" />
+              <span>+91 8886159998</span>
             </a>
           </div>
         </div>

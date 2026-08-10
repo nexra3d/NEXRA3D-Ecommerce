@@ -250,36 +250,35 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     )
   );
 
-  const colourOptionsList: LampOptionItem[] = hasLoadedDbOptions
+  const colourOptionsList: LampOptionItem[] = (hasLoadedDbOptions && dbColours.length > 0)
     ? dbColours
-    : (dbColours.length > 0
-        ? dbColours
-        : (availableColoursFromVariants.length > 0 ? availableColoursFromVariants : ['Warm White', 'Cool White', 'Neutral White']).map((c, idx) => ({
-            id: `col-${idx}`,
-            value: c,
-            priceDelta: c.toUpperCase().includes('RGB') ? 200 : 0,
-            sortOrder: idx + 1,
-            isActive: true
-          })));
+    : (availableColoursFromVariants.length > 0 ? availableColoursFromVariants : ['Warm White', 'Cool White', 'Neutral White']).map((c, idx) => ({
+        id: `col-${idx}`,
+        value: c,
+        priceDelta: c.toUpperCase().includes('RGB') ? 200 : 0,
+        sortOrder: idx + 1,
+        isActive: true
+      }));
 
-  const wattageOptionsList: LampOptionItem[] = hasLoadedDbOptions
+  const wattageOptionsList: LampOptionItem[] = (hasLoadedDbOptions && dbWattages.length > 0)
     ? dbWattages
-    : (dbWattages.length > 0
-        ? dbWattages
-        : (availableWattagesFromVariants.length > 0 ? availableWattagesFromVariants : ['5W', '7W', '9W', '12W']).map((w, idx) => {
-            let delta = 0;
-            const upper = w.toUpperCase().trim();
-            if (upper === '7W') delta = 100;
-            else if (upper === '9W') delta = 150;
-            else if (upper === '12W') delta = 200;
-            return {
-              id: `wat-${idx}`,
-              value: w,
-              priceDelta: delta,
-              sortOrder: idx + 1,
-              isActive: true
-            };
-          }));
+    : (availableWattagesFromVariants.length > 0 ? availableWattagesFromVariants : ['2W', '4W', '9W', '4W - 3in1']).map((w, idx) => {
+        let delta = 0;
+        const upper = w.toUpperCase().trim();
+        if (upper === '7W') delta = 100;
+        else if (upper === '9W' || upper.includes('9W')) delta = 150;
+        else if (upper === '12W' || upper.includes('12W')) delta = 200;
+        else if (upper === '15W' || upper.includes('15W')) delta = 250;
+        else if (upper.includes('3IN1') || upper.includes('3-IN-1')) delta = 25;
+        else if (upper === '4W') delta = 30;
+        return {
+          id: `wat-${idx}`,
+          value: w,
+          priceDelta: delta,
+          sortOrder: idx + 1,
+          isActive: true
+        };
+      });
 
   // Sync selected variant when colour or wattage changes
   useEffect(() => {

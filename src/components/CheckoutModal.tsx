@@ -13,7 +13,8 @@ import {
   Smartphone,
   Truck,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Info
 } from 'lucide-react';
 import { Address, CartItem, Coupon, Order, PaymentMethod, User } from '../types';
 import { apiFetch, getStoredToken } from '../lib/api';
@@ -768,6 +769,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
                         {/* Shipping Options Selector */}
                         <div className="space-y-2">
+                          {shippingEstimate?.hasMissingWeightOrDims && (
+                            <div className="bg-amber-50/90 border border-amber-200/80 rounded-xl p-2.5 flex items-start space-x-2 text-[11px] text-amber-800">
+                              <Info className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                              <div className="leading-tight">
+                                <span className="font-bold block text-amber-900">Standard Parcel Rate (0.5 kg)</span>
+                                <span className="text-[10px] text-amber-700">Item weight & dimensions are not specified in catalog. Rates estimated using standard 0.5 kg parcel defaults.</span>
+                              </div>
+                            </div>
+                          )}
+
                           <div className="flex items-center justify-between">
                             <span className="text-[11px] font-extrabold text-slate-800 uppercase tracking-wider">
                               Select Shipping Option

@@ -178,41 +178,61 @@ type ShippingProduct = {
  */
 function calculateParcelFromProducts(items: Array<{ quantity?: number; product?: ShippingProduct | null }>) {
   if (!Array.isArray(items) || items.length === 0) {
-    return { weightInGrams: 500, dimensions: { length: 15, width: 15, height: 10 } };
+    return {
+      weightInGrams: 500,
+      dimensions: { length: 15, width: 15, height: 10 },
+      hasMissingWeightOrDims: true,
+      weightNote: 'Standard 0.5 kg parcel estimate applied as item weight & dimensions are not specified.'
+    };
   }
 
   let weightInGrams = 0;
   let length = 15;
   let width = 15;
   let height = 0;
+  let hasMissingWeightOrDims = false;
 
   for (const item of items) {
     const product = item.product;
     const quantity = Math.max(1, Number(item.quantity) || 1);
     
+    const hasWeight = product?.weight !== null && product?.weight !== undefined && Number(product.weight) > 0;
+    const hasLen = product?.length !== null && product?.length !== undefined && Number(product.length) > 0;
+    const hasWid = product?.width !== null && product?.width !== undefined && Number(product.width) > 0;
+    const hasHgt = product?.height !== null && product?.height !== undefined && Number(product.height) > 0;
+
+    if (!hasWeight || !hasLen || !hasWid || !hasHgt) {
+      hasMissingWeightOrDims = true;
+    }
+
     // Default weight: 0.5kg (500g) if missing or invalid
-    const pWeight = product?.weight && Number.isFinite(Number(product.weight)) && Number(product.weight) > 0
-      ? Number(product.weight)
-      : 0.5;
-    
+    const pWeight = hasWeight ? Number(product!.weight) : 0.5;
     weightInGrams += (pWeight <= 20 ? Math.round(pWeight * 1000) : Math.round(pWeight)) * quantity;
 
-    const pLen = product?.length && Number.isFinite(Number(product.length)) && Number(product.length) > 0
-      ? Number(product.length)
-      : 15;
-    const pWid = product?.width && Number.isFinite(Number(product.width)) && Number(product.width) > 0
-      ? Number(product.width)
-      : 15;
-    const pHgt = product?.height && Number.isFinite(Number(product.height)) && Number(product.height) > 0
-      ? Number(product.height)
-      : 10;
+    const pLen = hasLen ? Number(product!.length) : 15;
+    const pWid = hasWid ? Number(product!.width) : 15;
+    const pHgt = hasHgt ? Number(product!.height) : 10;
 
     length = Math.max(length, pLen);
     width = Math.max(width, pWid);
     height += pHgt * quantity;
   }
 
-  return { weightInGrams: Math.max(weightInGrams, 300), dimensions: { length: Math.max(length, 10), width: Math.max(width, 10), height: Math.max(height, 5) } };
+  const finalWeightGrams = Math.max(weightInGrams, 300);
+  const finalDimensions = {
+    length: Math.max(length, 10),
+    width: Math.max(width, 10),
+    height: Math.max(height, 5)
+  };
+
+  return {
+    weightInGrams: finalWeightGrams,
+    dimensions: finalDimensions,
+    hasMissingWeightOrDims,
+    weightNote: hasMissingWeightOrDims
+      ? `Standard parcel estimate (${(finalWeightGrams / 1000).toFixed(2)} kg) applied because item weight & dimensions are not specified.`
+      : `Calculated from specified item weight (${(finalWeightGrams / 1000).toFixed(2)} kg) & dimensions (${finalDimensions.length}x${finalDimensions.width}x${finalDimensions.height} cm).`
+  };
 }
 
 function sanitizeDiagnosticValue(value: any): any {
@@ -2541,6 +2561,77 @@ app.get('/api/products/:id/lamp-options', async (req: Request, res: Response) =>
   }
 });
 
+app.post('/api/products/:id/lamp-options/sync', requireAdminMiddleware, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { colours = [], wattages = [] } = req.body;
+
+  try {
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    // Delete existing lamp options for this product
+    await prisma.productLampOption.deleteMany({
+      where: { productId: id }
+    });
+
+    const newRecords: any[] = [];
+    let order = 1;
+
+    for (const col of colours) {
+      if (!col || !String(col).trim()) continue;
+      const val = String(col).trim();
+      let delta = 0;
+      if (val.toUpperCase().includes('RGB') || val.toUpperCase().includes('MULTI')) delta = 200;
+      newRecords.push({
+        id: `lamp-opt-col-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        productId: id,
+        optionType: 'COLOUR',
+        optionValue: val,
+        priceDelta: delta,
+        sortOrder: order++,
+        isActive: true
+      });
+    }
+
+    order = 1;
+    for (const watt of wattages) {
+      if (!watt || !String(watt).trim()) continue;
+      const val = String(watt).trim();
+      let delta = 0;
+      const u = val.toUpperCase();
+      if (u === '7W') delta = 100;
+      else if (u === '9W' || u.includes('9W')) delta = 150;
+      else if (u === '12W' || u.includes('12W')) delta = 200;
+      else if (u === '15W' || u.includes('15W')) delta = 250;
+      else if (u.includes('3IN1') || u.includes('3-IN-1') || u.includes('3 IN 1')) delta = 25;
+      else if (u === '4W') delta = 30;
+
+      newRecords.push({
+        id: `lamp-opt-wat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        productId: id,
+        optionType: 'WATTAGE',
+        optionValue: val,
+        priceDelta: delta,
+        sortOrder: order++,
+        isActive: true
+      });
+    }
+
+    if (newRecords.length > 0) {
+      await prisma.productLampOption.createMany({
+        data: newRecords
+      });
+    }
+
+    return res.json({ success: true, count: newRecords.length, records: newRecords });
+  } catch (err: any) {
+    console.error('Error syncing lamp options:', err);
+    return res.status(500).json({ error: err.message || 'Failed to sync lamp options' });
+  }
+});
+
 app.post('/api/products/:id/lamp-options', requireAdminMiddleware, async (req: Request, res: Response) => {
   const { id } = req.params;
   const { optionType, optionValue, priceDelta = 0, sortOrder = 0, isActive = true } = req.body;
@@ -3214,6 +3305,11 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
       include: { items: { include: { product: true } }, user: true, shipment: true }
     });
 
+    // Send automatic order notification email to nexra3d@gmail.com
+    sendNewOrderNotificationEmail(finalCreatedOrder || newOrder, isCod ? 'CREATED' : 'CREATED').catch((emailErr) => {
+      console.error('[Order Notification Email Failed]', emailErr);
+    });
+
     return res.status(201).json({
       success: true,
       message: 'Order created successfully',
@@ -3224,6 +3320,186 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
     return res.status(500).json({ error: 'Checkout failed: ' + (err.message || String(err)) });
   }
 });
+
+async function sendNewOrderNotificationEmail(orderInput: any, eventType: 'CREATED' | 'PAID' = 'CREATED') {
+  try {
+    let order = typeof orderInput === 'string'
+      ? await prisma.order.findUnique({
+          where: { id: orderInput },
+          include: { items: { include: { product: true, variant: true } }, user: true, shipment: true }
+        })
+      : orderInput;
+
+    if (!order) return;
+
+    if (!order.items || order.items.length === 0 || !order.items[0]?.product) {
+      const refreshed = await prisma.order.findUnique({
+        where: { id: order.id },
+        include: { items: { include: { product: true, variant: true } }, user: true, shipment: true }
+      });
+      if (refreshed) order = refreshed;
+    }
+
+    const addr = (order.shippingAddress as any) || {};
+    const customerName = addr.fullName || addr.name || order.user?.name || 'Valued Customer';
+    const customerEmail = addr.email || order.user?.email || 'N/A';
+    const customerPhone = addr.phone || addr.phoneNumber || order.user?.phone || 'N/A';
+
+    const street = addr.street || addr.address || addr.addressLine1 || '';
+    const city = addr.city || '';
+    const state = addr.state || '';
+    const pincode = addr.postalCode || addr.pincode || addr.zipCode || '';
+    const fullAddress = [street, city, state, pincode].filter(Boolean).join(', ') || 'N/A';
+
+    const itemsList = order.items || [];
+    const itemsHtml = itemsList.map((it: any, index: number) => {
+      const p = it.product || {};
+      const title = it.productTitle || p.name || 'Product';
+      const sku = it.skuSnapshot || it.variant?.sku || p.sku || 'N/A';
+      const colour = it.selectedColour || it.variant?.colour || (it.variant?.attributes as any)?.colour || '';
+      const wattage = it.selectedWattage || it.variant?.wattage || (it.variant?.attributes as any)?.wattage || '';
+      const qty = Number(it.quantity) || 1;
+      const price = Number(it.price || p.price || 0);
+      const total = Number(it.totalPrice || (price * qty));
+
+      const variantParts = [];
+      if (colour) variantParts.push(`Colour: ${colour}`);
+      if (wattage) variantParts.push(`Wattage: ${wattage}`);
+      const variantStr = variantParts.length > 0 ? ` (${variantParts.join(', ')})` : '';
+
+      return `
+        <tr style="border-bottom: 1px solid #e2e8f0; ${index % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
+          <td style="padding: 10px 12px; vertical-align: top;">
+            <div style="font-weight: bold; color: #0f172a; font-size: 13px;">${title}</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 2px;">SKU: <strong>${sku}</strong>${variantStr}</div>
+          </td>
+          <td style="padding: 10px 12px; text-align: center; color: #0f172a; font-weight: bold; vertical-align: top;">${qty}</td>
+          <td style="padding: 10px 12px; text-align: right; color: #334155; vertical-align: top;">₹${price.toLocaleString('en-IN')}</td>
+          <td style="padding: 10px 12px; text-align: right; font-weight: bold; color: #0f172a; vertical-align: top;">₹${total.toLocaleString('en-IN')}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const isPaid = eventType === 'PAID' || order.paymentStatus === 'PAID';
+    const isCod = order.paymentMethod === 'COD' || order.paymentMethod === 'CASH_ON_DELIVERY';
+    const statusBadgeColor = isPaid ? '#16a34a' : (isCod ? '#d97706' : '#2563eb');
+    const statusBadgeText = isPaid ? 'PAYMENT CONFIRMED (PAID)' : (isCod ? 'CASH ON DELIVERY (COD)' : 'PAYMENT PENDING');
+
+    const emailSubject = isPaid
+      ? `✅ [NEW PAID ORDER] #${order.orderNumber} - ₹${Number(order.totalAmount).toLocaleString('en-IN')} (${order.paymentMethod})`
+      : `🛒 [NEW ORDER] #${order.orderNumber} - ₹${Number(order.totalAmount).toLocaleString('en-IN')} (${order.paymentMethod})`;
+
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
+        <div style="background-color: #0f172a; padding: 24px; text-align: center; border-bottom: 4px solid #4f46e5;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: bold; letter-spacing: 0.5px;">NEXRA 3D — NEW ORDER NOTIFICATION</h1>
+          <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">Order #${order.orderNumber}</p>
+        </div>
+
+        <div style="background-color: #f1f5f9; padding: 12px 24px; border-bottom: 1px solid #e2e8f0;">
+          <span style="font-size: 12px; font-weight: bold; color: #334155; text-transform: uppercase;">Payment Status: </span>
+          <span style="background-color: ${statusBadgeColor}; color: #ffffff; font-size: 11px; font-weight: bold; padding: 3px 10px; border-radius: 9999px;">${statusBadgeText}</span>
+        </div>
+
+        <div style="padding: 24px; color: #334155; line-height: 1.5;">
+          <h3 style="margin-top: 0; color: #0f172a; font-size: 15px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">Customer & Delivery Details</h3>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px;">
+            <tr>
+              <td style="padding: 6px 0; font-weight: bold; width: 140px; color: #64748b;">Customer Name:</td>
+              <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${customerName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; font-weight: bold; color: #64748b;">Email Address:</td>
+              <td style="padding: 6px 0;"><a href="mailto:${customerEmail}" style="color: #2563eb; text-decoration: none; font-weight: bold;">${customerEmail}</a></td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; font-weight: bold; color: #64748b;">Phone Number:</td>
+              <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${customerPhone}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; font-weight: bold; color: #64748b; vertical-align: top;">Shipping Address:</td>
+              <td style="padding: 6px 0; color: #0f172a; line-height: 1.4;">${fullAddress}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; font-weight: bold; color: #64748b;">Payment Method:</td>
+              <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${order.paymentMethod}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; font-weight: bold; color: #64748b;">Courier Partner:</td>
+              <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${order.shippingProvider || 'Delhivery'} ${order.awbNumber ? `(AWB: ${order.awbNumber})` : ''}</td>
+            </tr>
+          </table>
+
+          <h3 style="color: #0f172a; font-size: 15px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; margin-top: 24px;">Ordered Items</h3>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px;">
+            <thead>
+              <tr style="background-color: #0f172a; color: #ffffff;">
+                <th style="padding: 8px 12px; text-align: left;">Item Description</th>
+                <th style="padding: 8px 12px; text-align: center;">Qty</th>
+                <th style="padding: 8px 12px; text-align: right;">Unit Price</th>
+                <th style="padding: 8px 12px; text-align: right;">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+
+          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-top: 16px;">
+            <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 4px 0; color: #64748b;">Items Subtotal:</td>
+                <td style="padding: 4px 0; text-align: right; font-weight: bold;">₹${Number(order.subtotal || 0).toLocaleString('en-IN')}</td>
+              </tr>
+              ${Number(order.discountAmount) > 0 ? `
+              <tr>
+                <td style="padding: 4px 0; color: #16a34a;">Discount Applied (${order.couponCode || 'Coupon'}):</td>
+                <td style="padding: 4px 0; text-align: right; font-weight: bold; color: #16a34a;">-₹${Number(order.discountAmount).toLocaleString('en-IN')}</td>
+              </tr>
+              ` : ''}
+              <tr>
+                <td style="padding: 4px 0; color: #64748b;">Shipping Fee:</td>
+                <td style="padding: 4px 0; text-align: right; font-weight: bold;">${Number(order.shippingFee) === 0 ? 'FREE' : `₹${Number(order.shippingFee).toLocaleString('en-IN')}`}</td>
+              </tr>
+              <tr>
+                <td style="padding: 4px 0; color: #64748b;">Tax / GST:</td>
+                <td style="padding: 4px 0; text-align: right; font-weight: bold;">₹${Number(order.taxAmount || 0).toLocaleString('en-IN')}</td>
+              </tr>
+              <tr style="border-top: 2px solid #cbd5e1;">
+                <td style="padding: 10px 0 0 0; font-size: 15px; font-weight: bold; color: #0f172a;">Grand Total Amount:</td>
+                <td style="padding: 10px 0 0 0; text-align: right; font-size: 18px; font-weight: bold; color: #4f46e5;">₹${Number(order.totalAmount).toLocaleString('en-IN')}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="margin-top: 24px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 16px;">
+            Automated notification sent to <strong>nexra3d@gmail.com</strong> upon customer order completion.
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Send email to nexra3d@gmail.com
+    await sendEmail({
+      to: 'nexra3d@gmail.com',
+      subject: emailSubject,
+      html: emailHtml
+    });
+
+    // Also send confirmation copy to customer if valid email provided
+    if (customerEmail && customerEmail.includes('@') && !customerEmail.includes('@store.com')) {
+      await sendEmail({
+        to: customerEmail,
+        subject: `Order Confirmation #${order.orderNumber} - NEXRA 3D`,
+        html: emailHtml
+      }).catch((e) => console.warn('[Order Email] Customer email warning:', e?.message));
+    }
+
+    console.log(`[Order Email] Admin notification successfully sent for order #${order.orderNumber} to nexra3d@gmail.com`);
+  } catch (err: any) {
+    console.error('[Order Email] Error sending admin order notification email:', err);
+  }
+}
 
 async function autoProcessShipment(orderId: string, preferredProvider?: string, courierId?: string) {
   try {
@@ -3696,6 +3972,11 @@ const handleRazorpayVerifyPayment = async (req: AuthenticatedRequest, res: Respo
       if (updatedOrder) {
         const processed = await autoProcessShipment(updatedOrder.id, updatedOrder.shippingProvider);
         if (processed) updatedOrder = processed;
+
+        // Send payment confirmation email notification to nexra3d@gmail.com
+        sendNewOrderNotificationEmail(updatedOrder, 'PAID').catch((e) => {
+          console.error('[Payment Notification Email Failed]', e);
+        });
       }
     }
 
@@ -4781,6 +5062,11 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
       codAvailable,
       options: finalOptions,
       rates: finalOptions,
+      parcelWeightInGrams: deadWeightGrams,
+      chargeableWeightGrams,
+      parcelDimensions: finalDimensions,
+      hasMissingWeightOrDims: Boolean(parcel.hasMissingWeightOrDims),
+      weightNote: parcel.weightNote,
       providers: {
         delhivery: {
           available: delhiveryRes.status === 'fulfilled' && Boolean(delhiveryRes.value && delhiveryRes.value.serviceable),

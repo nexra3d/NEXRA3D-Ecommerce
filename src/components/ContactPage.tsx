@@ -211,7 +211,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({
                       WhatsApp Chat
                       <span className="text-[10px] bg-emerald-600 text-white font-semibold px-2 py-0.5 rounded-full uppercase">Instant</span>
                     </h5>
-                    <p className="text-xs text-slate-600 mt-0.5 font-medium">+91 8886159998</p>
+                    <p className="text-xs text-slate-600 mt-0.5 font-medium">+91 8886159998 </p>
                     <a
                       href="https://wa.me/918886159998?text=Hello%20NEXRA%203D%2C%20I%20have%20an%20inquiry%20regarding%203D%20printing%20services."
                       target="_blank"
@@ -230,7 +230,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({
                   </div>
                   <div>
                     <h5 className="font-bold text-slate-900">Email Contact</h5>
-                    <p className="text-slate-600 mt-0.5">Sales: <a href="mailto:sales@nexra3d.in" className="text-cyan-600 hover:underline">sales@nexra3d.in</a></p>
+                    <p className="text-slate-600 mt-0.5">Sales: <a href="mailto:nexra3d@gmail.com" className="text-cyan-600 hover:underline font-bold">nexra3d@gmail.com</a></p>
                     <p className="text-slate-600 mt-0.5">Enquiry: <a href="mailto:Enquiry@nexra3d.in" className="text-cyan-600 hover:underline">Enquiry@nexra3d.in</a></p>
                     <p className="text-slate-600 mt-0.5">Support: <a href="mailto:support@nexra3d.in" className="text-cyan-600 hover:underline">support@nexra3d.in</a></p>
                   </div>

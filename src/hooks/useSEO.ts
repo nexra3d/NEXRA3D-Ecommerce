@@ -74,7 +74,7 @@ export function useSEO({
       logo: `${window.location.origin}/logo.png`,
       contactPoint: {
         '@type': 'ContactPoint',
-        telephone: '+91-080-4567-8900',
+        telephone: '+91-8886149998',
         contactType: 'customer support',
         areaServed: 'IN',
         availableLanguage: ['en', 'hi']

@@ -83,15 +83,6 @@ export const Footer: React.FC<FooterProps> = ({
                 <WhatsAppIcon className="w-4 h-4 fill-[#25D366] shrink-0" />
                 <div className="flex items-center gap-2 flex-wrap">
                   <a
-                    href="https://wa.me/918886159998?text=Hello%20NEXRA%203D%2C%20I%20have%20an%20inquiry%20regarding%203D%20printing%20services."
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-emerald-400 font-medium hover:underline"
-                  >
-                    +91 8886159998
-                  </a>
-                  <span>/</span>
-                  <a
                     href="https://wa.me/918886149998?text=Hello%20NEXRA%203D%2C%20I%20have%20an%20inquiry%20regarding%203D%20printing%20services."
                     target="_blank"
                     rel="noopener noreferrer"
@@ -99,12 +90,21 @@ export const Footer: React.FC<FooterProps> = ({
                   >
                     +91 8886149998
                   </a>
+                  <span>/</span>
+                  <a
+                    href="https://wa.me/918886159998?text=Hello%20NEXRA%203D%2C%20I%20have%20an%20inquiry%20regarding%203D%20printing%20services."
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-emerald-400 font-medium hover:underline"
+                  >
+                    +91 8886159998
+                  </a>
                 </div>
               </div>
               <div className="flex items-start space-x-2">
                 <Mail className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                 <div className="flex flex-col text-[11px] space-y-0.5">
-                  <span>Sales: sales@nexra3d.in</span>
+                  <span>Sales: <a href="mailto:nexra3d@gmail.com" className="hover:underline text-cyan-400">nexra3d@gmail.com</a></span>
                   <span>Enquiry: Enquiry@nexra3d.in</span>
                   <span>Support: support@nexra3d.in</span>
                 </div>

@@ -385,12 +385,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       .catch((err) => console.error(err));
   }, [isOpen, activeTab]);
 
-  // Load product images and variants when editing a product
+  // Load product images, variants, and lamp options when editing a product
   const loadProductImagesAndVariants = async (productId: string) => {
     try {
-      const [imgRes, varRes] = await Promise.all([
+      const [imgRes, varRes, lampRes] = await Promise.all([
         fetch(`/api/products/${productId}/images`, { headers: getAuthHeaders(), credentials: 'include' }),
-        fetch(`/api/products/${productId}/variants`, { headers: getAuthHeaders(), credentials: 'include' })
+        fetch(`/api/products/${productId}/variants`, { headers: getAuthHeaders(), credentials: 'include' }),
+        fetch(`/api/products/${productId}/lamp-options?includeInactive=true`, { headers: getAuthHeaders(), credentials: 'include' })
       ]);
       if (imgRes.ok) {
         const imgs = await imgRes.json();
@@ -400,8 +401,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const vars = await varRes.json();
         setProductVariants(vars);
       }
+      if (lampRes.ok) {
+        const lampData = await lampRes.json();
+        if (lampData && Array.isArray(lampData.colours) && lampData.colours.length > 0) {
+          setLampColours(lampData.colours.map((c: any) => c.value));
+        }
+        if (lampData && Array.isArray(lampData.wattages) && lampData.wattages.length > 0) {
+          setLampWattages(lampData.wattages.map((w: any) => w.value));
+        }
+      }
     } catch (err) {
-      console.error('Error loading images/variants:', err);
+      console.error('Error loading images/variants/lamp-options:', err);
     }
   };
 
@@ -653,12 +663,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     setVariantError(null);
     try {
-      const res = await fetch(`/api/products/${editingProductId}/variants/matrix`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        credentials: 'include',
-        body: JSON.stringify({ variants: productVariants })
-      });
+      // Sync lamp options and variant matrix in parallel
+      const [res] = await Promise.all([
+        fetch(`/api/products/${editingProductId}/variants/matrix`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          credentials: 'include',
+          body: JSON.stringify({ variants: productVariants })
+        }),
+        fetch(`/api/products/${editingProductId}/lamp-options/sync`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          credentials: 'include',
+          body: JSON.stringify({ colours: lampColours, wattages: lampWattages })
+        }).catch((err) => console.warn('Lamp sync error:', err))
+      ]);
       const data = await res.json();
       if (!res.ok) {
         setVariantError(data.error || 'Failed to save variant matrix');
@@ -858,6 +877,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           } catch (uploadErr) {
             console.error('Batch upload error for new product:', uploadErr);
           }
+        }
+      }
+
+      // Sync lamp options if defined
+      if (savedProductId && (lampColours.length > 0 || lampWattages.length > 0)) {
+        try {
+          await fetch(`/api/products/${savedProductId}/lamp-options/sync`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            credentials: 'include',
+            body: JSON.stringify({ colours: lampColours, wattages: lampWattages })
+          });
+        } catch (lampErr) {
+          console.error('Lamp options sync error:', lampErr);
         }
       }
 
