@@ -704,38 +704,10 @@ async function seedInitialDatabase() {
     }
 
     // Seed Categories
-    for (const catData of INITIAL_CATEGORIES) {
-      let existingCat = await prisma.category.findUnique({ where: { slug: catData.slug } });
-      if (!existingCat) {
-        existingCat = await prisma.category.create({
-          data: {
-            id: catData.id,
-            name: catData.name,
-            slug: catData.slug,
-            description: catData.description || null,
-            imageUrl: catData.imageUrl || null,
-            isActive: true
-          }
-        });
-      }
-
-      if (catData.subcategories && Array.isArray(catData.subcategories)) {
-        for (const sub of catData.subcategories) {
-          const existingSub = await prisma.category.findUnique({ where: { slug: sub.slug } });
-          if (!existingSub) {
-            await prisma.category.create({
-              data: {
-                id: sub.id,
-                name: sub.name,
-                slug: sub.slug,
-                parentId: existingCat.id,
-                isActive: true
-              }
-            });
-          }
-        }
-      }
-    }
+    // Categories are managed from the Admin Dashboard / Supabase.
+    // DO NOT auto-seed categories here.
+    // This prevents categories deleted by the administrator
+    // from being recreated on application startup or refresh.
 
     // Seed Products
     for (const p of INITIAL_PRODUCTS) {
