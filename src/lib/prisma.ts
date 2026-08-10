@@ -42,6 +42,7 @@ export async function ensureDbSchema() {
       ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "length" DOUBLE PRECISION;
       ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "width" DOUBLE PRECISION;
       ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "height" DOUBLE PRECISION;
+
       ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shippingProvider" TEXT;
       ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "awbNumber" TEXT;
       ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingNumber" TEXT;
@@ -54,8 +55,29 @@ export async function ensureDbSchema() {
       ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "manifestUrl" TEXT;
       ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "lastTrackingUpdate" TIMESTAMP(3);
       ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingHistory" JSONB;
+
+      ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "colour" TEXT;
+      ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "wattage" TEXT;
+      ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "attributes" JSONB;
+
+      ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "skuSnapshot" TEXT;
+      ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "selectedColour" TEXT;
+      ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "selectedWattage" TEXT;
+
+      CREATE TABLE IF NOT EXISTS "product_images" (
+        "id" TEXT NOT NULL,
+        "productId" TEXT NOT NULL,
+        "url" TEXT NOT NULL,
+        "publicId" TEXT,
+        "altText" TEXT,
+        "sortOrder" INTEGER NOT NULL DEFAULT 0,
+        "isPrimary" BOOLEAN NOT NULL DEFAULT false,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "product_images_pkey" PRIMARY KEY ("id")
+      );
     `);
-    console.log('[Prisma Schema Sync] Successfully ensured orders table columns (pickupRequested, etc.) exist in PostgreSQL.');
+    console.log('[Prisma Schema Sync] Successfully ensured products, orders, product_variants, order_items, and product_images schema exist in PostgreSQL.');
   } catch (err: any) {
     console.warn('[Prisma Schema Sync] Note during schema check:', err?.message || err);
   }
