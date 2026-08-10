@@ -33,12 +33,23 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const hasDiscount = mrp > sellingPrice;
   const discountPercent = product.discountPercentage ?? (hasDiscount ? Math.round(((mrp - sellingPrice) / mrp) * 100) : 0);
 
-  const stockQty = product.stockQuantity ?? product.stock ?? 0;
-  const lowStockThreshold = product.lowStockThreshold || 5;
+  const stockQty = Number(product.stockQuantity ?? product.stock ?? 0);
+  const lowStockThreshold = Number(product.lowStockThreshold || 5);
   const isOut = stockQty <= 0;
   const isLowStock = !isOut && stockQty <= lowStockThreshold;
 
-  const primaryImg = product.imageUrl || (product.images && product.images[0]) || 'https://images.unsplash.com/photo-1527977966376-1c8408f9f108?auto=format&fit=crop&q=80&w=800';
+  const getImageUrl = (img: any): string => {
+    if (!img) return '';
+    if (typeof img === 'string') return img;
+    if (typeof img === 'object' && img.url) return String(img.url);
+    return '';
+  };
+
+  const primaryImg =
+    getImageUrl(product.imageUrl) ||
+    getImageUrl(product.images?.[0]) ||
+    getImageUrl(product.productImages?.[0]) ||
+    'https://images.unsplash.com/photo-1527977966376-1c8408f9f108?auto=format&fit=crop&q=80&w=800';
 
   const categoryName = product.category?.name || product.brand || 'AeroCore';
   const productName = product.name || product.title || 'Product';
@@ -47,7 +58,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     <div className="group bg-white rounded-2xl border border-slate-200/90 hover:border-indigo-300 transition-all hover:shadow-xl flex flex-col justify-between overflow-hidden relative">
       <div>
         {/* Product Image Thumbnail */}
-        <div className="relative aspect-4/3 bg-slate-50 overflow-hidden cursor-pointer flex items-center justify-center p-2" onClick={() => onQuickView(product)}>
+        <div className="relative aspect-[4/3] h-52 sm:h-56 w-full bg-slate-50 overflow-hidden cursor-pointer flex items-center justify-center p-2" onClick={() => onQuickView(product)}>
           <img
             src={primaryImg}
             alt={productName}
@@ -142,7 +153,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             </div>
             <span className="text-xs font-bold text-slate-800">
               {product.reviewCount && product.reviewCount > 0
-                ? (product.rating || 0).toFixed(1)
+                ? Number(product.rating || 0).toFixed(1)
                 : '0.0'}
             </span>
             <span className="text-[11px] text-slate-400">({product.reviewCount ?? 0})</span>

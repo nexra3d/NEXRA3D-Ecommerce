@@ -105,14 +105,16 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
           {cartItems.length > 0 ? (
             cartItems.map((item) => {
               const itemPrice = item.product.salePrice || item.product.price;
+              const firstImg = item.product.imageUrl || (item.product.images && item.product.images[0]);
+              const itemImg = typeof firstImg === 'string' ? firstImg : (firstImg?.url || 'https://images.unsplash.com/photo-1527977966376-1c8408f9f108?auto=format&fit=crop&q=80&w=800');
               return (
                 <div
                   key={item.productId}
                   className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex gap-3 items-center"
                 >
                   <img
-                    src={item.product.images[0]}
-                    alt={item.product.title}
+                    src={itemImg}
+                    alt={item.product.title || item.product.name}
                     className="w-16 h-16 object-contain p-1 rounded-xl border border-slate-200 shrink-0 bg-white"
                   />
 

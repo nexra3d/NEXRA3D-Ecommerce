@@ -141,7 +141,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({
           </div>
 
           <div className="relative">
-            <div className="aspect-4/3 rounded-2xl overflow-hidden shadow-xl border border-slate-200 group">
+            <div className="aspect-[4/3] min-h-[250px] w-full rounded-2xl overflow-hidden shadow-xl border border-slate-200 group">
               <img
                 src="https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=1200"
                 alt="Bambu Lab High-Speed 3D Printers - NEXRA Industrial Printing Facility"

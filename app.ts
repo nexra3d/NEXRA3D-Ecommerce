@@ -961,7 +961,7 @@ async function requireAdminMiddleware(req: AuthenticatedRequest, res: Response, 
 export const app = express();
 
 // Execute DB Seeding
-// seedInitialDatabase().catch((e) => console.warn(e));
+seedInitialDatabase().catch((e) => console.warn('[DB Seed Warning]:', e));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -1777,7 +1777,7 @@ app.get('/api/products', async (req: Request, res: Response) => {
       ];
     }
 
-    const products = await prisma.product.findMany({
+    let products = await prisma.product.findMany({
       where: whereClause,
       include: {
         category: true,
@@ -1789,6 +1789,30 @@ app.get('/api/products', async (req: Request, res: Response) => {
       take: limit ? parseInt(String(limit), 10) : undefined,
       skip: offset ? parseInt(String(offset), 10) : undefined
     });
+
+    if (products.length === 0) {
+      try {
+        const totalCount = await prisma.product.count();
+        if (totalCount === 0) {
+          console.log('[API Products] Database is empty. Seeding initial products...');
+          await seedInitialDatabase();
+          products = await prisma.product.findMany({
+            where: whereClause,
+            include: {
+              category: true,
+              images: { orderBy: { sortOrder: 'asc' } },
+              variants: { where: { isActive: true } },
+              reviews: true
+            },
+            orderBy: { createdAt: 'desc' },
+            take: limit ? parseInt(String(limit), 10) : undefined,
+            skip: offset ? parseInt(String(offset), 10) : undefined
+          });
+        }
+      } catch (seedErr) {
+        console.warn('[API Products Auto-Seed Check Error]:', seedErr);
+      }
+    }
 
     const formattedProducts = products.map(formatPrismaProductResponse);
     return res.json(formattedProducts);

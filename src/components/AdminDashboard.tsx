@@ -1677,7 +1677,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       {productImages.map((img, idx) => (
                         <div
                           key={img.id}
-                          className="relative aspect-4/3 bg-slate-800 rounded-xl overflow-hidden border border-slate-700 group shadow-xs"
+                          className="relative aspect-[4/3] min-h-[120px] w-full bg-slate-800 rounded-xl overflow-hidden border border-slate-700 group shadow-xs"
                         >
                           <img src={img.url} alt={img.altText || 'Product'} className="w-full h-full object-cover" />
 
@@ -1735,7 +1735,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         pendingProductImages.map((item, idx) => (
                           <div
                             key={idx}
-                            className="relative aspect-4/3 bg-slate-800 rounded-xl overflow-hidden border border-slate-700 group shadow-xs"
+                            className="relative aspect-[4/3] min-h-[120px] w-full bg-slate-800 rounded-xl overflow-hidden border border-slate-700 group shadow-xs"
                           >
                             <img src={item.url} alt={`Pending ${idx}`} className="w-full h-full object-cover" />
                             {item.isPrimary && (
@@ -2060,7 +2060,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     {(Array.isArray(products) ? products : []).map((p) => (
                       <tr key={p.id} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors">
                         <td className="p-3 flex items-center space-x-3">
-                          <img src={p.imageUrl || p.images[0]} alt={p.name || p.title} className="w-10 h-10 object-cover rounded-lg bg-slate-900 border border-slate-700" />
+                          <img
+                            src={
+                              p.imageUrl ||
+                              (typeof p.images?.[0] === 'string' ? p.images[0] : (p.images?.[0]?.url || 'https://images.unsplash.com/photo-1527977966376-1c8408f9f108?auto=format&fit=crop&q=80&w=800'))
+                            }
+                            alt={p.name || p.title}
+                            className="w-10 h-10 object-cover rounded-lg bg-slate-900 border border-slate-700"
+                          />
                           <div>
                             <span className="font-bold text-slate-100 block">{p.name || p.title}</span>
                             <span className="text-[10px] text-slate-400 font-mono">SKU: {p.sku} • {p.category?.name || 'Catalog'}</span>

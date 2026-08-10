@@ -108,12 +108,6 @@ const getViewFromPath = (pathname: string, hash: string = ''): ViewType => {
   if (cleanPath === '/cart') return 'cart';
   if (cleanPath === '/wishlist') return 'wishlist';
 
-  // Fallback to saved view if path is home
-  const savedView = localStorage.getItem('nexra_current_view') as ViewType;
-  if (savedView && viewToPathMap[savedView] && cleanPath === '/') {
-    return savedView;
-  }
-
   return 'home';
 };
 

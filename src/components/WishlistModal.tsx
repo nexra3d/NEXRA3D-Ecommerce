@@ -39,15 +39,18 @@ export const WishlistModal: React.FC<WishlistModalProps> = ({
 
         <div className="p-6 overflow-y-auto space-y-3">
           {wishlistProducts.length > 0 ? (
-            wishlistProducts.map((p) => (
-              <div
-                key={p.id}
-                className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex items-center justify-between gap-3"
-              >
-                <div className="flex items-center space-x-3 min-w-0">
-                  <img
-                    src={p.images[0]}
-                    alt={p.title}
+            wishlistProducts.map((p) => {
+              const firstImg = p.imageUrl || (p.images && p.images[0]);
+              const pImg = typeof firstImg === 'string' ? firstImg : (firstImg?.url || 'https://images.unsplash.com/photo-1527977966376-1c8408f9f108?auto=format&fit=crop&q=80&w=800');
+              return (
+                <div
+                  key={p.id}
+                  className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex items-center justify-between gap-3"
+                >
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <img
+                      src={pImg}
+                      alt={p.title || p.name}
                     className="w-14 h-14 object-contain p-1 rounded-xl border border-slate-200 bg-white shrink-0"
                   />
                   <div className="min-w-0">
@@ -80,8 +83,9 @@ export const WishlistModal: React.FC<WishlistModalProps> = ({
                   </button>
                 </div>
               </div>
-            ))
-          ) : (
+            );
+          })
+        ) : (
             <div className="py-12 text-center text-slate-500 text-xs space-y-2">
               <Heart className="w-8 h-8 text-slate-300 mx-auto" />
               <p>Your wishlist is currently empty.</p>

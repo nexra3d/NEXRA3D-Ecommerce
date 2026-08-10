@@ -46,8 +46,12 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   onBuyNow,
   onSelectRelatedProduct
 }) => {
-  const imagesList = (product?.images && product.images.length > 0)
+  const rawImages = product?.images && product.images.length > 0
     ? product.images
+    : ((product as any)?.productImages && (product as any).productImages.length > 0 ? (product as any).productImages : []);
+
+  const imagesList: string[] = rawImages.length > 0
+    ? rawImages.map((img: any) => typeof img === 'string' ? img : (img?.url || '')).filter(Boolean)
     : [product?.imageUrl || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&q=80&w=800'];
 
   const variantsList: ProductVariant[] = product?.variants || product?.productVariants || [];
@@ -380,7 +384,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* Left Column: Image Gallery with Controls & Zoom */}
             <div className="space-y-4">
-              <div className="relative aspect-4/3 bg-slate-50 rounded-2xl overflow-hidden border border-slate-200/80 group flex items-center justify-center p-2">
+              <div className="relative aspect-[4/3] min-h-[260px] w-full bg-slate-50 rounded-2xl overflow-hidden border border-slate-200/80 group flex items-center justify-center p-2">
                 <img
                   src={imagesList[selectedImageIndex] || imagesList[0]}
                   alt={productName}
@@ -1003,7 +1007,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                       }}
                       className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 space-y-2 hover:border-indigo-300 transition-all cursor-pointer group"
                     >
-                      <div className="aspect-4/3 bg-white rounded-xl overflow-hidden border border-slate-100 flex items-center justify-center p-1">
+                      <div className="aspect-[4/3] min-h-[100px] w-full bg-white rounded-xl overflow-hidden border border-slate-100 flex items-center justify-center p-1">
                         <img
                           src={relImg}
                           alt={relProd.name || relProd.title}
