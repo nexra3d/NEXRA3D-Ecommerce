@@ -36,51 +36,71 @@ let dbSchemaEnsured = false;
 export async function ensureDbSchema() {
   if (dbSchemaEnsured || !hasDatabaseUrl || !rawPrisma || typeof rawPrisma.$executeRawUnsafe !== 'function') return;
   dbSchemaEnsured = true;
-  try {
-    await rawPrisma.$executeRawUnsafe(`
-      ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "weight" DOUBLE PRECISION;
-      ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "length" DOUBLE PRECISION;
-      ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "width" DOUBLE PRECISION;
-      ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "height" DOUBLE PRECISION;
 
-      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shippingProvider" TEXT;
-      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "awbNumber" TEXT;
-      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingNumber" TEXT;
-      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shipmentId" TEXT;
-      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "estimatedDelivery" TIMESTAMP(3);
-      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shipmentStatus" TEXT;
-      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "pickupRequested" BOOLEAN DEFAULT false;
-      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "labelUrl" TEXT;
-      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingUrl" TEXT;
-      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "manifestUrl" TEXT;
-      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "lastTrackingUpdate" TIMESTAMP(3);
-      ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingHistory" JSONB;
+  const ddlStatements = [
+    `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "weight" DOUBLE PRECISION;`,
+    `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "length" DOUBLE PRECISION;`,
+    `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "width" DOUBLE PRECISION;`,
+    `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "height" DOUBLE PRECISION;`,
 
-      ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "colour" TEXT;
-      ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "wattage" TEXT;
-      ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "attributes" JSONB;
+    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shippingProvider" TEXT;`,
+    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "awbNumber" TEXT;`,
+    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingNumber" TEXT;`,
+    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shipmentId" TEXT;`,
+    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "estimatedDelivery" TIMESTAMP(3);`,
+    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shipmentStatus" TEXT;`,
+    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "pickupRequested" BOOLEAN DEFAULT false;`,
+    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "labelUrl" TEXT;`,
+    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingUrl" TEXT;`,
+    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "manifestUrl" TEXT;`,
+    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "lastTrackingUpdate" TIMESTAMP(3);`,
+    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingHistory" JSONB;`,
 
-      ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "skuSnapshot" TEXT;
-      ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "selectedColour" TEXT;
-      ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "selectedWattage" TEXT;
+    `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "colour" TEXT;`,
+    `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "wattage" TEXT;`,
+    `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "attributes" JSONB;`,
 
-      CREATE TABLE IF NOT EXISTS "product_images" (
-        "id" TEXT NOT NULL,
-        "productId" TEXT NOT NULL,
-        "url" TEXT NOT NULL,
-        "publicId" TEXT,
-        "altText" TEXT,
-        "sortOrder" INTEGER NOT NULL DEFAULT 0,
-        "isPrimary" BOOLEAN NOT NULL DEFAULT false,
-        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT "product_images_pkey" PRIMARY KEY ("id")
-      );
-    `);
-    console.log('[Prisma Schema Sync] Successfully ensured products, orders, product_variants, order_items, and product_images schema exist in PostgreSQL.');
-  } catch (err: any) {
-    console.warn('[Prisma Schema Sync] Note during schema check:', err?.message || err);
+    `ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "skuSnapshot" TEXT;`,
+    `ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "selectedColour" TEXT;`,
+    `ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "selectedWattage" TEXT;`,
+
+    `CREATE TABLE IF NOT EXISTS "product_images" (
+      "id" TEXT NOT NULL,
+      "productId" TEXT NOT NULL,
+      "url" TEXT NOT NULL,
+      "publicId" TEXT,
+      "altText" TEXT,
+      "sortOrder" INTEGER NOT NULL DEFAULT 0,
+      "isPrimary" BOOLEAN NOT NULL DEFAULT false,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "product_images_pkey" PRIMARY KEY ("id")
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS "reviews" (
+      "id" TEXT NOT NULL,
+      "productId" TEXT NOT NULL,
+      "userId" TEXT,
+      "userName" TEXT NOT NULL,
+      "userEmail" TEXT,
+      "rating" INTEGER NOT NULL,
+      "title" TEXT,
+      "comment" TEXT NOT NULL,
+      "verified" BOOLEAN NOT NULL DEFAULT true,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "reviews_pkey" PRIMARY KEY ("id")
+    );`
+  ];
+
+  for (const statement of ddlStatements) {
+    try {
+      await rawPrisma.$executeRawUnsafe(statement);
+    } catch (err: any) {
+      console.warn('[Prisma Schema Sync] Note during DDL statement:', err?.message || err);
+    }
   }
+  console.log('[Prisma Schema Sync] Successfully executed DDL statements for PostgreSQL schema.');
 }
 
 function createModelProxy(modelName: string) {
