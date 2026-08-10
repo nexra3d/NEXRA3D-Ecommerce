@@ -37,7 +37,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const [couponCodeInput, setCouponCodeInput] = useState('');
   const [couponMsg, setCouponMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isApplying, setIsApplying] = useState(false);
-  const [shippingMethod, setShippingMethod] = useState<'standard' | 'pickup'>('standard');
+  const [shippingMethod, setShippingMethod] = useState<'nimbuspost' | 'standard' | 'pickup'>('nimbuspost');
 
   if (!isOpen) return null;
 
@@ -56,7 +56,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   );
 
   const baseShippingFee = cartSummary?.shippingFee ?? (subtotal > 999 || cartItems.length === 0 ? 0 : 99);
-  const shippingFee = shippingMethod === 'pickup' ? 0 : baseShippingFee;
+  const nimbusShippingFee = subtotal > 999 || cartItems.length === 0 ? 0 : 60;
+  const shippingFee = shippingMethod === 'pickup' ? 0 : (shippingMethod === 'nimbuspost' ? nimbusShippingFee : baseShippingFee);
   const grandTotal = Math.max(0, subtotal + tax + shippingFee - discountAmount);
 
   const handleCouponSubmit = async (e: React.FormEvent) => {
@@ -79,14 +80,14 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     <div className="fixed inset-0 z-50 overflow-hidden bg-slate-900/60 backdrop-blur-xs flex justify-end animate-in fade-in">
       <div className="bg-white w-full max-w-md h-full shadow-2xl flex flex-col justify-between border-l border-slate-200 animate-in slide-in-from-right">
         {/* Header */}
-        <div className="p-4 sm:p-6 border-b border-slate-200 flex items-center justify-between">
+        <div className="p-4 sm:p-6 border-b border-slate-200 flex items-center justify-between bg-slate-950 text-white">
           <div className="flex items-center space-x-2">
-            <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-400/30 text-cyan-400 flex items-center justify-center">
               <ShoppingBag className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-extrabold text-slate-900">Your Shopping Cart</h2>
-              <span className="text-xs text-slate-500 font-medium">
+              <h2 className="text-lg font-black text-white">Your Shopping Cart</h2>
+              <span className="text-xs text-slate-400 font-bold">
                 {cartItems.length} {cartItems.length === 1 ? 'Item' : 'Items'} Selected
               </span>
             </div>
@@ -94,7 +95,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+            className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -119,14 +120,14 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   />
 
                   <div className="flex-1 min-w-0 space-y-1">
-                    <span className="text-[10px] font-bold text-indigo-600 uppercase">{item.product.brand}</span>
+                    <span className="text-[10px] font-black text-cyan-700 uppercase">{item.product.brand}</span>
                     <h4 className="text-xs font-bold text-slate-900 truncate">{item.product.title}</h4>
 
                     {/* Variant & Lamp Attribute Badges */}
                     {(item.selectedColour || item.selectedWattage || item.variant?.colour || item.variant?.wattage || item.variant?.name) && (
                       <div className="flex flex-wrap gap-1 py-1">
                         {(item.selectedColour || item.variant?.colour) && (
-                          <span className="bg-indigo-50 text-indigo-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-indigo-100">
+                          <span className="bg-cyan-50 text-cyan-800 text-[10px] font-bold px-1.5 py-0.5 rounded border border-cyan-100">
                             Colour: {item.selectedColour || item.variant?.colour}
                           </span>
                         )}
@@ -221,12 +222,12 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       placeholder="Enter promo coupon code"
                       value={couponCodeInput}
                       onChange={(e) => setCouponCodeInput(e.target.value)}
-                      className="flex-1 bg-white border border-slate-200 text-slate-800 text-xs rounded-xl px-3 py-2 uppercase font-mono font-bold focus:outline-hidden focus:border-indigo-500"
+                      className="flex-1 bg-white border border-slate-200 text-slate-800 text-xs rounded-xl px-3 py-2 uppercase font-mono font-bold focus:outline-hidden focus:border-cyan-500"
                     />
                     <button
                       type="submit"
                       disabled={isApplying}
-                      className="bg-slate-900 hover:bg-indigo-600 text-white font-bold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer"
+                      className="bg-slate-900 hover:bg-cyan-600 text-white font-bold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer"
                     >
                       {isApplying ? 'Checking...' : 'Apply'}
                     </button>
@@ -244,55 +245,15 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               )}
             </div>
 
-            {/* Shipping Method Selector */}
-            <div className="space-y-2 border-t border-slate-200/80 pt-3">
-              <label className="text-[11px] font-black text-slate-900 uppercase tracking-wider block">
-                Select Shipping Method
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {/* Standard Shipping */}
-                <div
-                  onClick={() => setShippingMethod('standard')}
-                  className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
-                    shippingMethod === 'standard'
-                      ? 'border-indigo-600 bg-indigo-50/70 ring-1 ring-indigo-300'
-                      : 'border-slate-200 bg-white hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="flex items-center space-x-1.5">
-                    <Truck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                    <span className="font-extrabold text-slate-900 text-[11px]">Standard</span>
-                  </div>
-                  <span className="text-[10px] font-bold text-slate-700 block mt-1">
-                    {baseShippingFee === 0 ? <span className="text-emerald-600">FREE</span> : `₹${baseShippingFee}`}
-                  </span>
-                </div>
-
-                {/* Pickup from Store */}
-                <div
-                  onClick={() => setShippingMethod('pickup')}
-                  className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
-                    shippingMethod === 'pickup'
-                      ? 'border-indigo-600 bg-indigo-50/70 ring-1 ring-indigo-300'
-                      : 'border-slate-200 bg-white hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="flex items-center space-x-1.5">
-                    <Store className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span className="font-extrabold text-slate-900 text-[11px]">Store Pickup</span>
-                  </div>
-                  <span className="text-[10px] font-bold text-emerald-700 block mt-1">
-                    FREE (₹0)
-                  </span>
-                </div>
-              </div>
-
-              {shippingMethod === 'pickup' && (
-                <p className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 p-2 rounded-lg flex items-center gap-1 font-medium">
-                  <MapPin className="w-3 h-3 text-emerald-600 shrink-0" />
-                  <span>Pickup: Gachibowli, Hyderabad - 500046</span>
-                </p>
-              )}
+            {/* Shipping note */}
+            <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 text-[11px] text-slate-600 flex items-center justify-between">
+              <span className="flex items-center gap-1.5 font-medium text-slate-700">
+                <Truck className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
+                Shipping calculated at Checkout
+              </span>
+              <span className="text-[10px] text-cyan-700 font-bold bg-cyan-100/60 px-2 py-0.5 rounded-md">
+                NimbusPost & Delhivery
+              </span>
             </div>
 
             {/* Subtotal Calculation Breakdown */}
@@ -320,7 +281,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
               <div className="flex justify-between text-base font-black text-slate-900 pt-2 border-t border-slate-200">
                 <span>Grand Total</span>
-                <span className="text-indigo-600">₹{Number(grandTotal || 0).toLocaleString('en-IN')}</span>
+                <span className="text-cyan-700 font-black">₹{Number(grandTotal || 0).toLocaleString('en-IN')}</span>
               </div>
             </div>
 
@@ -330,7 +291,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 onProceedToCheckout();
                 onClose();
               }}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm py-3.5 rounded-2xl flex items-center justify-center space-x-2 transition-all shadow-md shadow-indigo-200 cursor-pointer"
+              className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-sm py-3.5 rounded-2xl flex items-center justify-center space-x-2 transition-all shadow-lg shadow-cyan-500/20 cursor-pointer"
             >
               <span>Proceed to Checkout</span>
               <ArrowRight className="w-4 h-4" />

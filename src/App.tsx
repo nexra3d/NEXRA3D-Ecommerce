@@ -1160,7 +1160,7 @@ export default function App() {
 
       {/* Home View */}
       {currentView === 'home' && (
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-12">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
           <HeroBanner
             categories={categories}
             onSelectCategory={(catId) => {
@@ -1177,38 +1177,6 @@ export default function App() {
             }}
             onExploreServices={() => setCurrentView('services')}
           />
-
-          {/* Featured Product Catalog Section */}
-          <div className="space-y-6 pt-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-black text-slate-900 tracking-tight">3D Printed Products Catalog</h2>
-                <p className="text-xs text-slate-500 mt-1">Explore our range of precision 3D printed creations, idols, decor, and components</p>
-              </div>
-              <button
-                onClick={() => {
-                  setFilters({ ...filters, categoryId: undefined });
-                  setCurrentView('shop');
-                }}
-                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center space-x-1 cursor-pointer"
-              >
-                <span>View All Products</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-
-            <ProductGrid
-              products={products}
-              categories={categories}
-              filters={filters}
-              onFilterChange={(newFilters) => setFilters(newFilters)}
-              wishlistProductIds={wishlistProductIds}
-              onToggleWishlist={handleToggleWishlist}
-              onAddToCart={handleAddToCart}
-              onQuickView={(p) => setQuickViewProduct(p)}
-              isLoading={isProductsLoading}
-            />
-          </div>
         </main>
       )}
 

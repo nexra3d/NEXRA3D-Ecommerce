@@ -2,6 +2,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
+
+const BCRYPT_SALT_ROUNDS = (process.env.NODE_ENV === 'test' || process.env.VITEST) ? 1 : 10;
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import Razorpay from 'razorpay';
@@ -176,43 +178,41 @@ type ShippingProduct = {
  */
 function calculateParcelFromProducts(items: Array<{ quantity?: number; product?: ShippingProduct | null }>) {
   if (!Array.isArray(items) || items.length === 0) {
-    const error: any = new Error('Shipping estimates require at least one product.');
-    error.shippingDataConfigured = false;
-    error.product = 'Product';
-    error.missingFields = ['weight', 'length', 'width', 'height'];
-    throw error;
+    return { weightInGrams: 500, dimensions: { length: 15, width: 15, height: 10 } };
   }
 
   let weightInGrams = 0;
-  let length = 0;
-  let width = 0;
+  let length = 15;
+  let width = 15;
   let height = 0;
 
   for (const item of items) {
     const product = item.product;
-    const missingFields = ['weight', 'length', 'width', 'height'].filter((field) => {
-      const value = product?.[field as keyof ShippingProduct];
-      return value === null || value === undefined || !Number.isFinite(Number(value)) || Number(value) <= 0;
-    });
-
-    if (!product || missingFields.length > 0) {
-      const productName = product?.name || 'Product';
-      const error: any = new Error(`Shipping dimensions/weight are not configured for product: ${productName}`);
-      error.shippingDataConfigured = false;
-      error.product = productName;
-      error.missingFields = missingFields.length > 0 ? missingFields : ['weight', 'length', 'width', 'height'];
-      throw error;
-    }
-
     const quantity = Math.max(1, Number(item.quantity) || 1);
-    const rawWeight = Number(product.weight);
-    weightInGrams += (rawWeight <= 20 ? Math.round(rawWeight * 1000) : Math.round(rawWeight)) * quantity;
-    length = Math.max(length, Number(product.length));
-    width = Math.max(width, Number(product.width));
-    height += Number(product.height) * quantity;
+    
+    // Default weight: 0.5kg (500g) if missing or invalid
+    const pWeight = product?.weight && Number.isFinite(Number(product.weight)) && Number(product.weight) > 0
+      ? Number(product.weight)
+      : 0.5;
+    
+    weightInGrams += (pWeight <= 20 ? Math.round(pWeight * 1000) : Math.round(pWeight)) * quantity;
+
+    const pLen = product?.length && Number.isFinite(Number(product.length)) && Number(product.length) > 0
+      ? Number(product.length)
+      : 15;
+    const pWid = product?.width && Number.isFinite(Number(product.width)) && Number(product.width) > 0
+      ? Number(product.width)
+      : 15;
+    const pHgt = product?.height && Number.isFinite(Number(product.height)) && Number(product.height) > 0
+      ? Number(product.height)
+      : 10;
+
+    length = Math.max(length, pLen);
+    width = Math.max(width, pWid);
+    height += pHgt * quantity;
   }
 
-  return { weightInGrams, dimensions: { length, width, height } };
+  return { weightInGrams: Math.max(weightInGrams, 300), dimensions: { length: Math.max(length, 10), width: Math.max(width, 10), height: Math.max(height, 5) } };
 }
 
 function sanitizeDiagnosticValue(value: any): any {
@@ -676,12 +676,62 @@ async function getFormattedWishlist(userId: string) {
   };
 }
 
+async function ensureCategoryExists(categoryId: string): Promise<string> {
+  if (!categoryId) {
+    const fallback = await prisma.category.findFirst();
+    if (fallback) return fallback.id;
+    const created = await prisma.category.create({
+      data: {
+        id: 'cat-general',
+        name: 'General',
+        slug: 'general',
+        description: 'General Category',
+        isActive: true
+      }
+    });
+    return created.id;
+  }
+
+  const existing = await prisma.category.findFirst({
+    where: { OR: [{ id: categoryId }, { slug: categoryId }] }
+  });
+  if (existing) return existing.id;
+
+  const foundInInitial = INITIAL_CATEGORIES.find(c => c.id === categoryId || c.slug === categoryId);
+  if (foundInInitial) {
+    const created = await prisma.category.create({
+      data: {
+        id: foundInInitial.id,
+        name: foundInInitial.name,
+        slug: foundInInitial.slug,
+        description: foundInInitial.description || null,
+        imageUrl: foundInInitial.imageUrl || null,
+        isActive: true
+      }
+    });
+    return created.id;
+  }
+
+  const nameFromId = categoryId.replace(/^cat-/, '').replace(/-/g, ' ');
+  const formattedName = nameFromId.charAt(0).toUpperCase() + nameFromId.slice(1);
+  const createdDefault = await prisma.category.create({
+    data: {
+      id: categoryId,
+      name: formattedName,
+      slug: categoryId,
+      description: `${formattedName} Category`,
+      isActive: true
+    }
+  });
+  return createdDefault.id;
+}
+
 // Seed initial database records if empty
 async function seedInitialDatabase() {
   try {
-    const adminHash = await bcrypt.hash('admin123', 10);
-    const varunHash = await bcrypt.hash('Varun123', 10);
-    const customerHash = await bcrypt.hash('customer123', 10);
+    const adminHash = await bcrypt.hash('admin123', BCRYPT_SALT_ROUNDS);
+    const varunHash = await bcrypt.hash('Varun123', BCRYPT_SALT_ROUNDS);
+    const customerHash = await bcrypt.hash('customer123', BCRYPT_SALT_ROUNDS);
 
     const defaultSeedAccounts = [
       { name: 'NEXRA Administrator', email: 'admin@nexra3d.in', password: adminHash, role: 'ADMIN' },
@@ -690,90 +740,116 @@ async function seedInitialDatabase() {
     ];
 
     for (const acc of defaultSeedAccounts) {
-      const existing = await prisma.user.findUnique({ where: { email: acc.email } });
-      if (!existing) {
-        await prisma.user.create({
-          data: {
-            name: acc.name,
-            email: acc.email,
-            password: acc.password,
-            role: acc.role as any
-          }
-        });
+      try {
+        const existing = await prisma.user.findUnique({ where: { email: acc.email } });
+        if (!existing) {
+          await prisma.user.create({
+            data: {
+              name: acc.name,
+              email: acc.email,
+              password: acc.password,
+              role: acc.role as any
+            }
+          });
+        }
+      } catch (userErr) {
+        console.warn(`[DB Seed] User seed note for ${acc.email}:`, userErr);
       }
     }
 
     // Seed Categories
-    // Categories are managed from the Admin Dashboard / Supabase.
-    // DO NOT auto-seed categories here.
-    // This prevents categories deleted by the administrator
-    // from being recreated on application startup or refresh.
+    for (const cat of INITIAL_CATEGORIES) {
+      try {
+        const existingCat = await prisma.category.findFirst({
+          where: { OR: [{ id: cat.id }, { slug: cat.slug }, { name: cat.name }] }
+        });
+        if (!existingCat) {
+          await prisma.category.create({
+            data: {
+              id: cat.id,
+              name: cat.name,
+              slug: cat.slug,
+              description: cat.description || null,
+              imageUrl: cat.imageUrl || null,
+              isActive: true
+            }
+          });
+        }
+      } catch (catErr) {
+        console.warn(`[DB Seed] Category seed note for ${cat.name}:`, catErr);
+      }
+    }
 
     // Seed Products
     for (const p of INITIAL_PRODUCTS) {
-      const existingProd = await prisma.product.findFirst({
-        where: { OR: [{ id: p.id }, { slug: p.slug }, { sku: p.sku }] }
-      });
-
-      const pSpecs = (p.specifications as any) || {};
-      const seedWeight = (p as any).weight ?? null;
-      const seedLength = (p as any).length ?? pSpecs.length ?? pSpecs.dimensions?.length ?? null;
-      const seedWidth = (p as any).width ?? pSpecs.width ?? pSpecs.dimensions?.width ?? null;
-      const seedHeight = (p as any).height ?? pSpecs.height ?? pSpecs.dimensions?.height ?? null;
-
-      if (!existingProd) {
-        const prod = await prisma.product.create({
-          data: {
-            id: p.id,
-            name: p.title || p.name || 'NEXRA Product',
-            slug: p.slug,
-            sku: p.sku,
-            shortDescription: p.shortDescription || null,
-            description: p.description || null,
-            price: p.price,
-            mrp: p.mrp || p.price,
-            discountPercentage: p.discountPercentage || 0,
-            taxPercentage: p.taxPercentage || 18,
-            stockQuantity: p.stockQuantity || p.stock || 10,
-            lowStockThreshold: 5,
-            weight: seedWeight,
-            length: seedLength,
-            width: seedWidth,
-            height: seedHeight,
-            imageUrl: p.images && p.images[0] ? p.images[0] : p.imageUrl || null,
-            isActive: true,
-            isFeatured: p.isFeatured || false,
-            isBestSeller: p.isBestSeller || false,
-            isNewArrival: p.isNewArrival || false,
-            categoryId: p.categoryId,
-            specifications: pSpecs
-          }
+      try {
+        const existingProd = await prisma.product.findFirst({
+          where: { OR: [{ id: p.id }, { slug: p.slug }, { sku: p.sku }] }
         });
 
-        if (p.images && p.images.length > 0) {
-          for (let idx = 0; idx < p.images.length; idx++) {
-            await prisma.productImage.create({
-              data: {
-                productId: prod.id,
-                url: p.images[idx],
-                altText: prod.name,
-                sortOrder: idx,
-                isPrimary: idx === 0
-              }
-            });
+        if (!existingProd) {
+          const validCategoryId = await ensureCategoryExists(p.categoryId);
+          const pSpecs = (p.specifications as any) || {};
+          const seedWeight = (p as any).weight ?? null;
+          const seedLength = (p as any).length ?? pSpecs.length ?? pSpecs.dimensions?.length ?? null;
+          const seedWidth = (p as any).width ?? pSpecs.width ?? pSpecs.dimensions?.width ?? null;
+          const seedHeight = (p as any).height ?? pSpecs.height ?? pSpecs.dimensions?.height ?? null;
+
+          const prod = await prisma.product.create({
+            data: {
+              id: p.id,
+              name: p.title || p.name || 'NEXRA Product',
+              slug: p.slug,
+              sku: p.sku,
+              shortDescription: p.shortDescription || null,
+              description: p.description || null,
+              price: p.price,
+              mrp: p.mrp || p.price,
+              discountPercentage: p.discountPercentage || 0,
+              taxPercentage: p.taxPercentage || 18,
+              stockQuantity: p.stockQuantity || p.stock || 10,
+              lowStockThreshold: 5,
+              weight: seedWeight,
+              length: seedLength,
+              width: seedWidth,
+              height: seedHeight,
+              imageUrl: p.images && p.images[0] ? p.images[0] : p.imageUrl || null,
+              isActive: true,
+              isFeatured: p.isFeatured || false,
+              isBestSeller: p.isBestSeller || false,
+              isNewArrival: p.isNewArrival || false,
+              categoryId: validCategoryId,
+              specifications: pSpecs
+            }
+          });
+
+          if (p.images && p.images.length > 0) {
+            for (let idx = 0; idx < p.images.length; idx++) {
+              await prisma.productImage.create({
+                data: {
+                  productId: prod.id,
+                  url: p.images[idx],
+                  altText: prod.name,
+                  sortOrder: idx,
+                  isPrimary: idx === 0
+                }
+              });
+            }
           }
         }
+      } catch (prodErr) {
+        console.warn(`[DB Seed] Product seed note for ${p.id}:`, prodErr);
       }
     }
 
     // Ensure 'Vinayaka idol - 7.5 cm' product exists and has weight and dimensions
-    const vinayakaProd = await prisma.product.findFirst({
-      where: { OR: [{ id: 'prod-vinayaka-idol-75cm' }, { name: 'Vinayaka idol - 7.5 cm' }] }
-    });
+    try {
+      const vinayakaProd = await prisma.product.findFirst({
+        where: { OR: [{ id: 'prod-vinayaka-idol-75cm' }, { name: 'Vinayaka idol - 7.5 cm' }] }
+      });
 
-    if (!vinayakaProd) {
-      const idolCat = await prisma.category.findFirst({ where: { slug: 'idols' } }) || await prisma.category.findFirst();
-      if (idolCat) {
+      if (!vinayakaProd) {
+        const validCategoryId = await ensureCategoryExists('cat-idols');
         await prisma.product.create({
           data: {
             id: 'prod-vinayaka-idol-75cm',
@@ -791,7 +867,7 @@ async function seedInitialDatabase() {
             width: 10,
             height: 12,
             imageUrl: 'https://images.unsplash.com/photo-1567157577867-05ccb1388e66?auto=format&fit=crop&q=80&w=800',
-            categoryId: idolCat.id,
+            categoryId: validCategoryId,
             specifications: {
               'Height': '7.5 cm',
               length: 10,
@@ -801,77 +877,106 @@ async function seedInitialDatabase() {
           }
         });
       }
+    } catch (vErr) {
+      console.warn('[DB Seed] Vinayaka idol seed note:', vErr);
     }
 
     // Seed Services
     for (const srv of INITIAL_SERVICES) {
-      const existing = await prisma.service.findUnique({ where: { slug: srv.slug } });
-      if (!existing) {
-        await prisma.service.create({
-          data: {
-            id: srv.id,
-            name: srv.name,
-            slug: srv.slug,
-            shortDescription: srv.shortDescription || null,
-            description: srv.description || null,
-            imageUrl: srv.imageUrl || null,
-            gallery: (srv.gallery as any) || null,
-            industries: (srv.industries as any) || null,
-            isActive: true,
-            isFeatured: srv.isFeatured || false
-          }
+      try {
+        const existing = await prisma.service.findFirst({
+          where: { OR: [{ id: srv.id }, { slug: srv.slug }, { name: srv.name }] }
         });
+        if (!existing) {
+          await prisma.service.create({
+            data: {
+              id: srv.id,
+              name: srv.name,
+              slug: srv.slug,
+              shortDescription: srv.shortDescription || null,
+              description: srv.description || null,
+              imageUrl: srv.imageUrl || null,
+              gallery: (srv.gallery as any) || null,
+              industries: (srv.industries as any) || null,
+              isActive: true,
+              isFeatured: srv.isFeatured || false
+            }
+          });
+        }
+      } catch (srvErr) {
+        console.warn(`[DB Seed] Service seed note for ${srv.slug}:`, srvErr);
       }
     }
 
     // Seed FAQs
     for (const faq of INITIAL_FAQS) {
-      const existing = await prisma.fAQ.findFirst({ where: { question: faq.question } });
-      if (!existing) {
-        await prisma.fAQ.create({
-          data: {
-            question: faq.question,
-            answer: faq.answer,
-            category: faq.category || 'General',
-            sortOrder: faq.sortOrder || 0,
-            isActive: true
-          }
+      try {
+        const existing = await prisma.fAQ.findFirst({
+          where: { OR: [{ id: faq.id }, { question: faq.question }] }
         });
+        if (!existing) {
+          await prisma.fAQ.create({
+            data: {
+              id: faq.id,
+              question: faq.question,
+              answer: faq.answer,
+              category: faq.category || 'General',
+              sortOrder: faq.sortOrder || 0,
+              isActive: true
+            }
+          });
+        }
+      } catch (faqErr) {
+        console.warn(`[DB Seed] FAQ seed note:`, faqErr);
       }
     }
 
     // Seed Testimonials
     for (const test of INITIAL_TESTIMONIALS) {
-      const existing = await prisma.testimonial.findFirst({ where: { clientName: test.clientName } });
-      if (!existing) {
-        await prisma.testimonial.create({
-          data: {
-            clientName: test.clientName,
-            company: test.company || null,
-            designation: test.designation || null,
-            rating: test.rating || 5,
-            content: test.content,
-            isActive: true
-          }
+      try {
+        const existing = await prisma.testimonial.findFirst({
+          where: { OR: [{ id: test.id }, { clientName: test.clientName }] }
         });
+        if (!existing) {
+          await prisma.testimonial.create({
+            data: {
+              id: test.id,
+              clientName: test.clientName,
+              company: test.company || null,
+              designation: test.designation || null,
+              rating: test.rating || 5,
+              content: test.content,
+              isActive: true
+            }
+          });
+        }
+      } catch (tErr) {
+        console.warn(`[DB Seed] Testimonial seed note:`, tErr);
       }
     }
 
     // Seed Banners
     for (const ban of INITIAL_BANNERS) {
-      const existing = await prisma.banner.findFirst({ where: { title: ban.title } });
-      if (!existing) {
-        await prisma.banner.create({
-          data: {
-            title: ban.title,
-            subtitle: ban.subtitle || null,
-            imageUrl: ban.imageUrl,
-            linkUrl: ban.linkUrl || null,
-            ctaText: ban.ctaText || null,
-            sortOrder: ban.sortOrder || 0,
-            isActive: true
-          }
+      try {
+        const existing = await prisma.banner.findFirst({
+          where: { OR: [{ id: ban.id }, { title: ban.title }] }
         });
+        if (!existing) {
+          await prisma.banner.create({
+            data: {
+              id: ban.id,
+              title: ban.title,
+              subtitle: ban.subtitle || null,
+              imageUrl: ban.imageUrl,
+              linkUrl: ban.linkUrl || null,
+              ctaText: ban.ctaText || null,
+              sortOrder: ban.sortOrder || 0,
+              isActive: true
+            }
+          });
+        }
+      } catch (bErr) {
+        console.warn(`[DB Seed] Banner seed note:`, bErr);
       }
     }
 
@@ -1232,7 +1337,7 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
     const isOwnerOrAdmin = normalizedEmail.includes('admin') || normalizedEmail.includes('nexra') || normalizedEmail.includes('owner');
 
     const newUser = await prisma.user.create({
@@ -4659,7 +4764,37 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
       }
     }
 
-    if (combinedOptions.length === 0) {
+    // Ensure Pickup from Store is included and positioned FIRST
+    const pickupOption = {
+      id: 'pickup-store',
+      name: 'Pickup from Store',
+      provider: 'NEXRA Store',
+      charge: 0,
+      estimatedDays: 0,
+      etaText: 'Same Day',
+      description: 'Collect directly from Gachibowli Store, Hyderabad',
+      codAvailable: true
+    };
+
+    const optionMap = new Map<string, any>();
+    optionMap.set('pickup-store', pickupOption);
+
+    for (const opt of combinedOptions) {
+      if (opt && opt.id && !optionMap.has(opt.id)) {
+        optionMap.set(opt.id, opt);
+      }
+    }
+
+    const finalOptions = Array.from(optionMap.values());
+    finalOptions.sort((a, b) => {
+      const isAPickup = a.id === 'pickup-store' || a.id.includes('pickup');
+      const isBPickup = b.id === 'pickup-store' || b.id.includes('pickup');
+      if (isAPickup && !isBPickup) return -1;
+      if (!isAPickup && isBPickup) return 1;
+      return 0;
+    });
+
+    if (finalOptions.length === 0) {
       const delhiveryResult = delhiveryRes.status === 'fulfilled' ? (delhiveryRes.value || {}) : (delhiveryRes.reason || {});
       const nimbusResult = nimbusRes.status === 'fulfilled' ? (nimbusRes.value || {}) : (nimbusRes.reason || {});
 
@@ -4670,7 +4805,7 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
         status: delhiveryResult.statusCode || delhiveryResult.diagnostic?.status || null,
         statusText: delhiveryResult.diagnostic?.statusText || null,
         errorType: delhiveryResult.errorType || 'UPSTREAM_ERROR',
-        message: delhiveryResult.error || 'Delhivery shipping-rate request failed.',
+        message: delhiveryResult.error || 'Delhivery shipping calculation request failed.',
         upstreamMessage: delhiveryResult.diagnostic?.upstreamMessage || delhiveryResult.error || delhiveryResult.remarks || null,
         upstreamCode: delhiveryResult.diagnostic?.upstreamCode || null,
         requestId: delhiveryResult.diagnostic?.requestId || null,
@@ -4692,7 +4827,7 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
         status: nimbusResult.statusCode || nimbusResult.diagnostic?.status || null,
         statusText: nimbusResult.diagnostic?.statusText || null,
         errorType: nimbusResult.errorType || 'UPSTREAM_ERROR',
-        message: nimbusResult.error || 'NimbusPost shipping-rate request failed.',
+        message: nimbusResult.error || 'NimbusPost shipping calculation request failed.',
         upstreamMessage: nimbusResult.diagnostic?.upstreamMessage || nimbusResult.error || nimbusResult.remarks || null,
         upstreamCode: nimbusResult.diagnostic?.upstreamCode || null,
         requestId: nimbusResult.diagnostic?.requestId || null,
@@ -4712,11 +4847,11 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
         serviceable: false,
         pincode: destinationPincode,
         codAvailable: false,
-        options: [],
-        rates: [],
+        options: [pickupOption],
+        rates: [pickupOption],
         errors: [],
-        error: 'Unable to calculate live shipping rates.',
-        remarks: 'Unable to calculate live shipping rates.',
+        error: 'Unable to calculate courier shipping rates.',
+        remarks: 'Unable to calculate courier shipping rates.',
         providers: {
           delhivery: delhiveryDiagnostic,
           nimbuspost: nimbusDiagnostic
@@ -4732,8 +4867,8 @@ app.post('/api/shipping/estimate', async (req: Request, res: Response) => {
       city,
       state,
       codAvailable,
-      options: combinedOptions,
-      rates: combinedOptions,
+      options: finalOptions,
+      rates: finalOptions,
       providers: {
         delhivery: {
           available: delhiveryRes.status === 'fulfilled' && Boolean(delhiveryRes.value && delhiveryRes.value.serviceable),

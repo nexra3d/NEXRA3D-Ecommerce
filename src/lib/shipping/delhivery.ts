@@ -588,17 +588,27 @@ export async function calculateShipping(
     })
   ]);
 
-  const options: ShippingOption[] = [];
+  const options: ShippingOption[] = [
+    {
+      id: 'pickup-store',
+      name: 'Pickup from Store',
+      provider: 'NEXRA Store',
+      charge: 0,
+      estimatedDays: 0,
+      etaText: 'Same Day',
+      description: 'Collect directly from Gachibowli Store, Hyderabad'
+    }
+  ];
 
   if (surfaceRes.charge && surfaceRes.charge > 0) {
     options.push({
       id: 'delhivery-surface',
       name: 'Delhivery Surface',
-      provider: 'Delhivery',
+      provider: 'Delhivery Ground',
       charge: surfaceRes.charge,
       estimatedDays: surfaceRes.estimatedDays || 3,
       etaText: surfaceRes.edd ? `ETA: ${surfaceRes.edd}` : `${surfaceRes.estimatedDays || 3}–${(surfaceRes.estimatedDays || 3) + 2} Days`,
-      description: 'Standard ground delivery calculated live via Delhivery Rate API'
+      description: 'Standard ground courier delivery'
     });
   }
 
@@ -610,12 +620,12 @@ export async function calculateShipping(
       charge: expressRes.charge,
       estimatedDays: expressRes.estimatedDays || 1,
       etaText: expressRes.edd ? `ETA: ${expressRes.edd}` : `${expressRes.estimatedDays || 1}–${(expressRes.estimatedDays || 1) + 1} Days`,
-      description: 'Priority air delivery calculated live via Delhivery Rate API'
+      description: 'Fast priority air courier'
     });
   }
 
-  if (options.length === 0) {
-    const rateError = surfaceRes.error || expressRes.error || 'Delhivery live shipping rate calculation failed.';
+  if (options.length === 1 && !surfaceRes.charge && !expressRes.charge) {
+    const rateError = surfaceRes.error || expressRes.error || 'Delhivery shipping rate calculation unavailable.';
     const rateErrorType = surfaceRes.errorType || expressRes.errorType || 'API_ERROR';
     console.error(`[Delhivery Shipping Estimate] No valid rate options returned. Error: ${rateError}`);
 
@@ -637,16 +647,6 @@ export async function calculateShipping(
       remarks: rateError
     };
   }
-
-  options.push({
-    id: 'pickup-store',
-    name: 'Pickup from Store',
-    provider: 'NEXRA Store',
-    charge: 0,
-    estimatedDays: 0,
-    etaText: 'Same Day',
-    description: 'Collect directly from Gachibowli Store, Hyderabad'
-  });
 
   const selectedOption = options[0];
 

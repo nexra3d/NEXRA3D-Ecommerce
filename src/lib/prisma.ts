@@ -33,90 +33,103 @@ const isPlaceholderDbUrl =
 const hasDatabaseUrl = !isPlaceholderDbUrl;
 
 let dbSchemaEnsured = false;
-export async function ensureDbSchema() {
-  if (dbSchemaEnsured || !hasDatabaseUrl || !rawPrisma || typeof rawPrisma.$executeRawUnsafe !== 'function') return;
-  dbSchemaEnsured = true;
+let dbSchemaPromise: Promise<void> | null = null;
 
-  const ddlStatements = [
-    `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "weight" DOUBLE PRECISION;`,
-    `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "length" DOUBLE PRECISION;`,
-    `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "width" DOUBLE PRECISION;`,
-    `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "height" DOUBLE PRECISION;`,
-
-    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shippingProvider" TEXT;`,
-    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "awbNumber" TEXT;`,
-    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingNumber" TEXT;`,
-    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shipmentId" TEXT;`,
-    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "estimatedDelivery" TIMESTAMP(3);`,
-    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shipmentStatus" TEXT;`,
-    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "pickupRequested" BOOLEAN DEFAULT false;`,
-    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "labelUrl" TEXT;`,
-    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingUrl" TEXT;`,
-    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "manifestUrl" TEXT;`,
-    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "lastTrackingUpdate" TIMESTAMP(3);`,
-    `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingHistory" JSONB;`,
-
-    `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "colour" TEXT;`,
-    `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "wattage" TEXT;`,
-    `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "attributes" JSONB;`,
-
-    `ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "skuSnapshot" TEXT;`,
-    `ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "selectedColour" TEXT;`,
-    `ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "selectedWattage" TEXT;`,
-
-    `ALTER TABLE "cart_items" ADD COLUMN IF NOT EXISTS "selectedColour" TEXT;`,
-    `ALTER TABLE "cart_items" ADD COLUMN IF NOT EXISTS "selectedWattage" TEXT;`,
-
-    `CREATE TABLE IF NOT EXISTS "product_images" (
-      "id" TEXT NOT NULL,
-      "productId" TEXT NOT NULL,
-      "url" TEXT NOT NULL,
-      "publicId" TEXT,
-      "altText" TEXT,
-      "sortOrder" INTEGER NOT NULL DEFAULT 0,
-      "isPrimary" BOOLEAN NOT NULL DEFAULT false,
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      CONSTRAINT "product_images_pkey" PRIMARY KEY ("id")
-    );`,
-
-    `CREATE TABLE IF NOT EXISTS "reviews" (
-      "id" TEXT NOT NULL,
-      "productId" TEXT NOT NULL,
-      "userId" TEXT,
-      "userName" TEXT NOT NULL,
-      "userEmail" TEXT,
-      "rating" INTEGER NOT NULL,
-      "title" TEXT,
-      "comment" TEXT NOT NULL,
-      "verified" BOOLEAN NOT NULL DEFAULT true,
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      CONSTRAINT "reviews_pkey" PRIMARY KEY ("id")
-    );`,
-
-    `CREATE TABLE IF NOT EXISTS "product_lamp_options" (
-      "id" TEXT NOT NULL,
-      "product_id" TEXT NOT NULL,
-      "option_type" TEXT NOT NULL,
-      "option_value" TEXT NOT NULL,
-      "price_delta" DECIMAL(10,2) NOT NULL DEFAULT 0,
-      "is_active" BOOLEAN NOT NULL DEFAULT true,
-      "sort_order" INTEGER NOT NULL DEFAULT 0,
-      "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      CONSTRAINT "product_lamp_options_pkey" PRIMARY KEY ("id")
-    );`
-  ];
-
-  for (const statement of ddlStatements) {
-    try {
-      await rawPrisma.$executeRawUnsafe(statement);
-    } catch (err: any) {
-      console.warn('[Prisma Schema Sync] Note during DDL statement:', err?.message || err);
-    }
+export function ensureDbSchema() {
+  if (dbSchemaEnsured || !hasDatabaseUrl || !rawPrisma || typeof rawPrisma.$executeRawUnsafe !== 'function') {
+    return Promise.resolve();
   }
-  console.log('[Prisma Schema Sync] Successfully executed DDL statements for PostgreSQL schema.');
+
+  if (!dbSchemaPromise) {
+    dbSchemaPromise = (async () => {
+      const ddlStatements = [
+        `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "weight" DOUBLE PRECISION;`,
+        `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "length" DOUBLE PRECISION;`,
+        `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "width" DOUBLE PRECISION;`,
+        `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "height" DOUBLE PRECISION;`,
+
+        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shippingProvider" TEXT;`,
+        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "awbNumber" TEXT;`,
+        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingNumber" TEXT;`,
+        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shipmentId" TEXT;`,
+        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "estimatedDelivery" TIMESTAMP(3);`,
+        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shipmentStatus" TEXT;`,
+        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "pickupRequested" BOOLEAN DEFAULT false;`,
+        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "labelUrl" TEXT;`,
+        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingUrl" TEXT;`,
+        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "manifestUrl" TEXT;`,
+        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "lastTrackingUpdate" TIMESTAMP(3);`,
+        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingHistory" JSONB;`,
+
+        `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "colour" TEXT;`,
+        `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "wattage" TEXT;`,
+        `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "attributes" JSONB;`,
+
+        `ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "skuSnapshot" TEXT;`,
+        `ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "selectedColour" TEXT;`,
+        `ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "selectedWattage" TEXT;`,
+
+        `ALTER TABLE "cart_items" ADD COLUMN IF NOT EXISTS "selectedColour" TEXT;`,
+        `ALTER TABLE "cart_items" ADD COLUMN IF NOT EXISTS "selectedWattage" TEXT;`,
+
+        `CREATE TABLE IF NOT EXISTS "product_images" (
+          "id" TEXT NOT NULL,
+          "productId" TEXT NOT NULL,
+          "url" TEXT NOT NULL,
+          "publicId" TEXT,
+          "altText" TEXT,
+          "sortOrder" INTEGER NOT NULL DEFAULT 0,
+          "isPrimary" BOOLEAN NOT NULL DEFAULT false,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "product_images_pkey" PRIMARY KEY ("id")
+        );`,
+
+        `CREATE TABLE IF NOT EXISTS "reviews" (
+          "id" TEXT NOT NULL,
+          "productId" TEXT NOT NULL,
+          "userId" TEXT,
+          "userName" TEXT NOT NULL,
+          "userEmail" TEXT,
+          "rating" INTEGER NOT NULL,
+          "title" TEXT,
+          "comment" TEXT NOT NULL,
+          "verified" BOOLEAN NOT NULL DEFAULT true,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "reviews_pkey" PRIMARY KEY ("id")
+        );`,
+
+        `CREATE TABLE IF NOT EXISTS "product_lamp_options" (
+          "id" TEXT NOT NULL,
+          "product_id" TEXT NOT NULL,
+          "option_type" TEXT NOT NULL,
+          "option_value" TEXT NOT NULL,
+          "price_delta" DECIMAL(10,2) NOT NULL DEFAULT 0,
+          "is_active" BOOLEAN NOT NULL DEFAULT true,
+          "sort_order" INTEGER NOT NULL DEFAULT 0,
+          "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "product_lamp_options_pkey" PRIMARY KEY ("id")
+        );`
+      ];
+
+      for (const statement of ddlStatements) {
+        try {
+          await rawPrisma.$executeRawUnsafe(statement);
+        } catch (err: any) {
+          console.warn('[Prisma Schema Sync] Note during DDL statement:', err?.message || err);
+        }
+      }
+      dbSchemaEnsured = true;
+      console.log('[Prisma Schema Sync] Successfully executed DDL statements for PostgreSQL schema.');
+    })().catch((err) => {
+      console.warn('[Prisma Schema Sync] Error during ensureDbSchema:', err);
+      dbSchemaPromise = null;
+    });
+  }
+
+  return dbSchemaPromise;
 }
 
 function createModelProxy(modelName: string) {
@@ -151,6 +164,16 @@ function createModelProxy(modelName: string) {
             const queryName = `${modelName}.${prop}`;
             const errorMessage = err?.message || String(err);
             const timestamp = new Date().toISOString();
+
+            // Do not retry on deterministic request / validation / constraint errors
+            const isNonRetryable =
+              err?.name === 'PrismaClientKnownRequestError' ||
+              err?.name === 'PrismaClientValidationError' ||
+              (typeof err?.code === 'string' && err.code.startsWith('P2'));
+
+            if (isNonRetryable) {
+              throw err;
+            }
 
             if (attempt < backoffs.length) {
               const retryNumber = attempt + 1;

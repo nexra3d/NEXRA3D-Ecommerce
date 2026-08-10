@@ -90,13 +90,13 @@ export const CartPage: React.FC<CartPageProps> = ({
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
   const [isClearing, setIsClearing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [shippingMethod, setShippingMethod] = useState<'standard' | 'pickup'>('standard');
+  const [shippingMethod, setShippingMethod] = useState<'nimbuspost' | 'standard' | 'pickup'>('nimbuspost');
 
   if (!currentUser) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-16 text-center">
-        <div className="bg-white rounded-3xl p-8 sm:p-12 border border-slate-200 shadow-xl space-y-6">
-          <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto shadow-inner">
+        <div className="bg-white rounded-3xl p-8 sm:p-12 border border-slate-200/90 shadow-xl space-y-6">
+          <div className="w-20 h-20 bg-cyan-50 text-cyan-600 rounded-3xl flex items-center justify-center mx-auto shadow-inner border border-cyan-100">
             <ShoppingBag className="w-10 h-10" />
           </div>
           <div>
@@ -108,13 +108,13 @@ export const CartPage: React.FC<CartPageProps> = ({
           <div className="flex justify-center gap-4 pt-2">
             <button
               onClick={onNavigateLogin}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm px-6 py-3.5 rounded-2xl transition-all shadow-md shadow-indigo-200 cursor-pointer"
+              className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-sm px-7 py-3.5 rounded-2xl transition-all shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 cursor-pointer transform hover:-translate-y-0.5"
             >
               Sign In to Account
             </button>
             <button
               onClick={onNavigateHome}
-              className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm px-6 py-3.5 rounded-2xl transition-all cursor-pointer"
+              className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-sm px-6 py-3.5 rounded-2xl transition-all cursor-pointer"
             >
               Continue Browsing
             </button>
@@ -187,14 +187,14 @@ export const CartPage: React.FC<CartPageProps> = ({
         <div>
           <button
             onClick={onNavigateHome}
-            className="inline-flex items-center space-x-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 mb-2 cursor-pointer"
+            className="inline-flex items-center space-x-1.5 text-xs font-bold text-cyan-700 hover:text-cyan-800 mb-2 cursor-pointer group"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
             <span>Continue Shopping</span>
           </button>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 flex items-center gap-3">
             <span>Shopping Cart</span>
-            <span className="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-bold">
+            <span className="text-xs bg-cyan-100 text-cyan-800 border border-cyan-200 px-3 py-1 rounded-full font-black">
               {cartData?.totalItems || 0} {cartData?.totalItems === 1 ? 'Item' : 'Items'}
             </span>
           </h1>
@@ -221,7 +221,7 @@ export const CartPage: React.FC<CartPageProps> = ({
 
       {isLoading ? (
         <div className="py-20 text-center space-y-4">
-          <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin mx-auto" />
+          <RefreshCw className="w-8 h-8 text-cyan-600 animate-spin mx-auto" />
           <p className="text-sm font-bold text-slate-600">Loading your shopping cart...</p>
         </div>
       ) : items.length === 0 ? (
@@ -230,14 +230,14 @@ export const CartPage: React.FC<CartPageProps> = ({
             <ShoppingBag className="w-10 h-10" />
           </div>
           <div>
-            <h2 className="text-xl font-extrabold text-slate-900">Your Cart is Currently Empty</h2>
+            <h2 className="text-xl font-black text-slate-900">Your Cart is Currently Empty</h2>
             <p className="text-xs text-slate-500 mt-2 max-w-sm mx-auto">
               Looks like you haven't added anything to your cart yet. Explore our fresh collection and find great deals!
             </p>
           </div>
           <button
             onClick={onNavigateHome}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm px-6 py-3.5 rounded-2xl transition-all shadow-md shadow-indigo-200 cursor-pointer inline-flex items-center space-x-2"
+            className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-sm px-7 py-3.5 rounded-2xl transition-all shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 cursor-pointer inline-flex items-center space-x-2"
           >
             <span>Browse Products</span>
             <ArrowRight className="w-4 h-4" />
@@ -269,20 +269,20 @@ export const CartPage: React.FC<CartPageProps> = ({
                   className={`bg-white rounded-3xl p-4 sm:p-5 border transition-all ${
                     !item.isStockSufficient
                       ? 'border-amber-300 bg-amber-50/30'
-                      : 'border-slate-200 shadow-sm hover:shadow-md'
+                      : 'border-slate-200/90 shadow-xs hover:border-cyan-500/60 hover:shadow-md'
                   }`}
                 >
                   <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                     {/* Product Image */}
-                    <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl border border-slate-200 overflow-hidden shrink-0 bg-slate-50 relative">
+                    <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl border border-slate-200 overflow-hidden shrink-0 bg-slate-50 relative p-1">
                       <img
                         src={item.product.imageUrl || '/placeholder.jpg'}
                         alt={item.product.name}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-contain"
                       />
                       {!item.isStockSufficient && (
                         <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center p-1 text-center">
-                          <span className="text-[9px] font-extrabold text-white uppercase bg-rose-600 px-1.5 py-0.5 rounded">
+                          <span className="text-[9px] font-black text-white uppercase bg-rose-600 px-1.5 py-0.5 rounded">
                             {item.availableStock <= 0 ? 'Out of Stock' : 'Stock Limit'}
                           </span>
                         </div>
@@ -292,7 +292,7 @@ export const CartPage: React.FC<CartPageProps> = ({
                     {/* Product & Variant Details */}
                     <div className="flex-1 min-w-0 space-y-1">
                       {item.product.category && (
-                        <span className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider">
+                        <span className="text-[10px] font-black text-cyan-700 uppercase tracking-wider">
                           {item.product.category.name}
                         </span>
                       )}
@@ -312,13 +312,13 @@ export const CartPage: React.FC<CartPageProps> = ({
                       {(item.selectedColour || item.selectedWattage || item.variant?.colour || item.variant?.wattage) && (
                         <div className="flex flex-wrap gap-1.5 pt-1">
                           {(item.selectedColour || item.variant?.colour) && (
-                            <span className="bg-indigo-50 text-indigo-700 text-xs font-bold px-2 py-0.5 rounded-md border border-indigo-100 flex items-center gap-1">
+                            <span className="bg-cyan-50 text-cyan-800 text-xs font-bold px-2.5 py-0.5 rounded-md border border-cyan-100 flex items-center gap-1">
                               <span>Colour:</span>
-                              <span className="text-indigo-900">{item.selectedColour || item.variant?.colour}</span>
+                              <span className="text-cyan-950">{item.selectedColour || item.variant?.colour}</span>
                             </span>
                           )}
                           {(item.selectedWattage || item.variant?.wattage) && (
-                            <span className="bg-amber-50 text-amber-800 text-xs font-bold px-2 py-0.5 rounded-md border border-amber-100 flex items-center gap-1">
+                            <span className="bg-amber-50 text-amber-800 text-xs font-bold px-2.5 py-0.5 rounded-md border border-amber-100 flex items-center gap-1">
                               <span>Wattage:</span>
                               <span className="text-amber-950">{item.selectedWattage || item.variant?.wattage}</span>
                             </span>
@@ -345,7 +345,7 @@ export const CartPage: React.FC<CartPageProps> = ({
                           </span>
                         )}
                         <span className="text-[11px] font-semibold text-slate-500">
-                          × {item.quantity} = <strong className="text-indigo-600 font-extrabold">₹{Number(item.lineTotal || 0).toLocaleString('en-IN')}</strong>
+                          × {item.quantity} = <strong className="text-cyan-700 font-black">₹{Number(item.lineTotal || 0).toLocaleString('en-IN')}</strong>
                         </span>
                       </div>
                     </div>
@@ -390,7 +390,7 @@ export const CartPage: React.FC<CartPageProps> = ({
           </div>
 
           {/* Right Summary Sidebar */}
-          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6 sticky top-24">
+          <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-sm space-y-6 sticky top-24">
             <h2 className="text-lg font-black text-slate-900 border-b border-slate-100 pb-3">
               Order Summary
             </h2>
@@ -406,16 +406,20 @@ export const CartPage: React.FC<CartPageProps> = ({
                 <span className="font-bold text-slate-900">₹{Number(tax || 0).toLocaleString('en-IN')}</span>
               </div>
 
-              <div className="flex justify-between py-2 border-t border-b border-slate-100">
-                <span className="text-slate-600">Shipping</span>
-                <span className="font-semibold text-indigo-600 text-[11px] bg-indigo-50 px-2 py-0.5 rounded-md">
-                  Calculated after delivery address
+              {/* Shipping Method Note */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 text-[11px] text-slate-600 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 font-medium text-slate-700">
+                  <Truck className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
+                  Shipping Options
+                </span>
+                <span className="text-[10px] text-cyan-700 font-bold bg-cyan-100/60 px-2 py-0.5 rounded-md">
+                  Calculated at Checkout
                 </span>
               </div>
 
-              <div className="pt-2 flex justify-between items-baseline">
+              <div className="pt-2 flex justify-between items-baseline border-t border-slate-100">
                 <span className="text-sm font-black text-slate-900">Estimated Total</span>
-                <span className="text-xl font-black text-indigo-600">
+                <span className="text-xl font-black text-cyan-700">
                   ₹{Number((subtotal + tax) || 0).toLocaleString('en-IN')}
                 </span>
               </div>
@@ -424,18 +428,18 @@ export const CartPage: React.FC<CartPageProps> = ({
             <button
               onClick={() => onProceedToCheckout && onProceedToCheckout()}
               disabled={hasOutofStockItems || items.length === 0}
-              className={`w-full font-extrabold text-sm py-4 rounded-2xl flex items-center justify-center space-x-2 transition-all shadow-md cursor-pointer ${
+              className={`w-full font-black text-sm py-4 rounded-2xl flex items-center justify-center space-x-2 transition-all shadow-md cursor-pointer ${
                 hasOutofStockItems || items.length === 0
                   ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                  : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200'
+                  : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/20 transform hover:-translate-y-0.5'
               }`}
             >
               <span>Continue to Checkout</span>
               <ArrowRight className="w-4 h-4" />
             </button>
 
-            <div className="p-3 bg-slate-50 rounded-2xl text-[11px] text-slate-500 space-y-1">
-              <div className="flex items-center space-x-1.5 font-bold text-slate-700">
+            <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl text-[11px] text-slate-500 space-y-1">
+              <div className="flex items-center space-x-1.5 font-bold text-slate-800">
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />
                 <span>100% Verified Price & Stock Guard</span>
               </div>
