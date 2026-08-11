@@ -309,7 +309,7 @@ async function sendOrderStatusEmail(order: any, newStatus: string, customMessage
     if (!order) return;
 
     let customerEmail = (order.shippingAddress as any)?.email || order.customerEmail || order.user?.email;
-    if (!customerEmail && order.userId) {
+    if ((!customerEmail || !customerEmail.includes('@') || customerEmail.includes('@store.com')) && order.userId) {
       const u = await prisma.user.findUnique({ where: { id: order.userId } }).catch(() => null);
       if (u?.email) customerEmail = u.email;
     }
@@ -444,22 +444,30 @@ async function sendOrderStatusEmail(order: any, newStatus: string, customMessage
       </div>
     `;
 
-    // Send email directly to customer
+    // 1. Primary email dispatch directly to customer email
     if (customerEmail && customerEmail.includes('@') && !customerEmail.includes('@store.com')) {
-      await sendEmail({
+      const custRes = await sendEmail({
         to: customerEmail,
         subject,
         html: emailHtml
       });
-      console.log(`[Status Email] Live update email sent to customer ${customerEmail} for order #${order.orderNumber} (${newStatus})`);
+      if (custRes.success) {
+        console.log(`[Status Email] Live update email successfully delivered to customer: ${customerEmail} for order #${order.orderNumber} (${newStatus})`);
+      } else {
+        console.warn(`[Status Email] Direct customer email attempt to ${customerEmail} yielded error: ${custRes.error}`);
+      }
+    } else {
+      console.warn(`[Status Email] Could not identify valid customer email for order #${order.orderNumber}. Resolved: "${customerEmail}"`);
     }
 
-    // Copy to nexra3d@gmail.com
-    await sendEmail({
-      to: 'nexra3d@gmail.com',
-      subject: `[ADMIN NOTIFY] Order #${order.orderNumber} Status -> ${newStatus}`,
-      html: emailHtml
-    }).catch(() => {});
+    // 2. Admin notification copy
+    if (customerEmail !== 'nexra3d@gmail.com') {
+      await sendEmail({
+        to: 'nexra3d@gmail.com',
+        subject: `[ADMIN NOTIFY] Order #${order.orderNumber} Status -> ${newStatus}`,
+        html: emailHtml
+      }).catch(() => {});
+    }
 
   } catch (err: any) {
     console.error(`[Status Email] Failed to send order status email:`, err?.message || err);
@@ -3513,7 +3521,11 @@ async function sendNewOrderNotificationEmail(orderInput: any, eventType: 'CREATE
 
     const addr = (order.shippingAddress as any) || {};
     const customerName = addr.fullName || addr.name || order.user?.name || 'Valued Customer';
-    const customerEmail = addr.email || order.user?.email || 'N/A';
+    let customerEmail = addr.email || order.user?.email || order.customerEmail || 'N/A';
+    if ((!customerEmail || customerEmail === 'N/A' || customerEmail.includes('@store.com')) && order.userId) {
+      const u = await prisma.user.findUnique({ where: { id: order.userId } }).catch(() => null);
+      if (u?.email) customerEmail = u.email;
+    }
     const customerPhone = addr.phone || addr.phoneNumber || order.user?.phone || 'N/A';
 
     const street = addr.street || addr.address || addr.addressLine1 || '';
@@ -3563,7 +3575,7 @@ async function sendNewOrderNotificationEmail(orderInput: any, eventType: 'CREATE
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; background-color: #ffffff;">
         <div style="background-color: #0f172a; padding: 24px; text-align: center; border-bottom: 4px solid #4f46e5;">
-          <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: bold; letter-spacing: 0.5px;">NEXRA 3D — NEW ORDER NOTIFICATION</h1>
+          <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: bold; letter-spacing: 0.5px;">NEXRA 3D — ORDER CONFIRMATION</h1>
           <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">Order #${order.orderNumber}</p>
         </div>
 
@@ -3644,26 +3656,35 @@ async function sendNewOrderNotificationEmail(orderInput: any, eventType: 'CREATE
           </div>
 
           <div style="margin-top: 24px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 16px;">
-            Automated notification sent to <strong>nexra3d@gmail.com</strong> upon customer order completion.
+            Confirmation copy sent to customer email: <strong>${customerEmail}</strong>. NEXRA 3D Team.
           </div>
         </div>
       </div>
     `;
 
-    // Send email to nexra3d@gmail.com
-    await sendEmail({
-      to: 'nexra3d@gmail.com',
-      subject: emailSubject,
-      html: emailHtml
-    });
-
-    // Also send confirmation copy to customer if valid email provided
+    // 1. Send confirmation directly to customer email
     if (customerEmail && customerEmail.includes('@') && !customerEmail.includes('@store.com')) {
-      await sendEmail({
+      const custRes = await sendEmail({
         to: customerEmail,
         subject: `Order Confirmation #${order.orderNumber} - NEXRA 3D`,
         html: emailHtml
-      }).catch((e) => console.warn('[Order Email] Customer email warning:', e?.message));
+      });
+      if (custRes.success) {
+        console.log(`[Order Email] Confirmation email delivered to customer ${customerEmail} for order #${order.orderNumber}`);
+      } else {
+        console.warn(`[Order Email] Could not deliver to customer ${customerEmail}: ${custRes.error}`);
+      }
+    } else {
+      console.warn(`[Order Email] Could not find valid customer email for order #${order.orderNumber}. Resolved: "${customerEmail}"`);
+    }
+
+    // 2. Send admin notification copy to nexra3d@gmail.com
+    if (customerEmail !== 'nexra3d@gmail.com') {
+      await sendEmail({
+        to: 'nexra3d@gmail.com',
+        subject: emailSubject,
+        html: emailHtml
+      }).catch((e) => console.warn('[Order Email] Admin copy warning:', e?.message));
     }
 
     console.log(`[Order Email] Admin notification successfully sent for order #${order.orderNumber} to nexra3d@gmail.com`);
