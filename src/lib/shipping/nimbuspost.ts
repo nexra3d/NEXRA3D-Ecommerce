@@ -486,34 +486,7 @@ Declared Value: ₹${orderAmount}
       errorMsg = respData.message || respData.error;
     }
 
-    const fallbackOptions: NimbusPostCourierOption[] = [
-      {
-        id: 'nimbuspost-surface-express',
-        courierId: 'nimbuspost-surface',
-        courierName: 'NimbusPost Surface Express',
-        serviceName: 'Surface Express',
-        name: 'NimbusPost — Surface Express',
-        provider: 'nimbuspost',
-        charge: 60,
-        edd: '3–5 days',
-        etaText: 'Est. Delivery: 3–5 Business Days',
-        description: 'Reliable ground shipping via NimbusPost partner network',
-        codAvailable: true
-      },
-      {
-        id: 'nimbuspost-air-priority',
-        courierId: 'nimbuspost-air',
-        courierName: 'NimbusPost Priority Air',
-        serviceName: 'Air Express',
-        name: 'NimbusPost — Air Priority',
-        provider: 'nimbuspost',
-        charge: 120,
-        edd: '1–2 days',
-        etaText: 'Est. Delivery: 1–2 Business Days',
-        description: 'Fast priority air courier via NimbusPost network',
-        codAvailable: true
-      }
-    ];
+    const fallbackOptions: NimbusPostCourierOption[] = calculateNimbusWeightBasedOptions(cleanOriginPin, cleanDestPin, weightGrams, dimensions, orderAmount);
 
     return {
       serviceable: true,

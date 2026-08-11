@@ -135,23 +135,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
             <span>{googleLoading ? 'Connecting Google...' : 'Continue with Google'}</span>
           </button>
 
-          {/* Quick Demo Login Preset Buttons */}
-          <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-3 space-y-2">
-            <span className="text-[10px] font-extrabold text-indigo-700 uppercase tracking-wider flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Instant 1-Click Demo Login</span>
-            </span>
-            <div>
-              <button
-                type="button"
-                onClick={() => handleQuickDemoLogin('CUSTOMER')}
-                className="w-full bg-white hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-xs font-bold py-2 px-3 rounded-xl transition-all cursor-pointer shadow-2xs text-center"
-              >
-                Customer Login (1-Click)
-              </button>
-            </div>
-          </div>
-
           <div className="flex items-center space-x-2 my-2">
             <div className="h-px bg-slate-200 flex-1" />
             <span className="text-[10px] font-bold text-slate-400 uppercase">Or Sign In Manually</span>

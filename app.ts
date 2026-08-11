@@ -308,7 +308,11 @@ async function sendOrderStatusEmail(order: any, newStatus: string, customMessage
   try {
     if (!order) return;
 
-    const customerEmail = (order.shippingAddress as any)?.email || order.customerEmail || order.user?.email;
+    let customerEmail = (order.shippingAddress as any)?.email || order.customerEmail || order.user?.email;
+    if (!customerEmail && order.userId) {
+      const u = await prisma.user.findUnique({ where: { id: order.userId } }).catch(() => null);
+      if (u?.email) customerEmail = u.email;
+    }
     const customerName = (order.shippingAddress as any)?.fullName || order.customerName || order.user?.name || 'Valued Customer';
 
     const isStorePickup = (
@@ -348,7 +352,7 @@ async function sendOrderStatusEmail(order: any, newStatus: string, customMessage
           <div style="background-color: #ecfdf5; border: 2px solid #10b981; border-radius: 12px; padding: 18px; margin: 16px 0;">
             <h4 style="margin: 0 0 8px 0; color: #065f46; font-size: 16px; font-weight: bold;">📍 Store Collection Location:</h4>
             <p style="margin: 0 0 4px 0; font-weight: bold; color: #064e3b; font-size: 14px;">NEXRA 3D Store & Production Lab</p>
-            <p style="margin: 0 0 6px 0; color: #047857; font-size: 13px; line-height: 1.4;">Plot 42, Tech Enclave, Gachibowli, Hyderabad, Telangana - 500032</p>
+            <p style="margin: 0 0 6px 0; color: #047857; font-size: 13px; line-height: 1.4;">Plot no 484, TNGOs Colony, Gachibowli, Hyderabad, Telangana - 500046</p>
             <p style="margin: 0 0 8px 0; color: #047857; font-size: 13px;">📞 Helpline / WhatsApp: <strong>+91 8886159998 / +91 8886149998</strong></p>
             <div style="background-color: #ffffff; padding: 8px 12px; border-radius: 6px; display: inline-block; border: 1px solid #a7f3d0; font-size: 12px; font-weight: bold; color: #065f46;">
               ⏱️ Store Hours: Mon - Sat (10:00 AM - 7:30 PM)
@@ -5769,7 +5773,7 @@ app.get('/api/shipping/label/:awb', async (req: Request, res: Response) => {
     </div>
     <div class="address-section" style="border-top: 1px solid #e2e8f0; padding-top: 10px;">
       <strong style="color: #0f172a;">RETURN / SHIPPER:</strong><br/>
-      NEXRA 3D Printing Hub, Plot 42, Gachibowli, Hyderabad - 500032
+      NEXRA 3D Printing Hub, Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500046
     </div>
     <div class="footer">
       Routing: HYD/HUB/DELHIVERY | Package Weight: 0.50 kg | Prepaid
@@ -5808,7 +5812,7 @@ app.get('/api/shipping/manifest/:awb', async (req: Request, res: Response) => {
     </div>
     <div style="margin-top: 20px; font-size: 14px; line-height: 1.6;">
       <p><strong>Manifest Date:</strong> ${new Date().toLocaleDateString('en-IN')}</p>
-      <p><strong>Pickup Warehouse:</strong> NEXRA 3D Primary Hub (Gachibowli, PIN: 500032)</p>
+      <p><strong>Pickup Warehouse:</strong> NEXRA 3D Primary Hub (Plot no 484, TNGOs Colony, Gachibowli, PIN: 500046)</p>
     </div>
     <table>
       <thead>

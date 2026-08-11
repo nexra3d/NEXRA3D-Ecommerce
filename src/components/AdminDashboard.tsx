@@ -2587,18 +2587,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
 
                         {/* Fulfillment Location Details Box */}
-                        {isPickup ? (
-                          <div className="bg-emerald-950/50 border border-emerald-800/50 rounded-xl p-3 text-xs space-y-1">
-                            <div className="flex items-center justify-between text-emerald-300 font-bold">
-                              <span className="flex items-center gap-1.5"><Building2 className="w-4 h-4 text-emerald-400" /> Fulfillment Method: Customer Store Collection</span>
-                              <span className="text-[10px] text-emerald-300 bg-emerald-900/80 px-2 py-0.5 rounded font-mono font-bold">Store: Gachibowli, Hyderabad</span>
+                        {isPickup ? (() => {
+                          const isReady = ord.orderStatus === 'SHIPPED' || (ord as any).orderStatus === 'READY_FOR_PICKUP';
+                          const isCollected = ord.orderStatus === 'DELIVERED';
+
+                          return (
+                            <div className="bg-emerald-950/70 border border-emerald-500/50 rounded-xl p-3 text-xs space-y-2">
+                              <div className="flex items-center justify-between text-emerald-300 font-bold flex-wrap gap-2">
+                                <span className="flex items-center gap-1.5">
+                                  <Building2 className="w-4 h-4 text-emerald-400" /> Fulfillment Method: Store Collection
+                                </span>
+                                <span className="text-[10px] text-emerald-200 bg-emerald-900/90 px-2 py-0.5 rounded font-mono font-bold">
+                                  Store: Gachibowli, Hyderabad
+                                </span>
+                              </div>
+
+                              {/* Live Status Indicator Banner */}
+                              {isReady && (
+                                <div className="bg-slate-950 border border-emerald-400/80 rounded-lg p-2 text-emerald-300 font-extrabold text-[11px] flex items-center justify-between">
+                                  <span className="flex items-center gap-1.5">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                                    <span>STATUS UPDATED: Order is READY FOR PICKUP</span>
+                                  </span>
+                                  <span className="text-[10px] text-emerald-400/80 font-normal">📧 Customer Notified</span>
+                                </div>
+                              )}
+
+                              {isCollected && (
+                                <div className="bg-slate-950 border border-indigo-400/80 rounded-lg p-2 text-indigo-300 font-extrabold text-[11px] flex items-center justify-between">
+                                  <span className="flex items-center gap-1.5">
+                                    <Package className="w-4 h-4 text-indigo-400 shrink-0" />
+                                    <span>STATUS COMPLETED: Handed Over / Collected</span>
+                                  </span>
+                                  <span className="text-[10px] text-indigo-400/80 font-normal">🎉 Order Finished</span>
+                                </div>
+                              )}
+
+                              <p className="text-emerald-100/90 text-[11px] leading-relaxed">
+                                📍 <strong>Collection Location:</strong> NEXRA 3D Store, Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500046, Telangana
+                                <span className="block mt-0.5 text-emerald-300 font-medium">Customer Contact: {custPhone} • Registered Email: {custEmail}</span>
+                              </p>
                             </div>
-                            <p className="text-emerald-100/90 text-[11px] leading-relaxed">
-                              📍 <strong>Collection Location:</strong> NEXRA 3D Store, Plot 42, Tech Enclave, Gachibowli, Hyderabad - 500032
-                              <span className="block mt-0.5 text-emerald-300 font-medium">Customer Contact: {custPhone} • Email: {custEmail}</span>
-                            </p>
-                          </div>
-                        ) : (
+                          );
+                        })() : (
                           <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3 text-xs space-y-1">
                             <div className="flex items-center justify-between text-indigo-300 font-bold">
                               <span className="flex items-center gap-1.5"><Truck className="w-4 h-4 text-indigo-400" /> Fulfillment Method: Courier Delivery</span>
@@ -2615,20 +2646,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             Payment: <strong>{ord.paymentMethod}</strong> • Payment ID: <span className="font-mono text-emerald-400 font-bold">{(ord as any).razorpayPaymentId || (ord as any).paymentId || 'N/A'}</span>
                           </span>
 
-                          <button
-                            onClick={() => {
-                              setSelectedOrderForShipment(ord);
-                              setShowCreateShipmentModal(true);
-                            }}
-                            className={`font-bold text-[11px] px-3 py-1.5 rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm ${
-                              isPickup 
-                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white' 
-                                : 'bg-indigo-600 hover:bg-indigo-500 text-white'
-                            }`}
-                          >
-                            {isPickup ? <Building2 className="w-3.5 h-3.5" /> : <Truck className="w-3.5 h-3.5" />}
-                            <span>{isPickup ? '🏪 Manage Store Pickup' : '🚚 Dispatch Shipment'}</span>
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            {isPickup && (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateOrderStatus(ord.id, 'SHIPPED')}
+                                className={`font-bold text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1 transition-all shadow-xs cursor-pointer ${
+                                  ord.orderStatus === 'SHIPPED'
+                                    ? 'bg-slate-950 border border-emerald-400 text-emerald-300 font-extrabold shadow-inner'
+                                    : 'bg-emerald-700 hover:bg-emerald-600 text-white'
+                                }`}
+                              >
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>{ord.orderStatus === 'SHIPPED' ? '✅ Ready for Pickup' : 'Mark Ready'}</span>
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => {
+                                setSelectedOrderForShipment(ord);
+                                setShowCreateShipmentModal(true);
+                              }}
+                              className={`font-bold text-[11px] px-3 py-1.5 rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm ${
+                                isPickup 
+                                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white' 
+                                  : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                              }`}
+                            >
+                              {isPickup ? <Building2 className="w-3.5 h-3.5" /> : <Truck className="w-3.5 h-3.5" />}
+                              <span>{isPickup ? '🏪 Manage Store Pickup' : '🚚 Dispatch Shipment'}</span>
+                            </button>
+                          </div>
                         </div>
 
                         {(ord.items || []).length > 0 && (
@@ -3216,79 +3264,106 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               {/* STORE PICKUP ORDER HIGHLIGHT & QUICK ACTIONS */}
-              {selectedOrderForShipment && checkIsStorePickup(selectedOrderForShipment) && (
-                <div className="bg-emerald-950/80 border border-emerald-500/50 rounded-2xl p-4 space-y-3">
-                  <div className="flex items-center gap-2 text-emerald-300 font-extrabold text-sm border-b border-emerald-800/60 pb-2">
-                    <Building2 className="w-5 h-5 text-emerald-400 animate-pulse" />
-                    <span>🏪 STORE PICKUP ORDER (Gachibowli, Hyderabad)</span>
-                  </div>
-                  <p className="text-xs text-emerald-100/90 leading-relaxed">
-                    This customer selected <strong>Pickup from Store</strong>. No courier AWB or external shipping label is needed. You can update status and send live email notifications to the customer directly below:
-                  </p>
+              {selectedOrderForShipment && checkIsStorePickup(selectedOrderForShipment) && (() => {
+                const isReady = selectedOrderForShipment.orderStatus === 'SHIPPED' || (selectedOrderForShipment as any).orderStatus === 'READY_FOR_PICKUP';
+                const isCollected = selectedOrderForShipment.orderStatus === 'DELIVERED';
+                const regEmail = (selectedOrderForShipment as any).shippingAddress?.email || selectedOrderForShipment.customerEmail || (selectedOrderForShipment as any).user?.email || 'registered email';
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          const res = await fetch(`/api/admin/orders/${selectedOrderForShipment.id}/status`, {
-                            method: 'PUT',
-                            headers: getAuthHeaders(),
-                            body: JSON.stringify({
-                              status: 'SHIPPED',
-                              title: 'Ready for Store Pickup',
-                              description: 'Your order is ready for collection at NEXRA 3D Store (Plot 42, Tech Enclave, Gachibowli, Hyderabad - 500032). Helpline: +91 8886159998.'
-                            })
-                          });
-                          if (res.ok) {
-                            alert(`Order #${selectedOrderForShipment.orderNumber} status updated to "Ready for Store Pickup". Live update email dispatched to customer!`);
-                            setShowCreateShipmentModal(false);
-                            onRefreshData();
-                          } else {
-                            alert('Failed to update status');
-                          }
-                        } catch (err: any) {
-                          alert(err.message);
-                        }
-                      }}
-                      className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs transition-colors cursor-pointer shadow-md"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>Mark Ready for Store Pickup</span>
-                    </button>
+                return (
+                  <div className="bg-emerald-950/90 border border-emerald-500/60 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between border-b border-emerald-800/60 pb-2">
+                      <div className="flex items-center gap-2 text-emerald-300 font-extrabold text-sm">
+                        <Building2 className="w-5 h-5 text-emerald-400 animate-pulse" />
+                        <span>🏪 STORE PICKUP ORDER (Gachibowli, Hyderabad)</span>
+                      </div>
+                      {isReady && (
+                        <span className="bg-emerald-950 border border-emerald-400 text-emerald-300 text-[10px] font-extrabold px-2.5 py-1 rounded-lg">
+                          ✅ STATUS: READY FOR PICKUP
+                        </span>
+                      )}
+                      {isCollected && (
+                        <span className="bg-indigo-950 border border-indigo-400 text-indigo-300 text-[10px] font-extrabold px-2.5 py-1 rounded-lg">
+                          🎉 STATUS: COLLECTED
+                        </span>
+                      )}
+                    </div>
 
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          const res = await fetch(`/api/admin/orders/${selectedOrderForShipment.id}/status`, {
-                            method: 'PUT',
-                            headers: getAuthHeaders(),
-                            body: JSON.stringify({
-                              status: 'DELIVERED',
-                              title: 'Collected from Store',
-                              description: 'Order handed over to customer at NEXRA 3D Store counter in Hyderabad.'
-                            })
-                          });
-                          if (res.ok) {
-                            alert(`Order #${selectedOrderForShipment.orderNumber} marked as "Collected / Delivered". Live update email dispatched to customer!`);
-                            setShowCreateShipmentModal(false);
-                            onRefreshData();
-                          } else {
-                            alert('Failed to update status');
+                    <p className="text-xs text-emerald-100/90 leading-relaxed">
+                      This customer selected <strong>Pickup from Store</strong>. Updating status below immediately emails live notifications to registered email (<strong>{regEmail}</strong>):
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`/api/admin/orders/${selectedOrderForShipment.id}/status`, {
+                              method: 'PUT',
+                              headers: getAuthHeaders(),
+                              body: JSON.stringify({
+                                status: 'SHIPPED',
+                                title: 'Ready for Store Pickup',
+                                description: 'Your order is ready for collection at NEXRA 3D Store (Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500046). Helpline: +91 8886159998.'
+                              })
+                            });
+                            if (res.ok) {
+                              alert(`Order #${selectedOrderForShipment.orderNumber} status updated to "Ready for Store Pickup". Notification email sent to ${regEmail}!`);
+                              setShowCreateShipmentModal(false);
+                              onRefreshData();
+                            } else {
+                              alert('Failed to update status');
+                            }
+                          } catch (err: any) {
+                            alert(err.message);
                           }
-                        } catch (err: any) {
-                          alert(err.message);
-                        }
-                      }}
-                      className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs transition-colors cursor-pointer shadow-md"
-                    >
-                      <Package className="w-4 h-4" />
-                      <span>Mark Handed Over / Collected</span>
-                    </button>
+                        }}
+                        className={`font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 text-xs transition-all shadow-md cursor-pointer ${
+                          isReady 
+                            ? 'bg-slate-950 border-2 border-emerald-400 text-emerald-300 shadow-inner' 
+                            : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                        }`}
+                      >
+                        <CheckCircle2 className={`w-4 h-4 ${isReady ? 'text-emerald-400' : ''}`} />
+                        <span>{isReady ? '✅ Status Updated: Ready for Pickup' : 'Mark Ready for Store Pickup'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`/api/admin/orders/${selectedOrderForShipment.id}/status`, {
+                              method: 'PUT',
+                              headers: getAuthHeaders(),
+                              body: JSON.stringify({
+                                status: 'DELIVERED',
+                                title: 'Collected from Store',
+                                description: 'Order handed over to customer at NEXRA 3D Store counter in Hyderabad.'
+                              })
+                            });
+                            if (res.ok) {
+                              alert(`Order #${selectedOrderForShipment.orderNumber} marked as "Collected / Delivered". Notification email sent to ${regEmail}!`);
+                              setShowCreateShipmentModal(false);
+                              onRefreshData();
+                            } else {
+                              alert('Failed to update status');
+                            }
+                          } catch (err: any) {
+                            alert(err.message);
+                          }
+                        }}
+                        className={`font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 text-xs transition-all shadow-md cursor-pointer ${
+                          isCollected 
+                            ? 'bg-slate-950 border-2 border-indigo-400 text-indigo-300 shadow-inner' 
+                            : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                        }`}
+                      >
+                        <Package className={`w-4 h-4 ${isCollected ? 'text-indigo-400' : ''}`} />
+                        <span>{isCollected ? '✅ Status Updated: Handed Over' : 'Mark Handed Over / Collected'}</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               <form onSubmit={handleCreateShipmentSubmit} className="space-y-3 pt-2 border-t border-slate-800">
                 <div className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">Courier Dispatch (For Home Delivery Orders)</div>

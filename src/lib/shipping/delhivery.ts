@@ -700,7 +700,7 @@ export async function createShipment(orderData: {
 
   // Pickup address / Google Maps link
   const rawMapsLinkOrAddr = (process.env.DELHIVERY_PICKUP_ADDRESS || process.env.DELHIVERY_PICKUP_MAPS_LINK || '').trim();
-  const pickupAdd = rawMapsLinkOrAddr || 'Plot 42, Tech Enclave, Gachibowli';
+  const pickupAdd = rawMapsLinkOrAddr || 'Plot no 484, TNGOs Colony, Gachibowli';
   const pickupCity = (process.env.DELHIVERY_PICKUP_CITY || 'Hyderabad').trim();
   const pickupState = (process.env.DELHIVERY_PICKUP_STATE || 'Telangana').trim();
   const pickupPin = (process.env.DELHIVERY_ORIGIN_PINCODE || DEFAULT_ORIGIN_PINCODE || '500032').trim();
