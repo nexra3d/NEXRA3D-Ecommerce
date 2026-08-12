@@ -41,6 +41,7 @@ interface CartItemData {
     category?: { id: string; name: string; slug: string } | null;
     taxPercentage?: number;
   };
+  customizationText?: string | null;
   variant?: {
     id: string;
     sku: string;
@@ -305,6 +306,16 @@ export const CartPage: React.FC<CartPageProps> = ({
                           <span className="text-slate-400">Variant:</span>
                           <span className="font-bold">{item.variant.name}</span>
                           <span className="text-slate-400">({item.variant.sku})</span>
+                        </div>
+                      )}
+
+                      {/* Custom Name Display */}
+                      {(item as any).customizationText && (
+                        <div className="pt-1">
+                          <div className="bg-indigo-50/90 text-indigo-950 text-xs font-bold px-2.5 py-1 rounded-lg border border-indigo-200/80 inline-flex items-center gap-1.5">
+                            <span className="text-indigo-600 font-extrabold uppercase text-[10px] tracking-wider">Custom Name:</span>
+                            <span className="font-extrabold text-indigo-950">{(item as any).customizationText}</span>
+                          </div>
                         </div>
                       )}
 

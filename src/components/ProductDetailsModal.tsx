@@ -41,7 +41,7 @@ interface ProductDetailsModalProps {
   isWishlisted: boolean;
   onToggleWishlist: (p: Product) => void;
   onAddToCart: (p: Product, variantId?: string, quantity?: number, customizationText?: string, selectedColour?: string, selectedWattage?: string) => void;
-  onBuyNow: (p: Product, customizationText?: string, selectedColour?: string, selectedWattage?: string) => void;
+  onBuyNow: (p: Product, customizationText?: string, selectedColour?: string, selectedWattage?: string, variantId?: string) => void;
   onSelectRelatedProduct?: (p: Product) => void;
 }
 
@@ -95,7 +95,8 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   const [newReviewRating, setNewReviewRating] = useState(5);
   const [reviewSubmittedMsg, setReviewSubmittedMsg] = useState(false);
   const [customizationText, setCustomizationText] = useState('');
-  const needsCustomization = product ? isNameKeychainProduct(product) : false;
+  const [customizationError, setCustomizationError] = useState<string | null>(null);
+  const needsCustomization = product ? (product.requiresCustomization === true || isNameKeychainProduct(product)) : false;
 
   // SEO Hook
   useSEO({
@@ -327,33 +328,52 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     }
   }, [wattageOptionsList]);
 
+  // Debug log variants when product is loaded
+  useEffect(() => {
+    if (product && variantsList.length > 0) {
+      console.log('[LAMP VARIANTS]', variantsList);
+    }
+  }, [product?.id, variantsList]);
+
   // Sync selected variant when colour or wattage changes
   useEffect(() => {
     if (variantsList.length > 0) {
-      const match = variantsList.find(
-        (v) =>
-          (v.colour === selectedColour || (v.attributes as any)?.colour === selectedColour) &&
-          (v.wattage === selectedWattage || (v.attributes as any)?.wattage === selectedWattage)
-      );
-      if (match) {
-        setSelectedVariant(match);
-      } else if (!selectedVariant) {
-        setSelectedVariant(variantsList[0]);
-      }
+      const normCol = (selectedColour || '').trim().toLowerCase();
+      const normWat = (selectedWattage || '').trim().toLowerCase();
+
+      const match = variantsList.find((v) => {
+        if (v.isActive === false) return false;
+        const vCol = (v.colour || (v.attributes as any)?.colour || '').trim().toLowerCase();
+        const vWat = (v.wattage || (v.attributes as any)?.wattage || '').trim().toLowerCase();
+
+        const colMatches = !normCol || vCol === normCol;
+        const watMatches = !normWat || vWat === normWat;
+
+        return colMatches && watMatches;
+      });
+
+      setSelectedVariant(match || null);
+
+      console.log('[SELECTED LAMP VARIANT]', {
+        selectedColour,
+        selectedWattage,
+        selectedVariant: match
+      });
+    } else {
+      setSelectedVariant(null);
     }
   }, [selectedColour, selectedWattage, variantsList]);
 
   if (!product) return null;
 
-  const currentColourItem = colourOptionsList.find((c) => c.value === selectedColour);
-  const currentWattageItem = wattageOptionsList.find((w) => w.value === selectedWattage);
-
-  const colourDelta = currentColourItem ? Number(currentColourItem.priceDelta) : 0;
-  const wattageDelta = currentWattageItem ? Number(currentWattageItem.priceDelta) : 0;
+  const isVariantProduct = variantsList.length > 0;
+  const isCombinationUnavailable = isVariantProduct && Boolean(selectedColour || selectedWattage) && !selectedVariant;
 
   const calculatedBasePrice = Number(product.price || 0);
-  const activePrice = (selectedVariant ? Number(selectedVariant.price) : calculatedBasePrice) + colourDelta + wattageDelta;
-  const activeMrp = (selectedVariant ? Number(selectedVariant.mrp) : (product.mrp ? Number(product.mrp) : calculatedBasePrice)) + colourDelta + wattageDelta;
+  const calculatedBaseMrp = Number(product.mrp || product.price || 0);
+
+  const activePrice = selectedVariant ? Number(selectedVariant.price) : calculatedBasePrice;
+  const activeMrp = selectedVariant ? Number(selectedVariant.mrp || selectedVariant.price) : calculatedBaseMrp;
   const activeSku = selectedVariant ? selectedVariant.sku : (product.sku || 'NX-LMP-SPRL');
 
   const formatINR = (val: number) => {
@@ -384,8 +404,10 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   const handleAddCustomProduct = () => {
     if (!product) return;
     if (needsCustomization && !customizationText.trim()) {
+      setCustomizationError('Please enter the name for your keychain.');
       return;
     }
+    setCustomizationError(null);
     onAddToCart(product, selectedVariant?.id, quantity, customizationText.trim(), selectedColour, selectedWattage);
   };
 
@@ -602,24 +624,42 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                               if (col.toLowerCase().includes('neutral')) bgDot = 'bg-orange-100';
                               if (col.toLowerCase().includes('rgb')) bgDot = 'bg-gradient-to-r from-red-500 via-green-500 to-blue-500';
 
+                              const matchingVar = variantsList.find(
+                                (v) =>
+                                  v.isActive !== false &&
+                                  (v.colour || (v.attributes as any)?.colour || '').trim().toLowerCase() === col.trim().toLowerCase() &&
+                                  (!selectedWattage || (v.wattage || (v.attributes as any)?.wattage || '').trim().toLowerCase() === selectedWattage.trim().toLowerCase())
+                              );
+
+                              const displayPrice = matchingVar ? Number(matchingVar.price) : null;
+                              const isAvailable = variantsList.length === 0 || !!matchingVar;
+
                               return (
                                 <button
                                   key={colObj.id || col}
                                   type="button"
                                   onClick={() => setSelectedColour(col)}
-                                  className={`p-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 cursor-pointer ${
+                                  className={`p-2.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-between gap-1.5 cursor-pointer ${
                                     isSel
-                                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
-                                      : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-100'
+                                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs ring-2 ring-indigo-300'
+                                      : isAvailable
+                                      ? 'bg-white border-slate-200 text-slate-800 hover:bg-slate-100'
+                                      : 'bg-slate-100 border-slate-200 text-slate-400 opacity-60'
                                   }`}
                                 >
-                                  <span className={`w-3 h-3 rounded-full shrink-0 ${bgDot} border border-slate-300`} />
-                                  <span className="truncate">{col}</span>
-                                  {Number(colObj.priceDelta) > 0 && (
-                                    <span className={`text-[10px] ml-auto px-1 rounded ${isSel ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-100 text-slate-600'}`}>
-                                      +₹{colObj.priceDelta}
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className={`w-3 h-3 rounded-full shrink-0 ${bgDot} border border-slate-300`} />
+                                    <span className="truncate">{col}</span>
+                                  </div>
+                                  {displayPrice !== null ? (
+                                    <span className={`text-[10px] shrink-0 font-bold px-1.5 py-0.5 rounded ${isSel ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-100 text-slate-700'}`}>
+                                      {formatINR(displayPrice)}
                                     </span>
-                                  )}
+                                  ) : isVariantProduct ? (
+                                    <span className="text-[10px] shrink-0 font-medium text-rose-500">
+                                      N/A
+                                    </span>
+                                  ) : null}
                                 </button>
                               );
                             })}
@@ -644,21 +684,33 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                             {wattageOptionsList.map((wattObj) => {
                               const watt = wattObj.value;
                               const isSel = selectedWattage === watt;
-                              const delta = Number(wattObj.priceDelta || 0);
+
+                              const matchingVar = variantsList.find(
+                                (v) =>
+                                  v.isActive !== false &&
+                                  (!selectedColour || (v.colour || (v.attributes as any)?.colour || '').trim().toLowerCase() === selectedColour.trim().toLowerCase()) &&
+                                  (v.wattage || (v.attributes as any)?.wattage || '').trim().toLowerCase() === watt.trim().toLowerCase()
+                              );
+
+                              const displayPrice = matchingVar ? Number(matchingVar.price) : null;
+                              const isAvailable = variantsList.length === 0 || !!matchingVar;
+
                               return (
                                 <button
                                   key={wattObj.id || watt}
                                   type="button"
                                   onClick={() => setSelectedWattage(watt)}
-                                  className={`p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer text-center ${
+                                  className={`p-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer text-center ${
                                     isSel
-                                      ? 'bg-amber-500 border-amber-500 text-slate-950 font-black shadow-xs'
-                                      : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-100'
+                                      ? 'bg-amber-500 border-amber-500 text-slate-950 font-black shadow-xs ring-2 ring-amber-300'
+                                      : isAvailable
+                                      ? 'bg-white border-slate-200 text-slate-800 hover:bg-slate-100'
+                                      : 'bg-slate-100 border-slate-200 text-slate-400 opacity-60'
                                   }`}
                                 >
                                   <div>{watt}</div>
-                                  <div className="text-[10px] font-normal opacity-80">
-                                    {delta === 0 ? 'Included' : delta > 0 ? `+₹${delta}` : `-₹${Math.abs(delta)}`}
+                                  <div className={`text-[10px] mt-0.5 ${isSel ? 'text-slate-950 font-bold' : isAvailable ? 'text-slate-600 font-semibold' : 'text-rose-500'}`}>
+                                    {displayPrice !== null ? formatINR(displayPrice) : (isVariantProduct ? 'Unavailable' : '')}
                                   </div>
                                 </button>
                               );
@@ -686,7 +738,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                             : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                         }`}
                       >
-                        {v.name} ({formatINR(v.price)})
+                        {v.name} ({formatINR(Number(v.price))})
                       </button>
                     ))}
                   </div>
@@ -697,20 +749,30 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-baseline justify-between">
                 <div>
                   <span className="text-xs text-slate-500 block uppercase font-bold tracking-wider">Price</span>
-                  <div className="flex items-baseline space-x-2">
-                    <span className="text-2xl font-black text-slate-900">
-                      {formatINR(activePrice)}
-                    </span>
-                    {activeMrp > activePrice && (
-                      <span className="text-sm text-slate-400 line-through">
-                        {formatINR(activeMrp)}
+                  {isCombinationUnavailable ? (
+                    <div className="text-sm font-semibold text-rose-600 mt-1">
+                      Option Combination Unavailable
+                    </div>
+                  ) : (
+                    <div className="flex items-baseline space-x-2">
+                      <span className="text-2xl font-black text-slate-900">
+                        {formatINR(activePrice)}
                       </span>
-                    )}
-                  </div>
+                      {activeMrp > activePrice && (
+                        <span className="text-sm text-slate-400 line-through">
+                          {formatINR(activeMrp)}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div>
-                  {stockQty > 0 ? (
+                  {isCombinationUnavailable ? (
+                    <span className="bg-rose-100 text-rose-800 text-xs font-bold px-3 py-1 rounded-full">
+                      Unavailable
+                    </span>
+                  ) : stockQty > 0 ? (
                     <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                       <span>{stockQty} Units In Stock</span>
@@ -724,7 +786,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
               </div>
 
               {/* Quantity Selector */}
-              {stockQty > 0 && (
+              {stockQty > 0 && !isCombinationUnavailable && (
                 <div className="flex items-center space-x-4">
                   <span className="text-xs font-bold text-slate-700 uppercase">Quantity:</span>
                   <div className="flex items-center border border-slate-300 rounded-xl bg-slate-50 overflow-hidden">
@@ -746,15 +808,38 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
               )}
 
               {needsCustomization && (
-                <div className="space-y-2 pt-1">
-                  <label className="text-[11px] font-bold uppercase tracking-wide text-slate-700">Name for keychain</label>
-                  <input
-                    type="text"
-                    value={customizationText}
-                    onChange={(e) => setCustomizationText(e.target.value.slice(0, 20))}
-                    placeholder="Enter name"
-                    className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:border-indigo-500"
-                  />
+                <div className="space-y-2 pt-1 p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
+                      CUSTOMIZE YOUR KEYCHAIN
+                    </label>
+                    <span className="text-[10px] text-slate-500 font-medium">Maximum 30 characters</span>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Enter Name <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={30}
+                      value={customizationText}
+                      onChange={(e) => {
+                        setCustomizationText(e.target.value.slice(0, 30));
+                        if (e.target.value.trim()) setCustomizationError(null);
+                      }}
+                      placeholder="e.g. VARUN"
+                      className={`w-full border rounded-xl px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 transition-all ${
+                        customizationError
+                          ? 'border-rose-400 focus:ring-rose-200'
+                          : 'border-slate-300 focus:ring-indigo-200 focus:border-indigo-500'
+                      }`}
+                    />
+                    {customizationError && (
+                      <p className="text-xs font-bold text-rose-600 mt-1.5 flex items-center gap-1">
+                        <span>⚠️</span> {customizationError}
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -763,20 +848,25 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={handleAddCustomProduct}
-                    disabled={stockQty <= 0 || (needsCustomization && !customizationText.trim())}
+                    disabled={isCombinationUnavailable || stockQty <= 0}
                     className="w-full py-3.5 bg-slate-900 hover:bg-indigo-600 text-white font-bold text-sm rounded-2xl flex items-center justify-center space-x-2 transition-all shadow-md cursor-pointer disabled:opacity-50"
                   >
                     <ShoppingBag className="w-4 h-4" />
-                    <span>Add to Cart</span>
+                    <span>{isCombinationUnavailable ? 'Unavailable' : 'Add to Cart'}</span>
                   </button>
 
                   <button
                     onClick={() => {
-                      if (needsCustomization && !customizationText.trim()) return;
-                      onBuyNow(product, customizationText.trim(), selectedColour, selectedWattage);
+                      if (isCombinationUnavailable) return;
+                      if (needsCustomization && !customizationText.trim()) {
+                        setCustomizationError('Please enter the name for your keychain.');
+                        return;
+                      }
+                      setCustomizationError(null);
+                      onBuyNow(product, customizationText.trim(), selectedColour, selectedWattage, selectedVariant?.id);
                       onClose();
                     }}
-                    disabled={stockQty <= 0}
+                    disabled={isCombinationUnavailable || stockQty <= 0}
                     className="w-full py-3.5 bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold text-sm rounded-2xl flex items-center justify-center space-x-2 transition-all shadow-md cursor-pointer disabled:opacity-50"
                   >
                     <Zap className="w-4 h-4 text-slate-900 fill-slate-900" />

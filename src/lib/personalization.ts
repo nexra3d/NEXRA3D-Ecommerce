@@ -15,6 +15,7 @@ export function extractCustomizationText(value: string | undefined | null) {
 
 export function isNameKeychainProduct(product: any) {
   if (!product) return false;
+  if (product.requiresCustomization === true) return true;
   const target = `${product.id || ''} ${product.slug || ''} ${product.title || ''} ${product.name || ''}`.toLowerCase();
   return target.includes('name keychain') || target.includes('customized 3d printed name keychain');
 }

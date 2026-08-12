@@ -341,7 +341,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             productId: ci.productId || ci.product?.id,
             quantity: ci.quantity,
             variantId: ci.variantId,
-            customizationText: ci.customizationText || (ci.product?.title || '').includes('• For:') ? (ci.product?.title || '').split('• For:')[1]?.trim() || undefined : undefined
+            customizationText: ci.customizationText || (ci as any).customizationText || ((ci.product?.title || ci.product?.name || '').includes('• For:') ? (ci.product?.title || ci.product?.name || '').split('• For:')[1]?.trim() : undefined) || undefined,
+            selectedColour: ci.selectedColour,
+            selectedWattage: ci.selectedWattage
           }))
         })
       });

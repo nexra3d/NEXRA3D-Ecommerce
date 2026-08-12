@@ -110,7 +110,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               const itemImg = typeof firstImg === 'string' ? firstImg : (firstImg?.url || 'https://images.unsplash.com/photo-1527977966376-1c8408f9f108?auto=format&fit=crop&q=80&w=800');
               return (
                 <div
-                  key={item.productId}
+                  key={item.id || `${item.productId}-${item.customizationText || ''}-${item.selectedColour || ''}-${item.selectedWattage || ''}`}
                   className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex gap-3 items-center"
                 >
                   <img
@@ -122,6 +122,16 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   <div className="flex-1 min-w-0 space-y-1">
                     <span className="text-[10px] font-black text-cyan-700 uppercase">{item.product.brand}</span>
                     <h4 className="text-xs font-bold text-slate-900 truncate">{item.product.title}</h4>
+
+                    {/* Custom Name Display */}
+                    {item.customizationText && (
+                      <div className="py-0.5">
+                        <span className="bg-indigo-50 text-indigo-900 text-[11px] font-extrabold px-2 py-0.5 rounded border border-indigo-200 inline-flex items-center gap-1">
+                          <span className="text-indigo-600 uppercase text-[9px] font-bold tracking-wider">Custom Name:</span>
+                          <span>{item.customizationText}</span>
+                        </span>
+                      </div>
+                    )}
 
                     {/* Variant & Lamp Attribute Badges */}
                     {(item.selectedColour || item.selectedWattage || item.variant?.colour || item.variant?.wattage || item.variant?.name) && (

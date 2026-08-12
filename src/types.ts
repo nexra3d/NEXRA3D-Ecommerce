@@ -137,6 +137,7 @@ export interface Product {
   seoDescription?: string | null;
   metaDescription?: string | null;
   specifications?: Record<string, any>;
+  requiresCustomization?: boolean;
   tags?: string[];
   createdAt?: string;
   updatedAt?: string;

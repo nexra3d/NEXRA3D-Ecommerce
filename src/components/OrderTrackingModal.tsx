@@ -249,7 +249,17 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
                       )}
                       <div>
                         <span className="font-bold text-slate-900 block">{itemTitle}</span>
-                        <span className="text-[11px] text-slate-500">Qty: {itemQty} × ₹{itemPrice.toLocaleString('en-IN')}</span>
+                        {item.customizationText && (
+                          <span className="inline-block text-[11px] font-extrabold text-indigo-800 bg-indigo-50 border border-indigo-200/80 rounded px-2 py-0.5 mt-0.5">
+                            Custom Name: {item.customizationText}
+                          </span>
+                        )}
+                        {(item.selectedColour || item.selectedWattage) && (
+                          <span className="block text-[10px] text-slate-500 font-semibold mt-0.5">
+                            {[item.selectedColour && `Colour: ${item.selectedColour}`, item.selectedWattage && `Wattage: ${item.selectedWattage}`].filter(Boolean).join(' | ')}
+                          </span>
+                        )}
+                        <span className="text-[11px] text-slate-500 block">Qty: {itemQty} × ₹{itemPrice.toLocaleString('en-IN')}</span>
                       </div>
                     </div>
                     <span className="font-bold text-slate-900">₹{lineTotal.toLocaleString('en-IN')}</span>

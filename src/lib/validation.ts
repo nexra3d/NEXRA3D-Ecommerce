@@ -102,6 +102,7 @@ export const productCreateSchema = z.object({
   isFeatured: z.boolean().default(false),
   isNewArrival: z.boolean().default(false),
   isBestSeller: z.boolean().default(false),
+  requiresCustomization: z.boolean().default(false),
   categoryId: z.string().min(1, 'Category selection is required')
 }).refine((data) => (data.mrp !== undefined && data.mrp !== null ? data.mrp >= data.price : true), {
   message: 'MRP must be greater than or equal to selling price',
@@ -130,6 +131,7 @@ export const productUpdateSchema = z.object({
   isFeatured: z.boolean().optional(),
   isNewArrival: z.boolean().optional(),
   isBestSeller: z.boolean().optional(),
+  requiresCustomization: z.boolean().optional(),
   categoryId: z.string().min(1).optional()
 });
 

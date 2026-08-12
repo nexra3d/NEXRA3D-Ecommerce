@@ -251,6 +251,7 @@ export default function App() {
         variant: i.variant,
         selectedColour: i.selectedColour || i.variant?.colour || null,
         selectedWattage: i.selectedWattage || i.variant?.wattage || null,
+        customizationText: i.customizationText || null,
         taxPercentage: Number(i.taxPercentage ?? p.taxPercentage ?? 0)
       };
     });
@@ -714,15 +715,7 @@ export default function App() {
         throw new Error(data.error || 'Failed to add item to cart');
       }
       setCartData(data);
-      const formattedItems = formatCartItems(data?.items);
-      if (trimmedCustomization) {
-        formattedItems.forEach((item) => {
-          if (item.productId === prodId) {
-            item.customizationText = trimmedCustomization;
-          }
-        });
-      }
-      setCartItems(formattedItems);
+      setCartItems(formatCartItems(data?.items));
       showToast('Item added to Shopping Cart!');
     } catch (err: any) {
       console.error('Add to cart error:', err);
@@ -1260,8 +1253,8 @@ export default function App() {
           onAddToCart={(p, variantId, qty, customizationText, selectedColour, selectedWattage) =>
             handleAddToCart(p, variantId, qty || 1, customizationText, selectedColour, selectedWattage)
           }
-          onBuyNow={(p, customizationText, selectedColour, selectedWattage) => {
-            handleAddToCart(p, undefined, 1, customizationText, selectedColour, selectedWattage);
+          onBuyNow={(p, customizationText, selectedColour, selectedWattage, variantId) => {
+            handleAddToCart(p, variantId, 1, customizationText, selectedColour, selectedWattage);
             handleProceedToCheckout();
           }}
           onSelectRelatedProduct={(p) => setQuickViewProduct(p)}

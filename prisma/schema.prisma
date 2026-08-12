@@ -6,8 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
@@ -135,42 +135,43 @@ model Category {
 }
 
 model Product {
-  id                 String           @id @default(uuid())
-  name               String
-  slug               String           @unique
-  sku                String           @unique
-  shortDescription   String?
-  description        String?
-  price              Decimal
-  mrp                Decimal
-  discountPercentage Decimal          @default(0)
-  taxPercentage      Decimal          @default(0)
-  stockQuantity      Int              @default(0)
-  lowStockThreshold  Int              @default(5)
-  weight             Float?
-  length             Float?
-  width              Float?
-  height             Float?
-  specifications     Json?
-  imageUrl           String?
-  isActive           Boolean          @default(true)
-  isFeatured         Boolean          @default(false)
-  isNewArrival       Boolean          @default(false)
-  isBestSeller       Boolean          @default(false)
-  seoTitle           String?
-  seoDescription     String?
-  metaDescription    String?
-  categoryId         String
-  category           Category         @relation(fields: [categoryId], references: [id])
-  images             ProductImage[]
-  variants           ProductVariant[]
-  cartItems          CartItem[]
-  wishlistItems      WishlistItem[]
-  orderItems         OrderItem[]
-  reviews            Review[]
-  lampOptions        ProductLampOption[]
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  id                    String              @id @default(uuid())
+  name                  String
+  slug                  String              @unique
+  sku                   String              @unique
+  shortDescription      String?
+  description           String?
+  price                 Decimal
+  mrp                   Decimal
+  discountPercentage    Decimal             @default(0)
+  taxPercentage         Decimal             @default(0)
+  stockQuantity         Int                 @default(0)
+  lowStockThreshold     Int                 @default(5)
+  weight                Float?
+  length                Float?
+  width                 Float?
+  height                Float?
+  specifications        Json?
+  imageUrl              String?
+  isActive              Boolean             @default(true)
+  isFeatured            Boolean             @default(false)
+  isNewArrival          Boolean             @default(false)
+  isBestSeller          Boolean             @default(false)
+  seoTitle              String?
+  seoDescription        String?
+  metaDescription       String?
+  categoryId            String
+  category              Category            @relation(fields: [categoryId], references: [id])
+  requiresCustomization Boolean             @default(false)
+  images                ProductImage[]
+  variants              ProductVariant[]
+  cartItems             CartItem[]
+  wishlistItems         WishlistItem[]
+  orderItems            OrderItem[]
+  reviews               Review[]
+  lampOptions           ProductLampOption[]
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
 
   @@index([name])
   @@index([slug])
@@ -233,18 +234,19 @@ model Cart {
 }
 
 model CartItem {
-  id        String          @id @default(uuid())
-  cartId    String
-  cart      Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
-  variantId String?
-  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
-  quantity        Int             @default(1)
-  selectedColour  String?
-  selectedWattage String?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id                String          @id @default(uuid())
+  cartId            String
+  cart              Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId         String
+  product           Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId         String?
+  variant           ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  quantity          Int             @default(1)
+  selectedColour    String?
+  selectedWattage   String?
+  customizationText String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
   @@index([cartId])
   @@index([productId])
@@ -313,15 +315,15 @@ model Order {
   shipmentId         String?
   estimatedDelivery  DateTime?
   shipmentStatus     String?
-  pickupRequested    Boolean?      @default(false)
+  pickupRequested    Boolean?  @default(false)
   labelUrl           String?
   trackingUrl        String?
   manifestUrl        String?
   lastTrackingUpdate DateTime?
   trackingHistory    Json?
 
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId])
   @@index([orderNumber])
@@ -331,23 +333,24 @@ model Order {
 }
 
 model OrderItem {
-  id              String          @id @default(uuid())
-  orderId         String
-  order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId       String
-  product         Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
-  variantId       String?
-  variant         ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
-  productTitle    String
-  skuSnapshot     String?
-  selectedColour  String?
-  selectedWattage String?
-  price           Decimal
-  quantity        Int             @default(1)
-  subtotal        Decimal?
-  total           Decimal
-  imageUrl        String?
-  createdAt       DateTime        @default(now())
+  id                String          @id @default(uuid())
+  orderId           String
+  order             Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId         String
+  product           Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variantId         String?
+  variant           ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  productTitle      String
+  skuSnapshot       String?
+  selectedColour    String?
+  selectedWattage   String?
+  customizationText String?
+  price             Decimal
+  quantity          Int             @default(1)
+  subtotal          Decimal?
+  total             Decimal
+  imageUrl          String?
+  createdAt         DateTime        @default(now())
 
   @@index([orderId])
   @@index([productId])

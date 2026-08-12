@@ -47,6 +47,9 @@ export function ensureDbSchema() {
         `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "length" DOUBLE PRECISION;`,
         `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "width" DOUBLE PRECISION;`,
         `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "height" DOUBLE PRECISION;`,
+        `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "requiresCustomization" BOOLEAN NOT NULL DEFAULT false;`,
+        `ALTER TABLE "cart_items" ADD COLUMN IF NOT EXISTS "customizationText" TEXT;`,
+        `ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "customizationText" TEXT;`,
 
         `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shippingProvider" TEXT;`,
         `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "awbNumber" TEXT;`,

@@ -139,6 +139,7 @@ function formatPrismaProductResponse(p: any) {
     isFeatured: p.isFeatured ?? false,
     isNewArrival: p.isNewArrival ?? false,
     isBestSeller: p.isBestSeller ?? false,
+    requiresCustomization: Boolean(p.requiresCustomization),
     categoryId: p.categoryId,
     categoryName: p.category?.name || '',
     category: p.category ? {
@@ -605,10 +606,54 @@ async function calculateLampOptionPrice(
   productId: string,
   basePrice: number,
   selectedColour?: string | null,
-  selectedWattage?: string | null
-): Promise<{ unitPrice: number; colourDelta: number; wattageDelta: number; selectedColour?: string; selectedWattage?: string }> {
-  if (!selectedColour && !selectedWattage) {
-    return { unitPrice: basePrice, colourDelta: 0, wattageDelta: 0 };
+  selectedWattage?: string | null,
+  variantId?: string | null
+): Promise<{ unitPrice: number; colourDelta: number; wattageDelta: number; selectedColour?: string; selectedWattage?: string; variantId?: string }> {
+  const normColour = selectedColour ? String(selectedColour).trim() : null;
+  const normWattage = selectedWattage ? String(selectedWattage).trim() : null;
+
+  // 1. Check for matching ProductVariant first
+  try {
+    let matchingVariant: any = null;
+    if (variantId) {
+      matchingVariant = await prisma.productVariant.findFirst({
+        where: { id: variantId, productId, isActive: true }
+      });
+    }
+
+    if (!matchingVariant && (normColour || normWattage)) {
+      const allVariants = await prisma.productVariant.findMany({
+        where: { productId, isActive: true }
+      });
+
+      matchingVariant = allVariants.find((v: any) => {
+        const vCol = (v.colour || (v.attributes as any)?.colour || '').trim();
+        const vWat = (v.wattage || (v.attributes as any)?.wattage || '').trim();
+
+        const colMatch = !normColour || vCol.toLowerCase() === normColour.toLowerCase();
+        const watMatch = !normWattage || vWat.toLowerCase() === normWattage.toLowerCase();
+
+        return colMatch && watMatch;
+      });
+    }
+
+    if (matchingVariant) {
+      const vPrice = Number(matchingVariant.price);
+      return {
+        unitPrice: vPrice,
+        colourDelta: 0,
+        wattageDelta: 0,
+        selectedColour: matchingVariant.colour || normColour || undefined,
+        selectedWattage: matchingVariant.wattage || normWattage || undefined,
+        variantId: matchingVariant.id
+      };
+    }
+  } catch (err) {
+    console.warn('[calculateLampOptionPrice] Error checking ProductVariant:', err);
+  }
+
+  if (!normColour && !normWattage) {
+    return { unitPrice: basePrice, colourDelta: 0, wattageDelta: 0, variantId: variantId || undefined };
   }
 
   let options: any[] = [];
@@ -623,36 +668,28 @@ async function calculateLampOptionPrice(
 
   let colourDelta = 0;
   let wattageDelta = 0;
-  let verifiedColour = selectedColour || undefined;
-  let verifiedWattage = selectedWattage || undefined;
+  let verifiedColour = normColour || undefined;
+  let verifiedWattage = normWattage || undefined;
 
-  if (selectedColour) {
+  if (normColour) {
     const cMatch = options.find((o: any) =>
       String(o.optionType).toUpperCase().includes('COL') &&
-      String(o.optionValue).trim().toLowerCase() === String(selectedColour).trim().toLowerCase()
+      String(o.optionValue).trim().toLowerCase() === normColour.toLowerCase()
     );
     if (cMatch) {
       colourDelta = Number(cMatch.priceDelta || 0);
       verifiedColour = cMatch.optionValue;
-    } else if (options.some((o: any) => String(o.optionType).toUpperCase().includes('COL'))) {
-      const err: any = new Error(`Selected colour '${selectedColour}' is invalid or inactive for product ${productId}`);
-      err.statusCode = 400;
-      throw err;
     }
   }
 
-  if (selectedWattage) {
+  if (normWattage) {
     const wMatch = options.find((o: any) =>
       String(o.optionType).toUpperCase().includes('WAT') &&
-      String(o.optionValue).trim().toLowerCase() === String(selectedWattage).trim().toLowerCase()
+      String(o.optionValue).trim().toLowerCase() === normWattage.toLowerCase()
     );
     if (wMatch) {
       wattageDelta = Number(wMatch.priceDelta || 0);
       verifiedWattage = wMatch.optionValue;
-    } else if (options.some((o: any) => String(o.optionType).toUpperCase().includes('WAT'))) {
-      const err: any = new Error(`Selected wattage '${selectedWattage}' is invalid or inactive for product ${productId}`);
-      err.statusCode = 400;
-      throw err;
     }
   }
 
@@ -662,7 +699,8 @@ async function calculateLampOptionPrice(
     colourDelta,
     wattageDelta,
     selectedColour: verifiedColour,
-    selectedWattage: verifiedWattage
+    selectedWattage: verifiedWattage,
+    variantId: variantId || undefined
   };
 }
 
@@ -780,6 +818,7 @@ async function getFormattedCart(userId: string) {
       },
       selectedColour: effectiveColour,
       selectedWattage: effectiveWattage,
+      customizationText: ci.customizationText || null,
       variant: v ? {
         id: v.id,
         name: v.name,
@@ -2535,7 +2574,7 @@ app.post('/api/products', requireAdminMiddleware, async (req: Request, res: Resp
   const {
     name, slug, sku, shortDescription, description, price, mrp,
     discountPercentage, taxPercentage, stockQuantity, categoryId,
-    imageUrl, isActive, isFeatured, isBestSeller, isNewArrival, specifications, weight,
+    imageUrl, isActive, isFeatured, isBestSeller, isNewArrival, requiresCustomization, specifications, weight,
     length, width, height
   } = parseResult.data;
 
@@ -2564,7 +2603,8 @@ app.post('/api/products', requireAdminMiddleware, async (req: Request, res: Resp
         isActive: isActive !== undefined ? Boolean(isActive) : true,
         isFeatured: Boolean(isFeatured),
         isBestSeller: Boolean(isBestSeller),
-        isNewArrival: Boolean(isNewArrival)
+        isNewArrival: Boolean(isNewArrival),
+        requiresCustomization: Boolean(requiresCustomization)
       },
       include: { category: true }
     });
@@ -2606,7 +2646,7 @@ app.put('/api/products/:id', requireAdminMiddleware, async (req: Request, res: R
   const {
     name, slug, sku, shortDescription, description, price, mrp,
     discountPercentage, taxPercentage, stockQuantity, categoryId,
-    imageUrl, specifications, isFeatured, isBestSeller, isNewArrival, isActive, weight,
+    imageUrl, specifications, isFeatured, isBestSeller, isNewArrival, requiresCustomization, isActive, weight,
     length, width, height
   } = parseResult.data;
 
@@ -2639,6 +2679,7 @@ app.put('/api/products/:id', requireAdminMiddleware, async (req: Request, res: R
         isFeatured: isFeatured !== undefined ? Boolean(isFeatured) : existing.isFeatured,
         isBestSeller: isBestSeller !== undefined ? Boolean(isBestSeller) : existing.isBestSeller,
         isNewArrival: isNewArrival !== undefined ? Boolean(isNewArrival) : existing.isNewArrival,
+        requiresCustomization: requiresCustomization !== undefined ? Boolean(requiresCustomization) : (existing as any).requiresCustomization,
         isActive: isActive !== undefined ? Boolean(isActive) : existing.isActive
       }
     });
@@ -3388,7 +3429,7 @@ app.get('/api/cart', requireAuthMiddleware, async (req: AuthenticatedRequest, re
 
 app.post(['/api/cart/items', '/api/cart'], requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user.id;
-  const { productId, variantId, quantity = 1, selectedColour, selectedWattage } = req.body;
+  const { productId, variantId, quantity = 1, selectedColour, selectedWattage, customizationText } = req.body;
 
   if (!productId) {
     return res.status(400).json({ error: 'productId is required' });
@@ -3410,19 +3451,33 @@ app.post(['/api/cart/items', '/api/cart'], requireAuthMiddleware, async (req: Au
       return res.status(400).json({ error: 'Product is not available' });
     }
 
+    // Customization text validation & sanitization
+    const isCustomizable = (product as any).requiresCustomization === true || `${product.id || ''} ${product.slug || ''} ${product.name || ''}`.toLowerCase().includes('name keychain');
+    let sanitizedCustomization: string | null = null;
+    if (customizationText && typeof customizationText === 'string') {
+      sanitizedCustomization = customizationText.trim().replace(/<[^>]*>?/gm, '').slice(0, 30) || null;
+    }
+
+    if (isCustomizable && !sanitizedCustomization) {
+      return res.status(400).json({ error: 'Please enter the name for your keychain.' });
+    }
+
     // Validate lamp option selections & calculate price
     const basePrice = Number(product.price);
     let verifiedColour = selectedColour || null;
     let verifiedWattage = selectedWattage || null;
+    let effectiveVariantId = variantId || null;
     try {
       const priceCalc = await calculateLampOptionPrice(
         productId,
         basePrice,
         selectedColour,
-        selectedWattage
+        selectedWattage,
+        variantId
       );
       if (priceCalc.selectedColour) verifiedColour = priceCalc.selectedColour;
       if (priceCalc.selectedWattage) verifiedWattage = priceCalc.selectedWattage;
+      if (priceCalc.variantId) effectiveVariantId = priceCalc.variantId;
     } catch (valErr: any) {
       return res.status(valErr.statusCode || 400).json({ error: valErr.message || 'Invalid lamp option selected' });
     }
@@ -3433,14 +3488,15 @@ app.post(['/api/cart/items', '/api/cart'], requireAuthMiddleware, async (req: Au
       cart = await prisma.cart.create({ data: { userId } });
     }
 
-    // 5. Add or update cart item in Prisma matching product, variant, colour, and wattage
+    // 5. Add or update cart item in Prisma matching product, variant, colour, wattage, and customizationText
     const existingItem = await prisma.cartItem.findFirst({
       where: {
         cartId: cart.id,
         productId,
-        variantId: variantId || null,
+        variantId: effectiveVariantId,
         selectedColour: verifiedColour,
-        selectedWattage: verifiedWattage
+        selectedWattage: verifiedWattage,
+        customizationText: sanitizedCustomization
       }
     });
 
@@ -3454,9 +3510,10 @@ app.post(['/api/cart/items', '/api/cart'], requireAuthMiddleware, async (req: Au
         data: {
           cartId: cart.id,
           productId,
-          variantId: variantId || null,
+          variantId: effectiveVariantId,
           selectedColour: verifiedColour,
           selectedWattage: verifiedWattage,
+          customizationText: sanitizedCustomization,
           quantity: Number(quantity)
         }
       });
@@ -3777,6 +3834,7 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
         selectedColour,
         selectedWattage,
         productTitle: displayName,
+        customizationText: customNameFromCart || null,
         price: unitPrice,
         quantity: ci.quantity,
         total,
@@ -3973,11 +4031,17 @@ async function sendNewOrderNotificationEmail(orderInput: any, eventType: 'CREATE
       if (wattage) variantParts.push(`Wattage: ${wattage}`);
       const variantStr = variantParts.length > 0 ? ` (${variantParts.join(', ')})` : '';
 
+      const customName = it.customizationText || ((title || '').includes('• For:') ? (title || '').split('• For:')[1]?.trim() : null);
+      const customNameHtml = customName
+        ? `<div style="margin-top: 5px; background-color: #eef2ff; border: 1px solid #c7d2fe; color: #312e81; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; display: inline-block;">CUSTOM NAME: <span style="font-size: 12px; font-weight: 900; color: #1e1b4b; text-transform: uppercase;">${customName.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span></div>`
+        : '';
+
       return `
         <tr style="border-bottom: 1px solid #e2e8f0; ${index % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
           <td style="padding: 10px 12px; vertical-align: top;">
             <div style="font-weight: bold; color: #0f172a; font-size: 13px;">${title}</div>
             <div style="font-size: 11px; color: #64748b; margin-top: 2px;">SKU: <strong>${sku}</strong>${variantStr}</div>
+            ${customNameHtml}
           </td>
           <td style="padding: 10px 12px; text-align: center; color: #0f172a; font-weight: bold; vertical-align: top;">${qty}</td>
           <td style="padding: 10px 12px; text-align: right; color: #334155; vertical-align: top;">₹${price.toLocaleString('en-IN')}</td>

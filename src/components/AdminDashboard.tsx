@@ -325,6 +325,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [prodIsFeatured, setProdIsFeatured] = useState(false);
   const [prodIsNewArrival, setProdIsNewArrival] = useState(false);
   const [prodIsBestSeller, setProdIsBestSeller] = useState(false);
+  const [prodRequiresCustomization, setProdRequiresCustomization] = useState(false);
   const [prodWeight, setProdWeight] = useState('');
   const [prodLength, setProdLength] = useState('');
   const [prodWidth, setProdWidth] = useState('');
@@ -455,6 +456,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setProdIsFeatured(false);
     setProdIsNewArrival(false);
     setProdIsBestSeller(false);
+    setProdRequiresCustomization(false);
     setProdWeight('');
     setProdLength('');
     setProdWidth('');
@@ -498,6 +500,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setProdIsFeatured(p.isFeatured ?? false);
     setProdIsNewArrival(p.isNewArrival ?? false);
     setProdIsBestSeller(p.isBestSeller ?? p.isTrending ?? false);
+    setProdRequiresCustomization(p.requiresCustomization ?? false);
     setProdWeight(p.weight !== null && p.weight !== undefined ? String(p.weight) : '');
     setProdLength(p.length !== null && p.length !== undefined ? String(p.length) : '');
     setProdWidth(p.width !== null && p.width !== undefined ? String(p.width) : '');
@@ -918,7 +921,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       isActive: prodIsActive,
       isFeatured: prodIsFeatured,
       isNewArrival: prodIsNewArrival,
-      isBestSeller: prodIsBestSeller
+      isBestSeller: prodIsBestSeller,
+      requiresCustomization: prodRequiresCustomization
     };
 
     try {
@@ -2350,6 +2354,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       />
                       <span>Best Seller</span>
                     </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-indigo-300 bg-indigo-950/60 border border-indigo-500/40 px-3 py-1 rounded-lg">
+                      <input
+                        type="checkbox"
+                        checked={prodRequiresCustomization}
+                        onChange={(e) => setProdRequiresCustomization(e.target.checked)}
+                        className="w-4 h-4 accent-indigo-500 rounded"
+                      />
+                      <span>Requires Custom Name ({prodRequiresCustomization ? 'YES' : 'NO'})</span>
+                    </label>
                   </div>
 
                   <div className="flex space-x-2 pt-2">
@@ -2460,6 +2473,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {p.isFeatured && <span className="bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded text-[9px] font-bold">FEATURED</span>}
                             {p.isNewArrival && <span className="bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded text-[9px] font-bold">NEW</span>}
                             {p.isBestSeller && <span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded text-[9px] font-bold">BEST SELLER</span>}
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${p.requiresCustomization ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-slate-800 text-slate-400'}`}>
+                              Requires Custom Name: {p.requiresCustomization ? 'YES' : 'NO'}
+                            </span>
                           </div>
                         </td>
                         <td className="p-3 text-right">
@@ -2937,10 +2953,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Items / Personalization</div>
                             {(ord.items || []).map((item: any) => {
                               const itemTitle = item.productTitle || item.product?.name || item.product?.title || 'Product';
+                              const customName = item.customizationText || ((item.productTitle || '').includes('• For:') ? (item.productTitle || '').split('• For:')[1]?.trim() : null);
+                              const sku = item.skuSnapshot || item.variant?.sku || item.product?.sku || 'N/A';
+                              const unitPrice = Number(item.price || 0);
+                              const qty = Number(item.quantity || 1);
+                              const subtotal = Number(item.totalPrice ?? item.total ?? item.subtotal ?? (unitPrice * qty));
+                              const colour = item.selectedColour || item.variant?.colour || (item.variant?.attributes as any)?.colour;
+                              const wattage = item.selectedWattage || item.variant?.wattage || (item.variant?.attributes as any)?.wattage;
+
                               return (
-                                <div key={item.id || `${ord.id}-${item.productId}`} className="flex justify-between gap-3 text-[11px] text-slate-200">
-                                  <span className="font-medium">{itemTitle}</span>
-                                  <span className="text-slate-400">Qty: {item.quantity || 1} • ₹{Number(item.price || item.total || 0).toLocaleString('en-IN')}</span>
+                                <div key={item.id || `${ord.id}-${item.productId}`} className="bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 space-y-1">
+                                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-100">
+                                    <span className="text-slate-100 font-extrabold">{itemTitle}</span>
+                                    <span className="text-slate-300 font-mono text-[11px]">
+                                      Quantity: {qty} • Unit Price: ₹{unitPrice.toLocaleString('en-IN')} • Subtotal: ₹{subtotal.toLocaleString('en-IN')}
+                                    </span>
+                                  </div>
+
+                                  <div className="text-[11px] text-slate-400">
+                                    SKU: <strong className="text-slate-200 font-mono">{sku}</strong>
+                                  </div>
+
+                                  {customName && (
+                                    <div className="bg-indigo-950/90 border border-indigo-500/60 rounded-md px-2.5 py-1 text-xs font-bold text-indigo-200 flex items-center gap-2 my-1">
+                                      <span className="text-indigo-400 font-extrabold uppercase text-[10px] tracking-wider">CUSTOM NAME:</span>
+                                      <span className="text-white font-black text-sm tracking-wide bg-indigo-900/80 px-2 py-0.5 rounded border border-indigo-400/50">{customName}</span>
+                                    </div>
+                                  )}
+
+                                  {(colour || wattage) && (
+                                    <div className="text-[10px] font-bold text-amber-300 bg-amber-950/40 border border-amber-800/60 rounded px-2 py-0.5 w-fit">
+                                      {[colour && `Colour: ${colour}`, wattage && `Wattage: ${wattage}`].filter(Boolean).join(' | ')}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}

@@ -1,5 +1,4 @@
 import { Resend } from 'resend';
-import nodemailer from 'nodemailer';
 import { cleanNormalizeEmail } from './validation.js';
 
 const resendApiKey = process.env.RESEND_API_KEY;
@@ -14,26 +13,6 @@ let resendInstance: Resend | null = null;
 
 if (isResendConfigured) {
   resendInstance = new Resend(resendApiKey);
-}
-
-const smtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || process.env.EMAIL_USER;
-const smtpPass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || process.env.EMAIL_PASSWORD;
-const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
-const smtpPort = Number(process.env.SMTP_PORT || 465);
-
-const isSmtpConfigured = Boolean(smtpUser && smtpPass);
-
-let smtpTransporter: nodemailer.Transporter | null = null;
-if (isSmtpConfigured) {
-  smtpTransporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: smtpPort,
-    secure: smtpPort === 465,
-    auth: {
-      user: smtpUser,
-      pass: smtpPass
-    }
-  });
 }
 
 export interface SendEmailOptions {
@@ -51,26 +30,7 @@ export async function sendEmail(options: SendEmailOptions) {
 
   const targetTo = Array.isArray(cleanTo) ? cleanTo.join(', ') : cleanTo;
 
-  // 1. Prefer SMTP if configured (allows sending to ANY email address directly)
-  if (isSmtpConfigured && smtpTransporter) {
-    try {
-      const fromAddress = options.from || process.env.SMTP_FROM || `NEXRA 3D <${smtpUser}>`;
-      const info = await smtpTransporter.sendMail({
-        from: fromAddress,
-        to: cleanTo,
-        subject: options.subject,
-        html: options.html,
-        text: options.text
-      });
-      console.log(`[SMTP Email] Sent successfully to ${targetTo}: ${info.messageId}`);
-      return { success: true, messageId: info.messageId, provider: 'SMTP' };
-    } catch (err: any) {
-      console.error(`[SMTP Email] Dispatch failed to ${targetTo}:`, err?.message || err);
-      // Fallback to Resend if SMTP failed
-    }
-  }
-
-  // 2. Use Resend API if configured
+  // Use Resend API if configured
   if (isResendConfigured && resendInstance) {
     // Candidates for "from" email in order of preference
     const fromCandidates: string[] = [];
@@ -92,6 +52,7 @@ export async function sendEmail(options: SendEmailOptions) {
           to: cleanTo,
           subject: options.subject,
           html: options.html,
+          ...(options.text ? { text: options.text } : {})
         });
 
         if (data.error) {
@@ -125,7 +86,7 @@ export async function sendEmail(options: SendEmailOptions) {
     };
   }
 
-  // 3. Fallback log if no email credentials configured in environment variables
+  // Fallback log if no email credentials configured in environment variables
   console.warn(`[Email Simulated Mode] RESEND_API_KEY is not set in environment variables. Simulated dispatch to ${targetTo}: "${options.subject}"`);
   return { 
     success: false, 
