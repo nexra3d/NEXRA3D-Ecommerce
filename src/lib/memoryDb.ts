@@ -36,7 +36,8 @@ class MemoryStore {
     banner: [],
     siteSetting: [],
     shipment: [],
-    shipmentStatusHistory: []
+    shipmentStatusHistory: [],
+    productLampOption: []
   };
 
   constructor() {
@@ -176,6 +177,133 @@ class MemoryStore {
         updatedAt: new Date()
       }));
     }
+
+    this.collections.productLampOption = [
+      // Lamp A: Parametric Spiral LED Table Lamp
+      {
+        id: 'opt-spiral-col-1',
+        productId: 'prod-spiral-ambient-lamp',
+        optionType: 'COLOUR',
+        optionValue: 'Warm White',
+        priceDelta: 0,
+        sortOrder: 1,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      },
+      {
+        id: 'opt-spiral-col-2',
+        productId: 'prod-spiral-ambient-lamp',
+        optionType: 'COLOUR',
+        optionValue: 'Cool White',
+        priceDelta: 0,
+        sortOrder: 2,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      },
+      {
+        id: 'opt-spiral-wat-1',
+        productId: 'prod-spiral-ambient-lamp',
+        optionType: 'WATTAGE',
+        optionValue: '5W',
+        priceDelta: 0,
+        sortOrder: 1,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      },
+      {
+        id: 'opt-spiral-wat-2',
+        productId: 'prod-spiral-ambient-lamp',
+        optionType: 'WATTAGE',
+        optionValue: '7W',
+        priceDelta: 100,
+        sortOrder: 2,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      },
+      {
+        id: 'opt-spiral-wat-3',
+        productId: 'prod-spiral-ambient-lamp',
+        optionType: 'WATTAGE',
+        optionValue: '9W',
+        priceDelta: 150,
+        sortOrder: 3,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      },
+      {
+        id: 'opt-spiral-wat-4',
+        productId: 'prod-spiral-ambient-lamp',
+        optionType: 'WATTAGE',
+        optionValue: '12W',
+        priceDelta: 200,
+        sortOrder: 4,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      },
+
+      // Lamp B: Personalized 3D Printed Photo Lithophane Moon Lamp
+      {
+        id: 'opt-moon-col-1',
+        productId: 'prod-lithophane-moon-lamp',
+        optionType: 'COLOUR',
+        optionValue: 'Warm White',
+        priceDelta: 0,
+        sortOrder: 1,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      },
+      {
+        id: 'opt-moon-col-2',
+        productId: 'prod-lithophane-moon-lamp',
+        optionType: 'COLOUR',
+        optionValue: 'Neutral White',
+        priceDelta: 0,
+        sortOrder: 2,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      },
+      {
+        id: 'opt-moon-wat-1',
+        productId: 'prod-lithophane-moon-lamp',
+        optionType: 'WATTAGE',
+        optionValue: '2W',
+        priceDelta: 0,
+        sortOrder: 1,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      },
+      {
+        id: 'opt-moon-wat-2',
+        productId: 'prod-lithophane-moon-lamp',
+        optionType: 'WATTAGE',
+        optionValue: '4W',
+        priceDelta: 30,
+        sortOrder: 2,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      },
+      {
+        id: 'opt-moon-wat-3',
+        productId: 'prod-lithophane-moon-lamp',
+        optionType: 'WATTAGE',
+        optionValue: '6W',
+        priceDelta: 80,
+        sortOrder: 3,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+    ];
   }
 
   getStore(model: string): any[] {

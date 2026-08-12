@@ -199,42 +199,76 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   const [dbColours, setDbColours] = useState<LampOptionItem[]>([]);
   const [dbWattages, setDbWattages] = useState<LampOptionItem[]>([]);
   const [hasLoadedDbOptions, setHasLoadedDbOptions] = useState<boolean>(false);
-  const [selectedColour, setSelectedColour] = useState<string>('Warm White');
-  const [selectedWattage, setSelectedWattage] = useState<string>('5W');
+  const [selectedColour, setSelectedColour] = useState<string>('');
+  const [selectedWattage, setSelectedWattage] = useState<string>('');
 
   useEffect(() => {
-    if (!product?.id) return;
-    fetch(`/api/products/${product.id}/lamp-options`)
+    if (!product?.id) {
+      setDbColours([]);
+      setDbWattages([]);
+      setHasLoadedDbOptions(true);
+      setSelectedColour('');
+      setSelectedWattage('');
+      return;
+    }
+
+    const controller = new AbortController();
+
+    // CLEAR OLD OPTIONS IMMEDIATELY when product changes to prevent retaining previous product's options
+    setDbColours([]);
+    setDbWattages([]);
+    setHasLoadedDbOptions(false);
+    setSelectedColour('');
+    setSelectedWattage('');
+
+    fetch(`/api/products/${encodeURIComponent(product.id)}/lamp-options`, {
+      signal: controller.signal
+    })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && (Array.isArray(data.colours) || Array.isArray(data.wattages))) {
-          const fetchedColours = data.colours || [];
-          const fetchedWattages = data.wattages || [];
+          const fetchedColours: LampOptionItem[] = Array.isArray(data.colours) ? data.colours : [];
+          const fetchedWattages: LampOptionItem[] = Array.isArray(data.wattages) ? data.wattages : [];
           setDbColours(fetchedColours);
           setDbWattages(fetchedWattages);
           setHasLoadedDbOptions(true);
 
           if (fetchedColours.length > 0) {
-            setSelectedColour((prev) =>
-              fetchedColours.some((c: any) => c.value === prev) ? prev : fetchedColours[0].value
-            );
+            setSelectedColour(fetchedColours[0].value);
+          } else {
+            setSelectedColour('');
           }
+
           if (fetchedWattages.length > 0) {
-            setSelectedWattage((prev) =>
-              fetchedWattages.some((w: any) => w.value === prev) ? prev : fetchedWattages[0].value
-            );
+            setSelectedWattage(fetchedWattages[0].value);
+          } else {
+            setSelectedWattage('');
           }
         } else {
           setDbColours([]);
           setDbWattages([]);
+          setHasLoadedDbOptions(true);
+          setSelectedColour('');
+          setSelectedWattage('');
         }
       })
       .catch((err) => {
-        console.warn('Error loading lamp options:', err);
+        if ((err as Error).name !== 'AbortError') {
+          console.warn('[LAMP OPTIONS] Error loading lamp options:', err);
+          setDbColours([]);
+          setDbWattages([]);
+          setHasLoadedDbOptions(true);
+          setSelectedColour('');
+          setSelectedWattage('');
+        }
       });
+
+    return () => {
+      controller.abort();
+    };
   }, [product?.id]);
 
-  // Fallback options if database table is not yet loaded or empty
+  // Extract options strictly belonging to variants of THIS product if DB options aren't present
   const availableColoursFromVariants = Array.from(
     new Set(
       variantsList
@@ -253,7 +287,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
 
   const colourOptionsList: LampOptionItem[] = (hasLoadedDbOptions && dbColours.length > 0)
     ? dbColours
-    : (availableColoursFromVariants.length > 0 ? availableColoursFromVariants : ['Warm White', 'Cool White', 'Neutral White']).map((c, idx) => ({
+    : availableColoursFromVariants.map((c, idx) => ({
         id: `col-${idx}`,
         value: c,
         priceDelta: c.toUpperCase().includes('RGB') ? 200 : 0,
@@ -263,7 +297,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
 
   const wattageOptionsList: LampOptionItem[] = (hasLoadedDbOptions && dbWattages.length > 0)
     ? dbWattages
-    : (availableWattagesFromVariants.length > 0 ? availableWattagesFromVariants : ['2W', '4W', '9W', '4W - 3in1']).map((w, idx) => {
+    : availableWattagesFromVariants.map((w, idx) => {
         let delta = 0;
         const upper = w.toUpperCase().trim();
         if (upper === '7W') delta = 100;
@@ -280,6 +314,18 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
           isActive: true
         };
       });
+
+  useEffect(() => {
+    if (colourOptionsList.length > 0 && (!selectedColour || !colourOptionsList.some((c) => c.value === selectedColour))) {
+      setSelectedColour(colourOptionsList[0].value);
+    }
+  }, [colourOptionsList]);
+
+  useEffect(() => {
+    if (wattageOptionsList.length > 0 && (!selectedWattage || !wattageOptionsList.some((w) => w.value === selectedWattage))) {
+      setSelectedWattage(wattageOptionsList[0].value);
+    }
+  }, [wattageOptionsList]);
 
   // Sync selected variant when colour or wattage changes
   useEffect(() => {
@@ -524,88 +570,104 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
               {/* Lamp Options or Standard Variant Selector */}
               {isLampProduct ? (
                 <div className="space-y-4 bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200">
-                  {/* Lamp Colour Selector */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Lamp Light Colour:</span>
-                      </span>
-                      <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
-                        {selectedColour}
-                      </span>
+                  {!hasLoadedDbOptions ? (
+                    <div className="text-xs text-slate-500 font-medium animate-pulse py-2 px-1">
+                      Loading product options...
                     </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {colourOptionsList.map((colObj) => {
-                        const col = colObj.value;
-                        const isSel = selectedColour === col;
-                        let bgDot = 'bg-amber-300';
-                        if (col.toLowerCase().includes('cool')) bgDot = 'bg-sky-200';
-                        if (col.toLowerCase().includes('neutral')) bgDot = 'bg-orange-100';
-                        if (col.toLowerCase().includes('rgb')) bgDot = 'bg-gradient-to-r from-red-500 via-green-500 to-blue-500';
-
-                        return (
-                          <button
-                            key={colObj.id || col}
-                            type="button"
-                            onClick={() => setSelectedColour(col)}
-                            className={`p-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 cursor-pointer ${
-                              isSel
-                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
-                                : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-100'
-                            }`}
-                          >
-                            <span className={`w-3 h-3 rounded-full shrink-0 ${bgDot} border border-slate-300`} />
-                            <span className="truncate">{col}</span>
-                            {Number(colObj.priceDelta) > 0 && (
-                              <span className={`text-[10px] ml-auto px-1 rounded ${isSel ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-100 text-slate-600'}`}>
-                                +₹{colObj.priceDelta}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
+                  ) : colourOptionsList.length === 0 && wattageOptionsList.length === 0 ? (
+                    <div className="text-xs text-slate-500 font-medium italic py-1 px-1">
+                      No customizable lamp options configured for this product.
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      {/* Lamp Colour Selector */}
+                      {colourOptionsList.length > 0 && (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                              <span>Lamp Light Colour:</span>
+                            </span>
+                            <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                              {selectedColour || 'Default'}
+                            </span>
+                          </div>
 
-                  {/* Bulb Wattage Selector */}
-                  <div className="space-y-1.5 pt-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
-                        <Zap className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Bulb Wattage Option:</span>
-                      </span>
-                      <span className="text-xs font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
-                        {selectedWattage}
-                      </span>
-                    </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {colourOptionsList.map((colObj) => {
+                              const col = colObj.value;
+                              const isSel = selectedColour === col;
+                              let bgDot = 'bg-amber-300';
+                              if (col.toLowerCase().includes('cool')) bgDot = 'bg-sky-200';
+                              if (col.toLowerCase().includes('neutral')) bgDot = 'bg-orange-100';
+                              if (col.toLowerCase().includes('rgb')) bgDot = 'bg-gradient-to-r from-red-500 via-green-500 to-blue-500';
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {wattageOptionsList.map((wattObj) => {
-                        const watt = wattObj.value;
-                        const isSel = selectedWattage === watt;
-                        const delta = Number(wattObj.priceDelta || 0);
-                        return (
-                          <button
-                            key={wattObj.id || watt}
-                            type="button"
-                            onClick={() => setSelectedWattage(watt)}
-                            className={`p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer text-center ${
-                              isSel
-                                ? 'bg-amber-500 border-amber-500 text-slate-950 font-black shadow-xs'
-                                : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-100'
-                            }`}
-                          >
-                            <div>{watt}</div>
-                            <div className="text-[10px] font-normal opacity-80">
-                              {delta === 0 ? 'Included' : delta > 0 ? `+₹${delta}` : `-₹${Math.abs(delta)}`}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                              return (
+                                <button
+                                  key={colObj.id || col}
+                                  type="button"
+                                  onClick={() => setSelectedColour(col)}
+                                  className={`p-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 cursor-pointer ${
+                                    isSel
+                                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                                      : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  <span className={`w-3 h-3 rounded-full shrink-0 ${bgDot} border border-slate-300`} />
+                                  <span className="truncate">{col}</span>
+                                  {Number(colObj.priceDelta) > 0 && (
+                                    <span className={`text-[10px] ml-auto px-1 rounded ${isSel ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-100 text-slate-600'}`}>
+                                      +₹{colObj.priceDelta}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Bulb Wattage Selector */}
+                      {wattageOptionsList.length > 0 && (
+                        <div className="space-y-1.5 pt-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                              <Zap className="w-3.5 h-3.5 text-amber-500" />
+                              <span>Bulb Wattage Option:</span>
+                            </span>
+                            <span className="text-xs font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
+                              {selectedWattage || 'Default'}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {wattageOptionsList.map((wattObj) => {
+                              const watt = wattObj.value;
+                              const isSel = selectedWattage === watt;
+                              const delta = Number(wattObj.priceDelta || 0);
+                              return (
+                                <button
+                                  key={wattObj.id || watt}
+                                  type="button"
+                                  onClick={() => setSelectedWattage(watt)}
+                                  className={`p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer text-center ${
+                                    isSel
+                                      ? 'bg-amber-500 border-amber-500 text-slate-950 font-black shadow-xs'
+                                      : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  <div>{watt}</div>
+                                  <div className="text-[10px] font-normal opacity-80">
+                                    {delta === 0 ? 'Included' : delta > 0 ? `+₹${delta}` : `-₹${Math.abs(delta)}`}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               ) : variantsList.length > 0 ? (
                 <div className="space-y-2">

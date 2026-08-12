@@ -339,8 +339,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
 
   // Lamp Matrix Configurator State
-  const [lampColours, setLampColours] = useState<string[]>(['Warm White', 'Cool White', 'Neutral White']);
-  const [lampWattages, setLampWattages] = useState<string[]>(['5W', '7W', '9W', '12W']);
+  const [lampColours, setLampColours] = useState<string[]>([]);
+  const [lampWattages, setLampWattages] = useState<string[]>([]);
   const [newLampColourInput, setNewLampColourInput] = useState('');
   const [newLampWattageInput, setNewLampWattageInput] = useState('');
 
@@ -391,6 +391,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Load product images, variants, and lamp options when editing a product
   const loadProductImagesAndVariants = async (productId: string) => {
     try {
+      setLampColours([]);
+      setLampWattages([]);
       const [imgRes, varRes, lampRes] = await Promise.all([
         fetch(`/api/products/${productId}/images`, { headers: getAuthHeaders(), credentials: 'include' }),
         fetch(`/api/products/${productId}/variants`, { headers: getAuthHeaders(), credentials: 'include' }),
@@ -406,10 +408,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
       if (lampRes.ok) {
         const lampData = await lampRes.json();
-        if (lampData && Array.isArray(lampData.colours) && lampData.colours.length > 0) {
+        if (lampData && Array.isArray(lampData.colours)) {
           setLampColours(lampData.colours.map((c: any) => typeof c === 'string' ? c : (c?.value || c?.colour || '')));
         }
-        if (lampData && Array.isArray(lampData.wattages) && lampData.wattages.length > 0) {
+        if (lampData && Array.isArray(lampData.wattages)) {
           setLampWattages(lampData.wattages.map((w: any) => typeof w === 'string' ? w : (w?.value || w?.wattage || '')));
         }
       }
@@ -447,6 +449,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setProductVariants([]);
     setImageUploadError(null);
     setShowAddVariantForm(false);
+    setLampColours([]);
+    setLampWattages([]);
+    setNewLampColourInput('');
+    setNewLampWattageInput('');
   };
 
   // Open Add Product Modal
