@@ -15,6 +15,7 @@ function generateId(prefix = 'id'): string {
 class MemoryStore {
   collections: Record<string, any[]> = {
     user: [],
+    emailVerificationOTP: [],
     address: [],
     category: [],
     product: [],
@@ -53,6 +54,7 @@ class MemoryStore {
         email: 'admin@3dprints.com',
         password: adminPasswordHash,
         role: 'ADMIN',
+        emailVerified: true,
         phone: '9876543210',
         company: '3D Printing Solutions',
         gst: '29ABCDE1234F1Z5',
@@ -66,6 +68,7 @@ class MemoryStore {
         email: 'varunmanurani@gmail.com',
         password: defaultPasswordHash,
         role: 'CUSTOMER',
+        emailVerified: true,
         phone: '9876543210',
         company: 'Personal',
         gst: '',

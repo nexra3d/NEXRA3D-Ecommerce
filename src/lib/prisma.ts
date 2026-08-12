@@ -100,6 +100,20 @@ export function ensureDbSchema() {
           CONSTRAINT "reviews_pkey" PRIMARY KEY ("id")
         );`,
 
+        `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "emailVerified" BOOLEAN DEFAULT false;`,
+        `UPDATE "users" SET "emailVerified" = true WHERE "emailVerified" IS NULL;`,
+
+        `CREATE TABLE IF NOT EXISTS "email_verification_otps" (
+          "id" TEXT NOT NULL,
+          "email" TEXT NOT NULL,
+          "otpHash" TEXT NOT NULL,
+          "expiresAt" TIMESTAMP(3) NOT NULL,
+          "attempts" INTEGER NOT NULL DEFAULT 0,
+          "usedAt" TIMESTAMP(3),
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "email_verification_otps_pkey" PRIMARY KEY ("id")
+        );`,
+
         `CREATE TABLE IF NOT EXISTS "product_lamp_options" (
           "id" TEXT NOT NULL,
           "product_id" TEXT NOT NULL,

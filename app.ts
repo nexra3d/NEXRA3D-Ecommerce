@@ -1474,10 +1474,10 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
       where: { email: normalizedEmail }
     });
 
-    if (existingUser) {
+    if (existingUser && existingUser.emailVerified) {
       return res.status(409).json({
         success: false,
-        message: 'Email already registered.',
+        message: 'Email already registered. Please sign in instead.',
         error: 'Email already registered.'
       });
     }
@@ -1485,17 +1485,331 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
     const isOwnerOrAdmin = normalizedEmail.includes('admin') || normalizedEmail.includes('nexra') || normalizedEmail.includes('owner');
 
-    const newUser = await prisma.user.create({
-      data: {
-        name,
+    let userToUse = existingUser;
+    if (existingUser) {
+      userToUse = await prisma.user.update({
+        where: { id: existingUser.id },
+        data: {
+          name,
+          password: hashedPassword,
+          role: isOwnerOrAdmin ? 'ADMIN' : 'CUSTOMER',
+          emailVerified: false
+        }
+      });
+    } else {
+      userToUse = await prisma.user.create({
+        data: {
+          name,
+          email: normalizedEmail,
+          password: hashedPassword,
+          role: isOwnerOrAdmin ? 'ADMIN' : 'CUSTOMER',
+          emailVerified: false
+        }
+      });
+    }
+
+    // Check rate limits for OTP generation:
+    // 1. Max 1 OTP resend every 60 seconds
+    const recentOtp = await prisma.emailVerificationOTP.findFirst({
+      where: {
         email: normalizedEmail,
-        password: hashedPassword,
-        role: isOwnerOrAdmin ? 'ADMIN' : 'CUSTOMER'
+        createdAt: { gte: new Date(Date.now() - 60 * 1000) }
       }
     });
 
+    if (recentOtp) {
+      return res.status(429).json({
+        success: false,
+        message: 'Please wait 60 seconds before requesting a new verification code.',
+        error: 'Please wait 60 seconds before requesting a new verification code.'
+      });
+    }
+
+    // 2. Max 5 OTP requests per hour
+    const hourlyOtpCount = await prisma.emailVerificationOTP.count({
+      where: {
+        email: normalizedEmail,
+        createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) }
+      }
+    });
+
+    if (hourlyOtpCount >= 5) {
+      return res.status(429).json({
+        success: false,
+        message: 'Maximum verification code attempts reached for this hour. Please try again later.',
+        error: 'Maximum verification code attempts reached for this hour. Please try again later.'
+      });
+    }
+
+    // Generate cryptographically secure 6-digit OTP using crypto.randomInt
+    const rawOtp = String(crypto.randomInt(100000, 1000000));
+    const otpHash = crypto.createHash('sha256').update(rawOtp).digest('hex');
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Invalidate previous unused OTPs for this email
+    await prisma.emailVerificationOTP.updateMany({
+      where: { email: normalizedEmail, usedAt: null },
+      data: { usedAt: new Date() }
+    }).catch(() => {});
+
+    // Save hashed OTP in database
+    await prisma.emailVerificationOTP.create({
+      data: {
+        email: normalizedEmail,
+        otpHash,
+        expiresAt,
+        attempts: 0
+      }
+    });
+
+    // Send verification code email using sendEmail
+    const emailSubject = 'Verify your NEXRA 3D account';
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+        <h2 style="color: #0f172a; margin-top: 0; font-size: 20px;">NEXRA 3D</h2>
+        <p style="color: #334155; font-size: 15px;">Hello <strong>${name}</strong>,</p>
+        <p style="color: #334155; font-size: 15px;">Your NEXRA 3D verification code is:</p>
+        <div style="background-color: #f1f5f9; padding: 18px; text-align: center; border-radius: 10px; margin: 20px 0; font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #4f46e5;">
+          ${rawOtp}
+        </div>
+        <p style="color: #64748b; font-size: 14px;">This code expires in 10 minutes.</p>
+        <p style="color: #64748b; font-size: 14px;">If you did not create this account, you can safely ignore this email.</p>
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+        <p style="color: #94a3b8; font-size: 12px; margin: 0;">NEXRA 3D</p>
+      </div>
+    `;
+
+    await sendEmail({
+      to: normalizedEmail,
+      subject: emailSubject,
+      html: emailHtml,
+      text: `Hello ${name},\n\nYour NEXRA 3D verification code is:\n\n${rawOtp}\n\nThis code expires in 10 minutes.\n\nIf you did not create this account, you can safely ignore this email.\n\nNEXRA 3D`
+    }).catch((err) => console.warn('[OTP Email Error]:', err));
+
+    return res.status(200).json({
+      success: true,
+      requiresEmailVerification: true,
+      email: normalizedEmail,
+      message: `Verification code sent to ${normalizedEmail}`
+    });
+  } catch (error: any) {
+    console.error('Registration error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Registration failed: ' + (error?.message || String(error)),
+      error: error?.message || String(error)
+    });
+  }
+});
+
+// RESEND OTP
+app.post('/api/auth/resend-otp', async (req: Request, res: Response) => {
+  const { email } = req.body || {};
+  if (!email || typeof email !== 'string') {
+    return res.status(400).json({ success: false, message: 'Please provide a valid email address.' });
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (user && user.emailVerified) {
+      return res.status(400).json({
+        success: false,
+        message: 'This email account is already verified. Please sign in.'
+      });
+    }
+
+    // Rate limiting check
+    const recentOtp = await prisma.emailVerificationOTP.findFirst({
+      where: {
+        email: normalizedEmail,
+        createdAt: { gte: new Date(Date.now() - 60 * 1000) }
+      }
+    });
+
+    if (recentOtp) {
+      return res.status(429).json({
+        success: false,
+        message: 'Resend available in 60 seconds. Please wait before requesting another code.'
+      });
+    }
+
+    const hourlyOtpCount = await prisma.emailVerificationOTP.count({
+      where: {
+        email: normalizedEmail,
+        createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) }
+      }
+    });
+
+    if (hourlyOtpCount >= 5) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many verification code requests. Please try again later.'
+      });
+    }
+
+    const rawOtp = String(crypto.randomInt(100000, 1000000));
+    const otpHash = crypto.createHash('sha256').update(rawOtp).digest('hex');
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    // Invalidate old OTPs for this email
+    await prisma.emailVerificationOTP.updateMany({
+      where: { email: normalizedEmail, usedAt: null },
+      data: { usedAt: new Date() }
+    }).catch(() => {});
+
+    await prisma.emailVerificationOTP.create({
+      data: {
+        email: normalizedEmail,
+        otpHash,
+        expiresAt,
+        attempts: 0
+      }
+    });
+
+    const userName = user?.name || 'Valued Customer';
+    await sendEmail({
+      to: normalizedEmail,
+      subject: 'Verify your NEXRA 3D account',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+          <h2 style="color: #0f172a; margin-top: 0; font-size: 20px;">NEXRA 3D</h2>
+          <p style="color: #334155; font-size: 15px;">Hello <strong>${userName}</strong>,</p>
+          <p style="color: #334155; font-size: 15px;">Your NEXRA 3D verification code is:</p>
+          <div style="background-color: #f1f5f9; padding: 18px; text-align: center; border-radius: 10px; margin: 20px 0; font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #4f46e5;">
+            ${rawOtp}
+          </div>
+          <p style="color: #64748b; font-size: 14px;">This code expires in 10 minutes.</p>
+          <p style="color: #64748b; font-size: 14px;">If you did not request this code, you can safely ignore this email.</p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+          <p style="color: #94a3b8; font-size: 12px; margin: 0;">NEXRA 3D</p>
+        </div>
+      `,
+      text: `Hello ${userName},\n\nYour NEXRA 3D verification code is:\n\n${rawOtp}\n\nThis code expires in 10 minutes.\n\nNEXRA 3D`
+    }).catch((err) => console.warn('[Resend OTP Email Error]:', err));
+
+    return res.status(200).json({
+      success: true,
+      message: 'A new verification code has been sent to your email.'
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to resend verification code: ' + (error?.message || String(error))
+    });
+  }
+});
+
+// VERIFY EMAIL OTP
+app.post('/api/auth/verify-email-otp', async (req: Request, res: Response) => {
+  const { email, otp } = req.body || {};
+  if (!email || !otp || typeof otp !== 'string' || !/^\d{6}$/.test(otp.trim())) {
+    return res.status(400).json({
+      success: false,
+      message: 'Please enter a valid 6-digit verification code.'
+    });
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const cleanOtp = otp.trim();
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'No account registration found for this email. Please register again.'
+      });
+    }
+
+    const otpRecord = await prisma.emailVerificationOTP.findFirst({
+      where: {
+        email: normalizedEmail,
+        usedAt: null
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (!otpRecord) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired verification code. Please request a new code.'
+      });
+    }
+
+    if (new Date(otpRecord.expiresAt).getTime() < Date.now()) {
+      return res.status(400).json({
+        success: false,
+        message: 'The verification code has expired. Please request a new code.'
+      });
+    }
+
+    if (otpRecord.attempts >= 5) {
+      await prisma.emailVerificationOTP.update({
+        where: { id: otpRecord.id },
+        data: { usedAt: new Date() }
+      }).catch(() => {});
+
+      return res.status(400).json({
+        success: false,
+        message: 'Too many failed attempts. Please request a new code.'
+      });
+    }
+
+    const incomingHash = crypto.createHash('sha256').update(cleanOtp).digest('hex');
+    let isMatch = false;
+    try {
+      isMatch = crypto.timingSafeEqual(
+        Buffer.from(incomingHash, 'hex'),
+        Buffer.from(otpRecord.otpHash, 'hex')
+      );
+    } catch {
+      isMatch = incomingHash === otpRecord.otpHash;
+    }
+
+    if (!isMatch) {
+      const newAttempts = otpRecord.attempts + 1;
+      await prisma.emailVerificationOTP.update({
+        where: { id: otpRecord.id },
+        data: {
+          attempts: newAttempts,
+          usedAt: newAttempts >= 5 ? new Date() : null
+        }
+      });
+
+      if (newAttempts >= 5) {
+        return res.status(400).json({
+          success: false,
+          message: 'Too many failed attempts. Please request a new code.'
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: `Incorrect verification code. ${5 - newAttempts} attempt(s) remaining.`
+      });
+    }
+
+    // Success! Consume OTP and verify user
+    await prisma.emailVerificationOTP.update({
+      where: { id: otpRecord.id },
+      data: { usedAt: new Date() }
+    });
+
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerified: true }
+    });
+
     const token = jwt.sign(
-      { userId: newUser.id, email: newUser.email, role: newUser.role },
+      { userId: updatedUser.id, email: updatedUser.email, role: updatedUser.role },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -1508,29 +1822,19 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
-    // Temporary dev debug logs
-    if (!isProd) {
-      console.log('[Dev Auth Debug - Registration]', {
-        emailReceived: normalizedEmail,
-        userId: newUser.id,
-        passwordHashLength: hashedPassword.length
-      });
-    }
-
-    const formattedUser = await formatUserResponse(newUser);
-    return res.status(201).json({
+    const formattedUser = await formatUserResponse(updatedUser);
+    return res.status(200).json({
       success: true,
-      message: 'Registration successful!',
+      message: 'Email verified successfully! Your account is now active.',
       token,
       user: formattedUser
     });
   } catch (error: any) {
-    console.error({
-      name: error?.name,
-      message: error?.message,
-      stack: error?.stack
+    console.error('OTP verification error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Verification failed: ' + (error?.message || String(error))
     });
-    return res.status(500).json({ success: false, message: 'Registration failed: ' + (error?.message || String(error)), error: error?.message || String(error) });
   }
 });
 
@@ -1546,20 +1850,11 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
   const normalizedEmail = email.toLowerCase().trim();
 
   try {
-    // 1. User lookup using normalized email
     const user = await prisma.user.findUnique({
       where: { email: normalizedEmail }
     });
 
     if (!user) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('[Dev Auth Debug - Login]', {
-          emailEntered: normalizedEmail,
-          userFound: false,
-          bcryptCompareResult: false,
-          jwtCreated: false
-        });
-      }
       return res.status(404).json({
         success: false,
         message: 'Please create an account first.',
@@ -1567,36 +1862,25 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
       });
     }
 
-    // 2. Validate password with bcrypt
-    try {
-      const passwordMatches = await bcrypt.compare(password, user.password);
-
-      if (!passwordMatches) {
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('[Dev Auth Debug - Login]', {
-            emailEntered: normalizedEmail,
-            userFound: true,
-            bcryptCompareResult: false,
-            jwtCreated: false
-          });
-        }
-        return res.status(401).json({
-          success: false,
-          message: 'Invalid email or password',
-          error: 'Invalid email or password'
-        });
-      }
-    } catch (err) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.error('bcrypt compare failed', err);
-      }
-      return res.status(500).json({
+    const passwordMatches = await bcrypt.compare(password, user.password);
+    if (!passwordMatches) {
+      return res.status(401).json({
         success: false,
-        message: 'Authentication error'
+        message: 'Invalid email or password',
+        error: 'Invalid email or password'
       });
     }
 
-    // 3. Generate JWT payload with ONLY userId, email, role
+    // Check if account requires email verification
+    if (user.role === 'CUSTOMER' && user.emailVerified === false) {
+      return res.status(200).json({
+        success: false,
+        requiresEmailVerification: true,
+        email: normalizedEmail,
+        message: 'Your email address is not verified yet. Please enter the verification code sent to your email.'
+      });
+    }
+
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
       JWT_SECRET,
@@ -1611,15 +1895,6 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
-    if (!isProd) {
-      console.log('[Dev Auth Debug - Login]', {
-        emailEntered: normalizedEmail,
-        userFound: true,
-        bcryptCompareResult: true,
-        jwtCreated: true
-      });
-    }
-
     const formattedUser = await formatUserResponse(user);
     return res.json({
       success: true,
@@ -1628,11 +1903,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
       user: formattedUser
     });
   } catch (error: any) {
-    console.error({
-      name: error?.name,
-      message: error?.message,
-      stack: error?.stack
-    });
+    console.error('Login error:', error);
     return res.status(500).json({ success: false, message: 'Login failed: ' + (error?.message || String(error)), error: error?.message || String(error) });
   }
 });

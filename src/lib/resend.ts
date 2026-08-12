@@ -40,6 +40,7 @@ export interface SendEmailOptions {
   subject: string;
   html: string;
   from?: string;
+  text?: string;
 }
 
 export async function sendEmail(options: SendEmailOptions) {
@@ -53,7 +54,8 @@ export async function sendEmail(options: SendEmailOptions) {
         from: fromAddress,
         to: options.to,
         subject: options.subject,
-        html: options.html
+        html: options.html,
+        text: options.text
       });
       console.log(`[SMTP Email] Sent successfully to ${targetTo}: ${info.messageId}`);
       return { success: true, messageId: info.messageId, provider: 'SMTP' };
