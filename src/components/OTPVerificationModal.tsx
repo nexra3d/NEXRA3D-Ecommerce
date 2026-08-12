@@ -226,7 +226,7 @@ export const OTPVerificationModal: React.FC<OTPVerificationModalProps> = ({
                 {otpValues.map((value, index) => (
                   <input
                     key={index}
-                    ref={(el) => (inputRefs.current[index] = el)}
+                    ref={(el) => { inputRefs.current[index] = el; }}
                     type="text"
                     inputMode="numeric"
                     maxLength={1}

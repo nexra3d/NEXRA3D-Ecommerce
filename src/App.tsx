@@ -11,6 +11,7 @@ import { WishlistModal } from './components/WishlistModal';
 import { AuthModal } from './components/AuthModal';
 import { EmailInboxModal } from './components/EmailInboxModal';
 import { AdminDashboard } from './components/AdminDashboard';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoginPage } from './components/LoginPage';
 import { RegisterPage } from './components/RegisterPage';
 import { AccountDashboard } from './components/AccountDashboard';
@@ -1358,19 +1359,21 @@ export default function App() {
       />
 
       {/* 9. Admin Dashboard */}
-      <AdminDashboard
-        isOpen={isAdminOpen}
-        onClose={() => setIsAdminOpen(false)}
-        products={allProducts.length > 0 ? allProducts : products}
-        categories={categories}
-        orders={userOrders}
-        coupons={coupons}
-        onRefreshData={() => {
-          fetchData();
-          fetchAllProducts();
-          fetchFilteredProducts();
-        }}
-      />
+      <ErrorBoundary fallbackTitle="Unable to load Admin Dashboard">
+        <AdminDashboard
+          isOpen={isAdminOpen}
+          onClose={() => setIsAdminOpen(false)}
+          products={allProducts.length > 0 ? allProducts : products}
+          categories={categories}
+          orders={userOrders}
+          coupons={coupons}
+          onRefreshData={() => {
+            fetchData();
+            fetchAllProducts();
+            fetchFilteredProducts();
+          }}
+        />
+      </ErrorBoundary>
 
       {/* Floating WhatsApp Quick Contact Button */}
       <WhatsAppFloatingButton />

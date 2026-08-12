@@ -44,8 +44,8 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
     ? order.shipments
     : (order.shipment ? [order.shipment] : []);
 
-  const courierPartner = activeShipments[0]?.courier || activeShipments[0]?.provider || order.shipment?.courier || order.shipment?.provider || order.courierName || 'Awaiting Dispatch';
-  const awbTrackingNumber = activeShipments[0]?.awbNumber || activeShipments[0]?.trackingNumber || order.shipment?.awbNumber || order.shipment?.trackingNumber || order.trackingNumber || 'Awaiting Dispatch';
+  const courierPartner = (activeShipments[0] as any)?.courier || activeShipments[0]?.provider || (order.shipment as any)?.courier || order.shipment?.provider || order.courierName || 'Awaiting Dispatch';
+  const awbTrackingNumber = (activeShipments[0] as any)?.awbNumber || activeShipments[0]?.trackingNumber || (order.shipment as any)?.awbNumber || order.shipment?.trackingNumber || order.trackingNumber || 'Awaiting Dispatch';
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in">
@@ -88,23 +88,23 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
         <div className="p-6 space-y-8 overflow-y-auto max-h-[80vh]">
           {/* Delhivery Express Carrier Information */}
           <CourierCard
-            provider={order.shippingProvider || 'Delhivery'}
-            awbNumber={order.awbNumber || awbTrackingNumber}
+            provider={(order as any).shippingProvider || 'Delhivery'}
+            awbNumber={(order as any).awbNumber || awbTrackingNumber}
             trackingNumber={order.trackingNumber || awbTrackingNumber}
-            trackingUrl={order.trackingUrl}
-            labelUrl={order.labelUrl}
-            manifestUrl={order.manifestUrl}
-            estimatedDelivery={order.estimatedDelivery ? new Date(order.estimatedDelivery).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : '3-5 Business Days'}
-            shipmentStatus={order.shipmentStatus || (order.awbNumber ? 'IN_TRANSIT' : 'CREATED')}
-            pickupRequested={order.pickupRequested}
+            trackingUrl={(order as any).trackingUrl}
+            labelUrl={(order as any).labelUrl}
+            manifestUrl={(order as any).manifestUrl}
+            estimatedDelivery={(order as any).estimatedDelivery ? new Date((order as any).estimatedDelivery).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : '3-5 Business Days'}
+            shipmentStatus={(order as any).shipmentStatus || ((order as any).awbNumber ? 'IN_TRANSIT' : 'CREATED')}
+            pickupRequested={(order as any).pickupRequested}
           />
 
           {/* Delhivery Interactive Tracking Milestone Timeline */}
           <TrackingTimeline
-            currentStatus={order.shipmentStatus || order.orderStatus || order.status}
-            awbNumber={order.awbNumber || awbTrackingNumber}
-            expectedDelivery={order.estimatedDelivery ? new Date(order.estimatedDelivery).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' }) : '3-5 Business Days'}
-            trackingHistory={order.trackingHistory || []}
+            currentStatus={(order as any).shipmentStatus || order.orderStatus || order.status}
+            awbNumber={(order as any).awbNumber || awbTrackingNumber}
+            expectedDelivery={(order as any).estimatedDelivery ? new Date((order as any).estimatedDelivery).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' }) : '3-5 Business Days'}
+            trackingHistory={(order as any).trackingHistory || []}
           />
 
           {/* Courier & AWB & Payment Details Box */}
@@ -118,7 +118,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
             <div>
               <span className="text-slate-500 font-medium block">Payment Status</span>
               <span className={`inline-block font-extrabold text-xs px-2 py-0.5 rounded mt-0.5 ${
-                order.paymentStatus === 'CAPTURED' || order.paymentStatus === 'SUCCESS' || order.paymentStatus === 'PAID'
+                order.paymentStatus === 'CAPTURED' || order.paymentStatus === 'SUCCESS' || (order.paymentStatus as string) === 'PAID'
                   ? 'bg-emerald-100 text-emerald-800'
                   : order.paymentStatus === 'FAILED'
                   ? 'bg-rose-100 text-rose-800'
@@ -126,9 +126,9 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
               }`}>
                 {order.paymentStatus}
               </span>
-              {(order.razorpayPaymentId || (order as any).paymentId) && (
+              {((order as any).razorpayPaymentId || (order as any).paymentId) && (
                 <div className="mt-1 font-mono text-[11px] text-emerald-700 font-bold">
-                  ID: {order.razorpayPaymentId || (order as any).paymentId}
+                  ID: {(order as any).razorpayPaymentId || (order as any).paymentId}
                 </div>
               )}
             </div>

@@ -309,18 +309,18 @@ export const CartPage: React.FC<CartPageProps> = ({
                       )}
 
                       {/* Lamp Option Attributes */}
-                      {(item.selectedColour || item.selectedWattage || item.variant?.colour || item.variant?.wattage) && (
+                      {((item as any).selectedColour || (item as any).selectedWattage || (item.variant as any)?.colour || (item.variant as any)?.wattage) && (
                         <div className="flex flex-wrap gap-1.5 pt-1">
-                          {(item.selectedColour || item.variant?.colour) && (
+                          {((item as any).selectedColour || (item.variant as any)?.colour) && (
                             <span className="bg-cyan-50 text-cyan-800 text-xs font-bold px-2.5 py-0.5 rounded-md border border-cyan-100 flex items-center gap-1">
                               <span>Colour:</span>
-                              <span className="text-cyan-950">{item.selectedColour || item.variant?.colour}</span>
+                              <span className="text-cyan-950">{(item as any).selectedColour || (item.variant as any)?.colour}</span>
                             </span>
                           )}
-                          {(item.selectedWattage || item.variant?.wattage) && (
+                          {((item as any).selectedWattage || (item.variant as any)?.wattage) && (
                             <span className="bg-amber-50 text-amber-800 text-xs font-bold px-2.5 py-0.5 rounded-md border border-amber-100 flex items-center gap-1">
                               <span>Wattage:</span>
-                              <span className="text-amber-950">{item.selectedWattage || item.variant?.wattage}</span>
+                              <span className="text-amber-950">{(item as any).selectedWattage || (item.variant as any)?.wattage}</span>
                             </span>
                           )}
                         </div>

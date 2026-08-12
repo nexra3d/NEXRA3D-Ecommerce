@@ -105,7 +105,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
       setProfileName(prev => prev || user.name || '');
       setProfileEmail(prev => prev || user.email || '');
       if (user.phone) setProfilePhone(user.phone);
-      setProfileAvatarUrl(user.avatarUrl || user.avatar || '');
+      setProfileAvatarUrl(user.avatarUrl || (user as any).avatar || '');
       if (user.addressLine1) setProfileAddressLine1(user.addressLine1);
       if (user.addressLine2) setProfileAddressLine2(user.addressLine2);
       if (user.city) setProfileCity(user.city);
@@ -113,7 +113,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
       if (user.country) setProfileCountry(user.country);
       if (user.postalCode) setProfilePostalCode(user.postalCode);
     }
-  }, [user?.id, user?.updatedAt, user?.phone, user?.addressLine1, user?.email]);
+  }, [user?.id, (user as any)?.updatedAt, user?.phone, user?.addressLine1, user?.email]);
 
   // Orders state
   const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null);
@@ -985,24 +985,24 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                         <div>
                           <span className="text-slate-400 text-[10px] uppercase tracking-wider block font-bold">Payment Status</span>
                           <span className={`inline-block font-black text-[11px] px-2 py-0.5 rounded ${
-                            order.paymentStatus === 'CAPTURED' || order.paymentStatus === 'SUCCESS' || order.paymentStatus === 'PAID'
+                            order.paymentStatus === 'CAPTURED' || order.paymentStatus === 'SUCCESS' || (order.paymentStatus as string) === 'PAID'
                               ? 'bg-emerald-100 text-emerald-800'
-                              : order.paymentStatus === 'COD' || order.paymentMethod === 'COD' || order.paymentMethod === 'CASH_ON_DELIVERY'
+                              : (order.paymentStatus as string) === 'COD' || order.paymentMethod === 'COD' || (order.paymentMethod as string) === 'CASH_ON_DELIVERY'
                               ? 'bg-blue-100 text-blue-800'
                               : order.paymentStatus === 'FAILED'
                               ? 'bg-rose-100 text-rose-800'
                               : 'bg-amber-100 text-amber-800'
                           }`}>
-                            {order.paymentStatus === 'COD' || order.paymentMethod === 'COD' || order.paymentMethod === 'CASH_ON_DELIVERY'
+                            {(order.paymentStatus as string) === 'COD' || order.paymentMethod === 'COD' || (order.paymentMethod as string) === 'CASH_ON_DELIVERY'
                               ? 'COD (Pay on Delivery)'
                               : order.paymentStatus}
                           </span>
                         </div>
 
-                        {(order.razorpayPaymentId || (order as any).paymentId) && (
+                        {((order as any).razorpayPaymentId || (order as any).paymentId) && (
                           <div>
                             <span className="text-slate-400 text-[10px] uppercase tracking-wider block font-bold">Payment ID</span>
-                            <span className="font-mono text-emerald-600 font-bold text-xs">{order.razorpayPaymentId || (order as any).paymentId}</span>
+                            <span className="font-mono text-emerald-600 font-bold text-xs">{(order as any).razorpayPaymentId || (order as any).paymentId}</span>
                           </div>
                         )}
 
@@ -1017,9 +1017,9 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                         <div className="flex items-center space-x-3 overflow-x-auto">
                           {order.items.slice(0, 3).map((item) => (
                             <div key={item.id} className="flex items-center space-x-2 bg-white border border-slate-200 rounded-xl p-1.5 shrink-0">
-                              <img src={item.productImage || (item.product && item.product.imageUrl)} alt={item.productTitle || (item.product && item.product.name)} className="w-8 h-8 rounded-lg object-cover" />
+                              <img src={item.productImage || ((item as any).product && (item as any).product.imageUrl)} alt={item.productTitle || ((item as any).product && (item as any).product.name)} className="w-8 h-8 rounded-lg object-cover" />
                               <div className="text-[11px] pr-2">
-                                <span className="font-bold text-slate-900 block max-w-[120px] truncate">{item.productTitle || (item.product && item.product.name)}</span>
+                                <span className="font-bold text-slate-900 block max-w-[120px] truncate">{item.productTitle || ((item as any).product && (item as any).product.name)}</span>
                                 <span className="text-slate-500 text-[10px]">Qty: {item.quantity}</span>
                               </div>
                             </div>
@@ -1033,7 +1033,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                         <div className="flex items-center space-x-2 shrink-0">
                           {(order.paymentStatus === 'FAILED' || order.paymentStatus === 'PENDING') &&
                            order.paymentMethod !== 'COD' &&
-                           order.paymentMethod !== 'CASH_ON_DELIVERY' && (
+                           (order.paymentMethod as string) !== 'CASH_ON_DELIVERY' && (
                             <button
                               onClick={() => handleRetryPayment(order)}
                               disabled={retryingOrderId === order.id}

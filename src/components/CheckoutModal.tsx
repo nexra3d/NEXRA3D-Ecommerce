@@ -135,8 +135,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       if (currentUser) {
         setNewFullName(currentUser.name || '');
         setNewPhone(currentUser.phone || '');
-        if (currentUser.addresses && currentUser.addresses.length > 0) {
-          const defaultUserAddr = currentUser.addresses.find((a: any) => a.isDefault) || currentUser.addresses[0];
+        if ((currentUser as any).addresses && (currentUser as any).addresses.length > 0) {
+          const defaultUserAddr = (currentUser as any).addresses.find((a: any) => a.isDefault) || (currentUser as any).addresses[0];
           setNewStreet(defaultUserAddr.streetAddress || defaultUserAddr.addressLine1 || '');
           setNewCity(defaultUserAddr.city || '');
           setNewState(defaultUserAddr.state || '');

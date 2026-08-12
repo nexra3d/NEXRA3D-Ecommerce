@@ -31,6 +31,7 @@ import {
   ExternalLink,
   Building2
 } from 'lucide-react';
+import { ErrorBoundary } from './ErrorBoundary';
 import {
   Product,
   Category,
@@ -406,10 +407,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (lampRes.ok) {
         const lampData = await lampRes.json();
         if (lampData && Array.isArray(lampData.colours) && lampData.colours.length > 0) {
-          setLampColours(lampData.colours.map((c: any) => c.value));
+          setLampColours(lampData.colours.map((c: any) => typeof c === 'string' ? c : (c?.value || c?.colour || '')));
         }
         if (lampData && Array.isArray(lampData.wattages) && lampData.wattages.length > 0) {
-          setLampWattages(lampData.wattages.map((w: any) => w.value));
+          setLampWattages(lampData.wattages.map((w: any) => typeof w === 'string' ? w : (w?.value || w?.wattage || '')));
         }
       }
     } catch (err) {
@@ -1598,86 +1599,99 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               {/* Add/Edit Product Modal Form */}
-              {showProductModal && (() => {
-                const selectedCatObj = categories.find((c) => c.id === prodCategoryId || c.slug === prodCategoryId);
-                const isLampCategory = Boolean(
-                  (selectedCatObj?.name || '').toLowerCase().includes('lamp') ||
-                  (selectedCatObj?.slug || '').toLowerCase().includes('lamp') ||
-                  (selectedCatObj?.id || '').toLowerCase().includes('lamp') ||
-                  (selectedCatObj?.name || '').toLowerCase().includes('light') ||
-                  (selectedCatObj?.slug || '').toLowerCase().includes('light') ||
-                  (selectedCatObj?.id || '').toLowerCase().includes('light') ||
-                  prodCategoryId.toLowerCase().includes('lamp') ||
-                  prodCategoryId.toLowerCase().includes('light') ||
-                  prodName.toLowerCase().includes('lamp') ||
-                  prodName.toLowerCase().includes('light') ||
-                  editingProductId.toLowerCase().includes('lamp')
-                );
+              {showProductModal && (
+                <ErrorBoundary fallbackTitle="Unable to load Add Product" onReset={() => setShowProductModal(false)}>
+                  {(() => {
+                    const safeCategories = Array.isArray(categories) ? categories : [];
+                    const selectedCatObj = safeCategories.find((c) => c?.id === prodCategoryId || c?.slug === prodCategoryId);
+                    const safeCatId = (prodCategoryId || '').toLowerCase();
+                    const safeProdName = (prodName || '').toLowerCase();
+                    const safeEditId = (editingProductId || '').toLowerCase();
 
-                return (
-                <form
-                  onSubmit={handleSaveProduct}
-                  className="bg-slate-800 border border-slate-700 rounded-2xl p-5 space-y-4 text-xs"
-                >
-                  <div className="flex justify-between items-center border-b border-slate-700 pb-2">
-                    <h4 className="font-bold text-indigo-400 text-sm">
-                      {editingProductId ? 'Edit Product' : 'Add New Product'}
-                    </h4>
-                    <button
-                      type="button"
-                      onClick={() => setShowProductModal(false)}
-                      className="text-slate-400 hover:text-white"
+                    const isLampCategory = Boolean(
+                      (selectedCatObj?.name || '').toLowerCase().includes('lamp') ||
+                      (selectedCatObj?.slug || '').toLowerCase().includes('lamp') ||
+                      (selectedCatObj?.id || '').toLowerCase().includes('lamp') ||
+                      (selectedCatObj?.name || '').toLowerCase().includes('light') ||
+                      (selectedCatObj?.slug || '').toLowerCase().includes('light') ||
+                      (selectedCatObj?.id || '').toLowerCase().includes('light') ||
+                      safeCatId.includes('lamp') ||
+                      safeCatId.includes('light') ||
+                      safeProdName.includes('lamp') ||
+                      safeProdName.includes('light') ||
+                      safeEditId.includes('lamp')
+                    );
+
+                    return (
+                    <form
+                      onSubmit={handleSaveProduct}
+                      className="bg-slate-800 border border-slate-700 rounded-2xl p-5 space-y-4 text-xs"
                     >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
+                      <div className="flex justify-between items-center border-b border-slate-700 pb-2">
+                        <h4 className="font-bold text-indigo-400 text-sm">
+                          {editingProductId ? 'Edit Product' : 'Add New Product'}
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => setShowProductModal(false)}
+                          className="text-slate-400 hover:text-white"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
 
-                  {productFormError && (
-                    <div className="bg-rose-500/20 border border-rose-500/40 text-rose-300 p-2.5 rounded-xl font-medium">
-                      {productFormError}
-                    </div>
-                  )}
+                      {productFormError && (
+                        <div className="bg-rose-500/20 border border-rose-500/40 text-rose-300 p-2.5 rounded-xl font-medium">
+                          {productFormError}
+                        </div>
+                      )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-slate-400 font-semibold mb-1">Product Name *</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Aerospace Carbon Fiber Housing"
-                        required
-                        value={prodName}
-                        onChange={(e) => setProdName(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-400 font-semibold mb-1">SKU *</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. AERO-HOUSING-X4"
-                        required
-                        value={prodSku}
-                        onChange={(e) => setProdSku(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-400 font-semibold mb-1">Category *</label>
-                      <select
-                        required
-                        value={prodCategoryId}
-                        onChange={(e) => setProdCategoryId(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white"
-                      >
-                        <option value="">Select Category...</option>
-                        {categories.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-slate-400 font-semibold mb-1">Product Name *</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Aerospace Carbon Fiber Housing"
+                            required
+                            value={prodName}
+                            onChange={(e) => setProdName(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-slate-400 font-semibold mb-1">SKU *</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. AERO-HOUSING-X4"
+                            required
+                            value={prodSku}
+                            onChange={(e) => setProdSku(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-slate-400 font-semibold mb-1">Category *</label>
+                          <select
+                            required
+                            value={prodCategoryId}
+                            onChange={(e) => setProdCategoryId(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white"
+                          >
+                            <option value="">Select Category...</option>
+                            {safeCategories.length > 0 ? (
+                              safeCategories.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
+                                </option>
+                              ))
+                            ) : (
+                              <option value="" disabled>
+                                No categories available. Please create a category first.
+                              </option>
+                            )}
+                          </select>
+                        </div>
+                      </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div>
@@ -2255,6 +2269,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </form>
                 );
               })()}
+            </ErrorBoundary>
+          )}
 
               {/* Product List Table */}
               <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl overflow-x-auto text-xs">
@@ -2769,10 +2785,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3 text-xs space-y-1">
                             <div className="flex items-center justify-between text-indigo-300 font-bold">
                               <span className="flex items-center gap-1.5"><Truck className="w-4 h-4 text-indigo-400" /> Fulfillment Method: Courier Delivery</span>
-                              <span className="text-[10px] text-slate-300 bg-slate-800 px-2 py-0.5 rounded font-mono">{ord.shippingProvider || 'Courier Partner'}</span>
+                              <span className="text-[10px] text-slate-300 bg-slate-800 px-2 py-0.5 rounded font-mono">{(ord as any).shippingProvider || 'Courier Partner'}</span>
                             </div>
                             <p className="text-slate-300 text-[11px] leading-relaxed">
-                              🏠 <strong>Ship To Address:</strong> {ord.shippingAddress?.streetAddress || ord.shippingAddress?.addressLine1 || 'Address details logged'}, {ord.shippingAddress?.city}, {ord.shippingAddress?.state} - {ord.shippingAddress?.postalCode || ord.shippingAddress?.pincode}
+                              🏠 <strong>Ship To Address:</strong> {ord.shippingAddress?.streetAddress || (ord.shippingAddress as any)?.addressLine1 || 'Address details logged'}, {ord.shippingAddress?.city}, {ord.shippingAddress?.state} - {ord.shippingAddress?.postalCode || (ord.shippingAddress as any)?.pincode}
                             </p>
                           </div>
                         )}
@@ -3479,7 +3495,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </td>
                         <td className="p-3 font-semibold text-slate-300">{o.paymentMethod}</td>
                         <td className="p-3 font-mono text-[11px] text-slate-300">{o.razorpayOrderId || 'N/A'}</td>
-                        <td className="p-3 font-mono text-[11px] text-slate-300">{o.razorpayPaymentId || o.paymentId || 'N/A'}</td>
+                        <td className="p-3 font-mono text-[11px] text-slate-300">{(o as any).razorpayPaymentId || o.paymentId || 'N/A'}</td>
                         <td className="p-3 font-extrabold text-slate-100">₹{Number(o.totalAmount || 0).toLocaleString('en-IN')}</td>
                         <td className="p-3">
                           <span className={`inline-block font-extrabold text-[10px] px-2 py-0.5 rounded ${

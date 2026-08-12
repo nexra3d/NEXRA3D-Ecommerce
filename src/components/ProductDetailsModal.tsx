@@ -137,7 +137,8 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     setReviews([]);
     setRatingSummary({
       averageRating: (product.reviewCount && product.reviewCount > 0) ? Number(product.rating || 0) : 0,
-      totalReviews: product.reviewCount || 0
+      totalCount: product.reviewCount || 0,
+      distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
     });
 
     // Save to localStorage recently viewed
@@ -172,9 +173,9 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
             setRatingSummary(data.summary);
           } else if (revs.length > 0) {
             const avg = Number((revs.reduce((acc: number, r: any) => acc + (r.rating || 5), 0) / revs.length).toFixed(1));
-            setRatingSummary({ averageRating: avg, totalReviews: revs.length });
+            setRatingSummary({ averageRating: avg, totalCount: revs.length, distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } });
           } else {
-            setRatingSummary({ averageRating: (product.reviewCount && product.reviewCount > 0) ? Number(product.rating || 0) : 0, totalReviews: 0 });
+            setRatingSummary({ averageRating: (product.reviewCount && product.reviewCount > 0) ? Number(product.rating || 0) : 0, totalCount: 0, distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } });
           }
         }
       })
@@ -366,7 +367,8 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
         const newAvg = Number((updatedRevs.reduce((acc, r) => acc + (r.rating || 5), 0) / updatedRevs.length).toFixed(1));
         setRatingSummary({
           averageRating: newAvg,
-          totalReviews: updatedRevs.length
+          totalCount: updatedRevs.length,
+          distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
         });
         setNewReviewName('');
         setNewReviewTitle('');
