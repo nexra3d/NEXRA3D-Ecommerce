@@ -3911,6 +3911,12 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
 
     const totalAmount = Math.max(0, subtotal + taxAmount + actualShippingFee - discountAmount);
 
+    console.log(`[Checkout] Subtotal: ₹${subtotal}`);
+    console.log(`[Checkout] Shipping: ₹${actualShippingFee}`);
+    console.log(`[Checkout] Tax: ₹${taxAmount}`);
+    console.log(`[Checkout] Discount: ₹${discountAmount}`);
+    console.log(`[Checkout] Grand Total: ₹${totalAmount}`);
+
     const now = new Date();
     const dd = String(now.getDate()).padStart(2, '0');
     const mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -4593,21 +4599,39 @@ function verifyRazorpaySignature(orderId: string, paymentId: string, signature: 
 const handleRazorpayCreateOrder = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { amount, currency = 'INR', receipt, orderId } = req.body;
-    if (amount === undefined || amount === null || amount === '') {
-      return res.status(400).json({ error: 'Amount is required' });
-    }
 
-    const rawNum = Number(amount);
-    if (isNaN(rawNum)) {
-      return res.status(400).json({ error: 'Invalid amount provided' });
-    }
+    let effectiveAmount: number | null = null;
+    let targetOrderId = orderId;
 
-    let effectiveAmount = rawNum;
-    if (orderId) {
-      const dbOrder = await prisma.order.findUnique({ where: { id: orderId } }).catch(() => null);
+    if (targetOrderId) {
+      const dbOrder = await prisma.order.findUnique({ where: { id: targetOrderId } }).catch(() => null);
       if (dbOrder && dbOrder.totalAmount !== null && dbOrder.totalAmount !== undefined) {
         effectiveAmount = Number(dbOrder.totalAmount);
       }
+    }
+
+    // Fallback if no valid orderId or not found in DB: try finding user's latest PENDING order
+    if (effectiveAmount === null && req.user?.id) {
+      const pendingOrder = await prisma.order.findFirst({
+        where: { userId: req.user.id, paymentStatus: 'PENDING' },
+        orderBy: { createdAt: 'desc' }
+      }).catch(() => null);
+      if (pendingOrder && pendingOrder.totalAmount !== null && pendingOrder.totalAmount !== undefined) {
+        effectiveAmount = Number(pendingOrder.totalAmount);
+        targetOrderId = pendingOrder.id;
+      }
+    }
+
+    // Fallback to client-provided amount only if no DB order exists
+    if (effectiveAmount === null) {
+      const rawNum = Number(amount);
+      if (!isNaN(rawNum) && rawNum > 0) {
+        effectiveAmount = rawNum;
+      }
+    }
+
+    if (effectiveAmount === null || isNaN(effectiveAmount) || effectiveAmount <= 0) {
+      return res.status(400).json({ error: 'Valid order amount is required' });
     }
 
     // Convert amount in Rupees to paise (1 INR = 100 paise), minimum 100 paise (₹1)
@@ -4615,6 +4639,9 @@ const handleRazorpayCreateOrder = async (req: AuthenticatedRequest, res: Respons
     if (amountInPaise < 100) {
       return res.status(400).json({ error: 'Minimum amount must be at least 100 paise (₹1)' });
     }
+
+    console.log(`[Razorpay] Final payable amount: ₹${effectiveAmount}`);
+    console.log(`[Razorpay] Amount in paise: ${amountInPaise}`);
 
     const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
     const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
@@ -4625,12 +4652,12 @@ const handleRazorpayCreateOrder = async (req: AuthenticatedRequest, res: Respons
         const order = await razorpay.orders.create({
           amount: amountInPaise,
           currency,
-          receipt: receipt || (orderId ? `receipt_${orderId}` : `rcpt_${Date.now()}`)
+          receipt: receipt || (targetOrderId ? `receipt_${targetOrderId}` : `rcpt_${Date.now()}`)
         });
 
-        if (orderId) {
+        if (targetOrderId) {
           await prisma.order.update({
-            where: { id: orderId },
+            where: { id: targetOrderId },
             data: { razorpayOrderId: order.id }
           }).catch(() => {});
         }
@@ -4651,9 +4678,9 @@ const handleRazorpayCreateOrder = async (req: AuthenticatedRequest, res: Respons
 
     // Fallback simulated order if SDK call or real key not present
     const simId = `order_${Math.random().toString(36).substring(2, 11).toUpperCase()}`;
-    if (orderId) {
+    if (targetOrderId) {
       await prisma.order.update({
-        where: { id: orderId },
+        where: { id: targetOrderId },
         data: { razorpayOrderId: simId }
       }).catch(() => {});
     }
@@ -5717,56 +5744,6 @@ app.post('/api/reviews/:id/helpful', async (req: Request, res: Response) => {
 
 app.post('/api/reviews/:id/report', async (req: Request, res: Response) => {
   return res.json({ success: true, message: 'Review reported' });
-});
-
-// Razorpay Payments Integration Aliases
-app.post('/api/payments/razorpay/create-order', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
-    const { amount, currency = 'INR', orderId } = req.body;
-    const rzpOrderId = `order_${Math.random().toString(36).substring(2, 11).toUpperCase()}`;
-
-    if (orderId) {
-      await prisma.order.update({
-        where: { id: orderId },
-        data: { razorpayOrderId: rzpOrderId }
-      }).catch(() => {});
-    }
-
-    return res.json({
-      id: rzpOrderId,
-      razorpayOrderId: rzpOrderId,
-      orderId,
-      amount: amount || 10000,
-      currency,
-      key: razorpayKeyId || 'rzp_test_sample_key_id'
-    });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message || 'Failed to create Razorpay order' });
-  }
-});
-
-app.post('/api/payments/razorpay/verify', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { orderId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
-    let updatedOrder = null;
-    if (orderId) {
-      updatedOrder = await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          paymentStatus: 'PAID',
-          status: 'CONFIRMED',
-          razorpayOrderId: razorpay_order_id || null,
-          razorpayPaymentId: razorpay_payment_id || `pay_${Date.now()}`,
-          razorpaySignature: razorpay_signature || null
-        },
-        include: { items: { include: { product: true } }, user: true, shipment: true }
-      }).catch(() => null);
-    }
-    return res.json({ success: true, message: 'Payment verified', order: updatedOrder });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message || 'Payment verification failed' });
-  }
 });
 
 app.post('/api/payments/razorpay/fail', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {

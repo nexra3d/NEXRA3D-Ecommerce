@@ -1,7 +1,8 @@
 import React from 'react';
 import { NexraLogo } from './NexraLogo';
-import { ShoppingBag, ShieldCheck, Truck, RefreshCw, Mail, Phone, MapPin, Heart, Sparkles, Boxes, Send } from 'lucide-react';
+import { ShoppingBag, ShieldCheck, Truck, RefreshCw, Mail, Phone, MapPin, Heart, Sparkles, Boxes, Send, Facebook, Instagram, Linkedin, Youtube } from 'lucide-react';
 import { WhatsAppIcon } from './WhatsAppFloatingButton';
+import { SOCIAL_LINKS } from '../config/social';
 
 interface FooterProps {
   onNavigateHome?: () => void;
@@ -109,6 +110,46 @@ export const Footer: React.FC<FooterProps> = ({
                   <span>Support: support@nexra3d.in</span>
                 </div>
               </div>
+            </div>
+
+            {/* Social Media Links */}
+            <div className="pt-2 flex items-center space-x-3">
+              <a
+                href={SOCIAL_LINKS.facebook}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="NEXRA 3D Facebook"
+                className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-blue-600 text-slate-400 hover:text-white flex items-center justify-center transition-all duration-200 transform hover:scale-105 border border-slate-700/60"
+              >
+                <Facebook className="w-4 h-4" />
+              </a>
+              <a
+                href={SOCIAL_LINKS.instagram}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="NEXRA 3D Instagram"
+                className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-pink-600 text-slate-400 hover:text-white flex items-center justify-center transition-all duration-200 transform hover:scale-105 border border-slate-700/60"
+              >
+                <Instagram className="w-4 h-4" />
+              </a>
+              <a
+                href={SOCIAL_LINKS.linkedin}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="NEXRA 3D LinkedIn"
+                className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-blue-500 text-slate-400 hover:text-white flex items-center justify-center transition-all duration-200 transform hover:scale-105 border border-slate-700/60"
+              >
+                <Linkedin className="w-4 h-4" />
+              </a>
+              <a
+                href={SOCIAL_LINKS.youtube}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="NEXRA 3D YouTube"
+                className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-red-600 text-slate-400 hover:text-white flex items-center justify-center transition-all duration-200 transform hover:scale-105 border border-slate-700/60"
+              >
+                <Youtube className="w-4 h-4" />
+              </a>
             </div>
           </div>
 

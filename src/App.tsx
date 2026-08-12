@@ -26,6 +26,7 @@ import { AerospacePage } from './components/AerospacePage';
 import { QuoteRequestModal } from './components/QuoteRequestModal';
 import { Footer } from './components/Footer';
 import { WhatsAppFloatingButton } from './components/WhatsAppFloatingButton';
+import { InstagramPopup } from './components/InstagramPopup';
 
 import { AdminLoginPage } from './components/AdminLoginPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
@@ -161,6 +162,7 @@ export default function App() {
   });
 
   // Modal / Drawer Toggles
+  const [isInstagramPopupOpen, setIsInstagramPopupOpen] = useState(true);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -1367,6 +1369,12 @@ export default function App() {
           }}
         />
       </ErrorBoundary>
+
+      {/* Instagram Promotional Popup on Website Open */}
+      <InstagramPopup
+        isOpen={isInstagramPopupOpen}
+        onClose={() => setIsInstagramPopupOpen(false)}
+      />
 
       {/* Floating WhatsApp Quick Contact Button */}
       <WhatsAppFloatingButton />
