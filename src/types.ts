@@ -159,14 +159,24 @@ export interface CartItem {
 export interface Coupon {
   id: string;
   code: string;
+  description?: string;
   discountType: 'PERCENTAGE' | 'FIXED';
   discountValue: number;
-  minOrderAmount: number;
+  minOrderAmount?: number;
+  minimumOrderAmount?: number;
   maxDiscount?: number;
-  expiryDate: string;
-  usageLimit: number;
-  usedCount: number;
+  maximumDiscountAmount?: number;
+  usageLimit?: number;
+  usedCount?: number;
+  usageCount?: number;
+  startDate?: string;
+  startsAt?: string;
+  endDate?: string;
+  expiresAt?: string;
+  expiryDate?: string;
   isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type OrderStatus = 'PENDING' | 'PROCESSING' | 'SHIPPED' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'CANCELLED';

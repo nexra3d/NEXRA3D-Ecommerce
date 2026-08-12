@@ -352,7 +352,7 @@ async function sendOrderStatusEmail(order: any, newStatus: string, customMessage
           <div style="background-color: #ecfdf5; border: 2px solid #10b981; border-radius: 12px; padding: 18px; margin: 16px 0;">
             <h4 style="margin: 0 0 8px 0; color: #065f46; font-size: 16px; font-weight: bold;">📍 Store Collection Location:</h4>
             <p style="margin: 0 0 4px 0; font-weight: bold; color: #064e3b; font-size: 14px;">NEXRA 3D Store & Production Lab</p>
-            <p style="margin: 0 0 6px 0; color: #047857; font-size: 13px; line-height: 1.4;">Plot no 484, TNGOs Colony, Gachibowli, Hyderabad, Telangana - 500046</p>
+            <p style="margin: 0 0 6px 0; color: #047857; font-size: 13px; line-height: 1.4;">Plot no 484, TNGOs Colony, Gachibowli, Hyderabad, Telangana - 500032</p>
             <p style="margin: 0 0 8px 0; color: #047857; font-size: 13px;">📞 Helpline / WhatsApp: <strong>+91 8886159998 / +91 8886149998</strong></p>
             <div style="background-color: #ffffff; padding: 8px 12px; border-radius: 6px; display: inline-block; border: 1px solid #a7f3d0; font-size: 12px; font-weight: bold; color: #065f46;">
               ⏱️ Store Hours: Mon - Sat (10:00 AM - 7:30 PM)
@@ -444,17 +444,19 @@ async function sendOrderStatusEmail(order: any, newStatus: string, customMessage
       </div>
     `;
 
+    let emailResult: any = { success: false, simulated: true, error: 'No customer email address' };
+
     // 1. Primary email dispatch directly to customer email
     if (customerEmail && customerEmail.includes('@') && !customerEmail.includes('@store.com')) {
-      const custRes = await sendEmail({
+      emailResult = await sendEmail({
         to: customerEmail,
         subject,
         html: emailHtml
       });
-      if (custRes.success) {
+      if (emailResult.success) {
         console.log(`[Status Email] Live update email successfully delivered to customer: ${customerEmail} for order #${order.orderNumber} (${newStatus})`);
       } else {
-        console.warn(`[Status Email] Direct customer email attempt to ${customerEmail} yielded error: ${custRes.error}`);
+        console.warn(`[Status Email] Direct customer email attempt to ${customerEmail} yielded error: ${emailResult.error}`);
       }
     } else {
       console.warn(`[Status Email] Could not identify valid customer email for order #${order.orderNumber}. Resolved: "${customerEmail}"`);
@@ -469,8 +471,11 @@ async function sendOrderStatusEmail(order: any, newStatus: string, customMessage
       }).catch(() => {});
     }
 
+    return emailResult;
+
   } catch (err: any) {
     console.error(`[Status Email] Failed to send order status email:`, err?.message || err);
+    return { success: false, error: err?.message || String(err) };
   }
 }
 
@@ -3391,8 +3396,35 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
     }
 
     let discountAmount = 0;
-    if (couponCode && couponCode.toUpperCase() === 'WELCOME10') {
-      discountAmount = Math.round(subtotal * 0.1);
+    let appliedCouponId: string | null = null;
+
+    if (couponCode && typeof couponCode === 'string' && couponCode.trim()) {
+      const normCode = couponCode.trim().toUpperCase();
+      const dbCoupon = await prisma.coupon.findFirst({
+        where: { code: { equals: normCode, mode: 'insensitive' } }
+      });
+
+      if (dbCoupon && dbCoupon.isActive) {
+        const now = new Date();
+        const isStarted = !dbCoupon.startDate || dbCoupon.startDate <= now;
+        const isNotExpired = !dbCoupon.endDate || dbCoupon.endDate >= now;
+        const isUnderLimit = !dbCoupon.usageLimit || dbCoupon.usageCount < dbCoupon.usageLimit;
+        const meetsMinOrder = subtotal >= Number(dbCoupon.minOrderAmount || 0);
+
+        if (isStarted && isNotExpired && isUnderLimit && meetsMinOrder) {
+          appliedCouponId = dbCoupon.id;
+          if (dbCoupon.type === 'PERCENTAGE') {
+            discountAmount = (subtotal * Number(dbCoupon.discountValue)) / 100;
+            if (dbCoupon.maxDiscount !== null && dbCoupon.maxDiscount !== undefined) {
+              discountAmount = Math.min(discountAmount, Number(dbCoupon.maxDiscount));
+            }
+          } else {
+            discountAmount = Number(dbCoupon.discountValue);
+          }
+          discountAmount = Math.min(discountAmount, subtotal);
+          discountAmount = Math.round(discountAmount);
+        }
+      }
     }
 
     const taxAmount = Math.round(
@@ -3454,6 +3486,7 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
         totalAmount,
         shippingProvider: selectedProvider,
         couponCode: couponCode || null,
+        couponId: appliedCouponId || null,
         shippingAddress: {
           ...shippingAddressData,
           fullName: shippingAddressData?.fullName || req.user.name || 'Valued Customer',
@@ -3708,9 +3741,9 @@ async function autoProcessShipment(orderId: string, preferredProvider?: string, 
     const isStorePickup = (
       String(order.shippingProvider || '').toLowerCase().includes('store') ||
       String(order.shippingProvider || '').toLowerCase().includes('pickup') ||
-      String(order.courierName || '').toLowerCase().includes('store') ||
-      String(order.courierName || '').toLowerCase().includes('pickup') ||
-      order.selectedShippingOptionId === 'pickup-store' ||
+      String((order as any).courierName || '').toLowerCase().includes('store') ||
+      String((order as any).courierName || '').toLowerCase().includes('pickup') ||
+      (order as any).selectedShippingOptionId === 'pickup-store' ||
       (order.shippingAddress as any)?.deliveryMethod === 'PICKUP' ||
       (order.shippingAddress as any)?.fulfillmentType === 'STORE_PICKUP' ||
       (order.shippingAddress as any)?.isStorePickup === true
@@ -3721,7 +3754,6 @@ async function autoProcessShipment(orderId: string, preferredProvider?: string, 
         where: { id: order.id },
         data: {
           shippingProvider: 'Store Pickup',
-          courierName: 'Pickup from Store',
           awbNumber: 'STORE-PICKUP',
           trackingNumber: 'STORE-PICKUP',
           shipmentId: `PICKUP-${order.orderNumber}`,
@@ -4072,11 +4104,15 @@ app.put(['/api/orders/:id/status', '/api/admin/orders/:id/status'], requireAuthM
       }
     });
 
+    let emailStatus: any = null;
     if (status) {
-      sendOrderStatusEmail(updated, status, description || title).catch((e) => console.error('Error sending status email:', e));
+      emailStatus = await sendOrderStatusEmail(updated, status, description || title).catch((e) => {
+        console.error('Error sending status email:', e);
+        return { success: false, error: e?.message || String(e) };
+      });
     }
 
-    return res.json({ success: true, message: 'Order status updated successfully', order: updated });
+    return res.json({ success: true, message: 'Order status updated successfully', order: updated, emailStatus });
   } catch (err: any) {
     console.error('Error updating order status:', err);
     return res.status(500).json({ error: 'Failed to update order status' });
@@ -4112,8 +4148,16 @@ const handleRazorpayCreateOrder = async (req: AuthenticatedRequest, res: Respons
       return res.status(400).json({ error: 'Invalid amount provided' });
     }
 
+    let effectiveAmount = rawNum;
+    if (orderId) {
+      const dbOrder = await prisma.order.findUnique({ where: { id: orderId } }).catch(() => null);
+      if (dbOrder && dbOrder.totalAmount !== null && dbOrder.totalAmount !== undefined) {
+        effectiveAmount = Number(dbOrder.totalAmount);
+      }
+    }
+
     // Convert amount in Rupees to paise (1 INR = 100 paise), minimum 100 paise (₹1)
-    const amountInPaise = Math.round(rawNum * 100);
+    const amountInPaise = Math.round(effectiveAmount * 100);
     if (amountInPaise < 100) {
       return res.status(400).json({ error: 'Minimum amount must be at least 100 paise (₹1)' });
     }
@@ -4175,6 +4219,34 @@ const handleRazorpayCreateOrder = async (req: AuthenticatedRequest, res: Respons
   }
 };
 
+// Helper to increment coupon usage idempotently upon payment completion
+async function incrementCouponUsageForOrder(order: any, previousPaymentStatus?: string) {
+  if (!order) return;
+  if (previousPaymentStatus === 'PAID' || previousPaymentStatus === 'SUCCESS' || previousPaymentStatus === 'CAPTURED') {
+    return; // Already accounted for
+  }
+
+  try {
+    let targetCouponId = order.couponId;
+    if (!targetCouponId && order.couponCode) {
+      const c = await prisma.coupon.findFirst({
+        where: { code: { equals: String(order.couponCode).trim().toUpperCase(), mode: 'insensitive' } }
+      });
+      if (c) targetCouponId = c.id;
+    }
+
+    if (targetCouponId) {
+      await prisma.coupon.update({
+        where: { id: targetCouponId },
+        data: { usageCount: { increment: 1 } }
+      });
+      console.log(`[Coupon Usage] Incremented usageCount for coupon ${targetCouponId} on order ${order.id}`);
+    }
+  } catch (err) {
+    console.warn(`[Coupon Usage Warning] Could not increment usageCount for order ${order.id}:`, err);
+  }
+}
+
 // Handler for Razorpay Payment Verification
 const handleRazorpayVerifyPayment = async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -4197,9 +4269,17 @@ const handleRazorpayVerifyPayment = async (req: AuthenticatedRequest, res: Respo
 
     let updatedOrder = null;
     const targetOrderId = orderId || razorpay_order_id;
+    let prevPaymentStatus: string | undefined = undefined;
+
     if (targetOrderId) {
+      const existingOrder = await prisma.order.findFirst({
+        where: { OR: [{ id: targetOrderId }, { razorpayOrderId: razorpay_order_id }] }
+      }).catch(() => null);
+
+      prevPaymentStatus = existingOrder?.paymentStatus;
+
       updatedOrder = await prisma.order.update({
-        where: { id: targetOrderId },
+        where: { id: existingOrder?.id || targetOrderId },
         data: {
           status: 'CONFIRMED',
           paymentStatus: 'PAID',
@@ -4213,6 +4293,7 @@ const handleRazorpayVerifyPayment = async (req: AuthenticatedRequest, res: Respo
           where: { razorpayOrderId: razorpay_order_id }
         });
         if (foundByRzp) {
+          prevPaymentStatus = foundByRzp.paymentStatus;
           return prisma.order.update({
             where: { id: foundByRzp.id },
             data: {
@@ -4228,6 +4309,8 @@ const handleRazorpayVerifyPayment = async (req: AuthenticatedRequest, res: Respo
       });
 
       if (updatedOrder) {
+        await incrementCouponUsageForOrder(updatedOrder, prevPaymentStatus);
+
         const processed = await autoProcessShipment(updatedOrder.id, updatedOrder.shippingProvider);
         if (processed) updatedOrder = processed;
 
@@ -4255,37 +4338,420 @@ const handleRazorpayVerifyPayment = async (req: AuthenticatedRequest, res: Respo
 app.post(['/api/create-order', '/api/checkout/razorpay/create-order', '/api/payments/razorpay/create-order'], requireAuthMiddleware, handleRazorpayCreateOrder);
 app.post(['/api/verify-payment', '/api/checkout/razorpay/verify-payment', '/api/payments/razorpay/verify'], requireAuthMiddleware, handleRazorpayVerifyPayment);
 
-// Coupons
-app.get('/api/coupons', (req: Request, res: Response) => {
-  res.json(INITIAL_COUPONS);
+// ==================================================
+// COUPONS API (Database Source of Truth)
+// ==================================================
+
+// GET all coupons (Admin and Store context)
+app.get(['/api/coupons', '/api/admin/coupons'], async (req: Request, res: Response) => {
+  try {
+    const coupons = await prisma.coupon.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const formatted = coupons.map((c: any) => ({
+      id: c.id,
+      code: c.code,
+      description: c.description || '',
+      type: c.type,
+      discountType: c.type === 'PERCENTAGE' ? 'PERCENTAGE' : 'FIXED',
+      discountValue: Number(c.discountValue || 0),
+      minOrderAmount: Number(c.minOrderAmount || 0),
+      minimumOrderAmount: Number(c.minOrderAmount || 0),
+      maxDiscount: c.maxDiscount !== null && c.maxDiscount !== undefined ? Number(c.maxDiscount) : undefined,
+      maximumDiscountAmount: c.maxDiscount !== null && c.maxDiscount !== undefined ? Number(c.maxDiscount) : undefined,
+      usageLimit: c.usageLimit !== null && c.usageLimit !== undefined ? Number(c.usageLimit) : undefined,
+      usedCount: Number(c.usageCount || 0),
+      usageCount: Number(c.usageCount || 0),
+      startDate: c.startDate ? safeToISOString(c.startDate) : undefined,
+      startsAt: c.startDate ? safeToISOString(c.startDate) : undefined,
+      endDate: c.endDate ? safeToISOString(c.endDate) : undefined,
+      expiresAt: c.endDate ? safeToISOString(c.endDate) : undefined,
+      expiryDate: c.endDate ? safeToISOString(c.endDate) : undefined,
+      isActive: Boolean(c.isActive),
+      createdAt: safeToISOString(c.createdAt),
+      updatedAt: safeToISOString(c.updatedAt)
+    }));
+
+    return res.json(formatted);
+  } catch (err: any) {
+    console.error('Error fetching coupons:', err);
+    return res.status(500).json({ error: 'Failed to fetch coupons' });
+  }
 });
 
-app.post('/api/coupons/validate', (req: Request, res: Response) => {
-  const { code, cartAmount = 0 } = req.body;
-  const coupon = INITIAL_COUPONS.find((c) => c.code.toUpperCase() === code?.toUpperCase());
+// CREATE a new coupon (Admin)
+app.post(['/api/coupons', '/api/admin/coupons'], requireAdminMiddleware, async (req: Request, res: Response) => {
+  try {
+    const {
+      code,
+      description,
+      discountType,
+      type,
+      discountValue,
+      minOrderAmount,
+      minimumOrderAmount,
+      maxDiscount,
+      maximumDiscountAmount,
+      usageLimit,
+      startDate,
+      startsAt,
+      endDate,
+      expiresAt,
+      expiryDate,
+      isActive = true
+    } = req.body;
 
-  if (!coupon) {
-    return res.status(400).json({ error: 'Invalid or expired coupon code' });
+    if (!code || typeof code !== 'string' || !code.trim()) {
+      return res.status(400).json({ error: 'Coupon code is required' });
+    }
+
+    const normalizedCode = code.trim().toUpperCase();
+
+    // Check code uniqueness (case-insensitive)
+    const existing = await prisma.coupon.findFirst({
+      where: { code: { equals: normalizedCode, mode: 'insensitive' } }
+    });
+
+    if (existing) {
+      return res.status(400).json({ error: `Coupon code "${normalizedCode}" already exists` });
+    }
+
+    const valNum = Number(discountValue);
+    if (isNaN(valNum) || valNum <= 0) {
+      return res.status(400).json({ error: 'Discount value must be greater than 0' });
+    }
+
+    const effectiveType = (discountType || type || 'PERCENTAGE').toUpperCase();
+    if (effectiveType === 'PERCENTAGE' && valNum > 100) {
+      return res.status(400).json({ error: 'Percentage discount cannot exceed 100%' });
+    }
+
+    const minAmt = Number(minimumOrderAmount ?? minOrderAmount ?? 0);
+    const maxDisc = (maximumDiscountAmount ?? maxDiscount) !== null && (maximumDiscountAmount ?? maxDiscount) !== undefined && (maximumDiscountAmount ?? maxDiscount) !== ''
+      ? Number(maximumDiscountAmount ?? maxDiscount)
+      : null;
+
+    if (maxDisc !== null && (isNaN(maxDisc) || maxDisc <= 0)) {
+      return res.status(400).json({ error: 'Maximum discount amount must be a positive number' });
+    }
+
+    const uLimit = usageLimit !== null && usageLimit !== undefined && usageLimit !== ''
+      ? Number(usageLimit)
+      : null;
+
+    if (uLimit !== null && (isNaN(uLimit) || uLimit <= 0)) {
+      return res.status(400).json({ error: 'Usage limit must be greater than 0' });
+    }
+
+    const startD = (startsAt || startDate) ? new Date(startsAt || startDate) : null;
+    const endD = (expiresAt || expiryDate || endDate) ? new Date(expiresAt || expiryDate || endDate) : null;
+
+    if (startD && isNaN(startD.getTime())) {
+      return res.status(400).json({ error: 'Invalid start date format' });
+    }
+    if (endD && isNaN(endD.getTime())) {
+      return res.status(400).json({ error: 'Invalid expiry date format' });
+    }
+    if (startD && endD && endD <= startD) {
+      return res.status(400).json({ error: 'Expiry date must be after start date' });
+    }
+
+    const dbCouponType = effectiveType === 'PERCENTAGE' ? 'PERCENTAGE' : 'FLAT';
+
+    const newCoupon = await prisma.coupon.create({
+      data: {
+        code: normalizedCode,
+        description: description ? String(description).trim() : null,
+        type: dbCouponType as any,
+        discountValue: valNum,
+        minOrderAmount: isNaN(minAmt) ? 0 : minAmt,
+        maxDiscount: maxDisc,
+        usageLimit: uLimit,
+        startDate: startD,
+        endDate: endD,
+        isActive: Boolean(isActive)
+      }
+    });
+
+    return res.status(201).json({
+      success: true,
+      coupon: {
+        id: newCoupon.id,
+        code: newCoupon.code,
+        description: newCoupon.description || '',
+        discountType: newCoupon.type === 'PERCENTAGE' ? 'PERCENTAGE' : 'FIXED',
+        discountValue: Number(newCoupon.discountValue),
+        minOrderAmount: Number(newCoupon.minOrderAmount || 0),
+        maxDiscount: newCoupon.maxDiscount ? Number(newCoupon.maxDiscount) : undefined,
+        usageLimit: newCoupon.usageLimit ? Number(newCoupon.usageLimit) : undefined,
+        usedCount: Number(newCoupon.usageCount || 0),
+        isActive: Boolean(newCoupon.isActive),
+        createdAt: safeToISOString(newCoupon.createdAt)
+      }
+    });
+  } catch (err: any) {
+    console.error('Error creating coupon:', err);
+    return res.status(500).json({ error: err.message || 'Failed to create coupon' });
+  }
+});
+
+// UPDATE an existing coupon (Admin)
+app.put('/api/admin/coupons/:id', requireAdminMiddleware, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const existing = await prisma.coupon.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Coupon not found' });
+    }
+
+    const {
+      code,
+      description,
+      discountType,
+      type,
+      discountValue,
+      minOrderAmount,
+      minimumOrderAmount,
+      maxDiscount,
+      maximumDiscountAmount,
+      usageLimit,
+      startDate,
+      startsAt,
+      endDate,
+      expiresAt,
+      expiryDate,
+      isActive
+    } = req.body;
+
+    const updateData: any = {};
+
+    if (code !== undefined && typeof code === 'string' && code.trim()) {
+      const normalizedCode = code.trim().toUpperCase();
+      if (normalizedCode !== existing.code) {
+        const codeCheck = await prisma.coupon.findFirst({
+          where: { code: { equals: normalizedCode, mode: 'insensitive' }, id: { not: id } }
+        });
+        if (codeCheck) {
+          return res.status(400).json({ error: `Coupon code "${normalizedCode}" is already in use` });
+        }
+        updateData.code = normalizedCode;
+      }
+    }
+
+    if (description !== undefined) {
+      updateData.description = description ? String(description).trim() : null;
+    }
+
+    if (discountType !== undefined || type !== undefined) {
+      const effType = (discountType || type).toUpperCase();
+      updateData.type = effType === 'PERCENTAGE' ? 'PERCENTAGE' : 'FLAT';
+    }
+
+    if (discountValue !== undefined) {
+      const valNum = Number(discountValue);
+      if (isNaN(valNum) || valNum <= 0) {
+        return res.status(400).json({ error: 'Discount value must be greater than 0' });
+      }
+      const activeType = updateData.type || existing.type;
+      if (activeType === 'PERCENTAGE' && valNum > 100) {
+        return res.status(400).json({ error: 'Percentage discount cannot exceed 100%' });
+      }
+      updateData.discountValue = valNum;
+    }
+
+    if (minOrderAmount !== undefined || minimumOrderAmount !== undefined) {
+      const minAmt = Number(minimumOrderAmount ?? minOrderAmount ?? 0);
+      updateData.minOrderAmount = isNaN(minAmt) ? 0 : minAmt;
+    }
+
+    if (maxDiscount !== undefined || maximumDiscountAmount !== undefined) {
+      const maxVal = maximumDiscountAmount ?? maxDiscount;
+      updateData.maxDiscount = (maxVal !== null && maxVal !== undefined && maxVal !== '') ? Number(maxVal) : null;
+    }
+
+    if (usageLimit !== undefined) {
+      updateData.usageLimit = (usageLimit !== null && usageLimit !== undefined && usageLimit !== '') ? Number(usageLimit) : null;
+    }
+
+    if (startsAt !== undefined || startDate !== undefined) {
+      const sVal = startsAt ?? startDate;
+      updateData.startDate = sVal ? new Date(sVal) : null;
+    }
+
+    if (expiresAt !== undefined || expiryDate !== undefined || endDate !== undefined) {
+      const eVal = expiresAt ?? expiryDate ?? endDate;
+      updateData.endDate = eVal ? new Date(eVal) : null;
+    }
+
+    if (isActive !== undefined) {
+      updateData.isActive = Boolean(isActive);
+    }
+
+    const updated = await prisma.coupon.update({
+      where: { id },
+      data: updateData
+    });
+
+    return res.json({
+      success: true,
+      coupon: {
+        id: updated.id,
+        code: updated.code,
+        description: updated.description || '',
+        discountType: updated.type === 'PERCENTAGE' ? 'PERCENTAGE' : 'FIXED',
+        discountValue: Number(updated.discountValue),
+        minOrderAmount: Number(updated.minOrderAmount || 0),
+        maxDiscount: updated.maxDiscount ? Number(updated.maxDiscount) : undefined,
+        usageLimit: updated.usageLimit ? Number(updated.usageLimit) : undefined,
+        usedCount: Number(updated.usageCount || 0),
+        isActive: Boolean(updated.isActive),
+        updatedAt: safeToISOString(updated.updatedAt)
+      }
+    });
+  } catch (err: any) {
+    console.error('Error updating coupon:', err);
+    return res.status(500).json({ error: err.message || 'Failed to update coupon' });
+  }
+});
+
+// DELETE a coupon permanently (Admin)
+app.delete(['/api/coupons/:id', '/api/admin/coupons/:id'], requireAdminMiddleware, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const existing = await prisma.coupon.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Coupon not found' });
+    }
+
+    await prisma.coupon.delete({ where: { id } });
+
+    return res.json({ success: true, message: `Coupon ${existing.code} deleted permanently` });
+  } catch (err: any) {
+    console.error('Error deleting coupon:', err);
+    return res.status(500).json({ error: err.message || 'Failed to delete coupon' });
+  }
+});
+
+// VALIDATE & APPLY a coupon (Server-calculated validation)
+async function validateCouponLogic(reqBody: any) {
+  const { code, cartAmount, cartTotal, items: reqItems, cartItems: reqCartItems } = reqBody;
+
+  if (!code || typeof code !== 'string' || !code.trim()) {
+    return { valid: false, message: 'Coupon code is required' };
   }
 
-  if (cartAmount < coupon.minOrderAmount) {
-    return res.status(400).json({ error: `Minimum order amount of ₹${coupon.minOrderAmount} required` });
+  const normalizedCode = code.trim().toUpperCase();
+
+  const coupon = await prisma.coupon.findFirst({
+    where: { code: { equals: normalizedCode, mode: 'insensitive' } }
+  });
+
+  if (!coupon) {
+    return { valid: false, message: 'Invalid coupon code' };
+  }
+
+  if (!coupon.isActive) {
+    return { valid: false, message: 'Coupon is not active' };
+  }
+
+  const now = new Date();
+  if (coupon.startDate && coupon.startDate > now) {
+    return { valid: false, message: 'Coupon is not active yet' };
+  }
+
+  if (coupon.endDate && coupon.endDate < now) {
+    return { valid: false, message: 'Coupon has expired' };
+  }
+
+  if (coupon.usageLimit && coupon.usageCount >= coupon.usageLimit) {
+    return { valid: false, message: 'Coupon usage limit reached' };
+  }
+
+  // Calculate cart subtotal on server from database product prices & lamp option deltas
+  let calculatedSubtotal = 0;
+  const itemsToCalc = reqItems || reqCartItems || [];
+
+  if (Array.isArray(itemsToCalc) && itemsToCalc.length > 0) {
+    for (const item of itemsToCalc) {
+      const prodId = item.productId || item.product?.id || item.id;
+      const qty = Number(item.quantity) || 1;
+      if (!prodId) continue;
+
+      const prod = await prisma.product.findUnique({ where: { id: prodId } }).catch(() => null);
+      if (!prod) continue;
+
+      const basePrice = Number(prod.price);
+      const selColour = item.selectedColour || item.variant?.colour || null;
+      const selWattage = item.selectedWattage || item.variant?.wattage || null;
+
+      let unitPrice = basePrice;
+      try {
+        const priceCalc = await calculateLampOptionPrice(prod.id, basePrice, selColour, selWattage);
+        unitPrice = priceCalc.unitPrice;
+      } catch {
+        unitPrice = basePrice;
+      }
+
+      calculatedSubtotal += unitPrice * qty;
+    }
+  }
+
+  const subtotal = calculatedSubtotal > 0 ? calculatedSubtotal : Number(cartAmount || cartTotal || 0);
+
+  const minOrder = Number(coupon.minOrderAmount || 0);
+  if (subtotal < minOrder) {
+    return { valid: false, message: `Minimum order amount of ₹${minOrder} required for this coupon` };
   }
 
   let discount = 0;
-  if (coupon.discountType === 'PERCENTAGE') {
-    discount = (cartAmount * coupon.discountValue) / 100;
-    if (coupon.maxDiscount) discount = Math.min(discount, coupon.maxDiscount);
+  if (coupon.type === 'PERCENTAGE') {
+    discount = (subtotal * Number(coupon.discountValue)) / 100;
+    if (coupon.maxDiscount !== null && coupon.maxDiscount !== undefined) {
+      discount = Math.min(discount, Number(coupon.maxDiscount));
+    }
   } else {
-    discount = coupon.discountValue;
+    discount = Number(coupon.discountValue);
   }
 
-  return res.json({
+  discount = Math.min(discount, subtotal);
+  discount = Math.round(discount);
+
+  const finalAmount = Math.max(0, subtotal - discount);
+
+  return {
     valid: true,
     code: coupon.code,
-    discountAmount: Math.round(discount),
-    coupon
-  });
+    coupon: {
+      id: coupon.id,
+      code: coupon.code,
+      description: coupon.description || '',
+      discountType: coupon.type === 'PERCENTAGE' ? 'PERCENTAGE' : 'FIXED',
+      discountValue: Number(coupon.discountValue),
+      minOrderAmount: Number(coupon.minOrderAmount || 0),
+      maxDiscount: coupon.maxDiscount ? Number(coupon.maxDiscount) : undefined,
+      usageLimit: coupon.usageLimit ? Number(coupon.usageLimit) : undefined,
+      usedCount: Number(coupon.usageCount || 0),
+      isActive: Boolean(coupon.isActive)
+    },
+    subtotal,
+    discount,
+    discountAmount: discount,
+    finalAmount
+  };
+}
+
+app.post(['/api/coupons/validate', '/api/coupons/apply'], async (req: Request, res: Response) => {
+  try {
+    const result = await validateCouponLogic(req.body);
+    if (!result.valid) {
+      return res.status(400).json({ valid: false, error: result.message, message: result.message });
+    }
+    return res.json(result);
+  } catch (err: any) {
+    console.error('Error validating coupon:', err);
+    return res.status(500).json({ valid: false, error: err.message || 'Failed to validate coupon', message: 'Failed to validate coupon' });
+  }
 });
 
 // ==================================================
@@ -5481,7 +5947,7 @@ app.get('/api/shipping/nimbuspost/diagnostic', async (req: Request, res: Respons
 app.get('/api/shipping/diagnostic', async (req: Request, res: Response) => {
   try {
     const originPincode = (req.query.o_pin as string) || process.env.DELHIVERY_ORIGIN_PINCODE || '500032';
-    const destinationPincode = (req.query.d_pin as string) || '500046';
+    const destinationPincode = (req.query.d_pin as string) || '500032';
     const weightGrams = Number(req.query.weight) || 1000;
     const length = Number(req.query.l) || 15;
     const width = Number(req.query.w) || 15;
@@ -5794,7 +6260,7 @@ app.get('/api/shipping/label/:awb', async (req: Request, res: Response) => {
     </div>
     <div class="address-section" style="border-top: 1px solid #e2e8f0; padding-top: 10px;">
       <strong style="color: #0f172a;">RETURN / SHIPPER:</strong><br/>
-      NEXRA 3D Printing Hub, Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500046
+      NEXRA 3D Printing Hub, Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500032
     </div>
     <div class="footer">
       Routing: HYD/HUB/DELHIVERY | Package Weight: 0.50 kg | Prepaid
@@ -5833,7 +6299,7 @@ app.get('/api/shipping/manifest/:awb', async (req: Request, res: Response) => {
     </div>
     <div style="margin-top: 20px; font-size: 14px; line-height: 1.6;">
       <p><strong>Manifest Date:</strong> ${new Date().toLocaleDateString('en-IN')}</p>
-      <p><strong>Pickup Warehouse:</strong> NEXRA 3D Primary Hub (Plot no 484, TNGOs Colony, Gachibowli, PIN: 500046)</p>
+      <p><strong>Pickup Warehouse:</strong> NEXRA 3D Primary Hub (Plot no 484, TNGOs Colony, Gachibowli, PIN: 500032)</p>
     </div>
     <table>
       <thead>

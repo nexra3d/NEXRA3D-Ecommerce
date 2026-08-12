@@ -77,7 +77,7 @@ export const Footer: React.FC<FooterProps> = ({
             <div className="space-y-1.5 text-slate-400">
               <div className="flex items-start space-x-2">
                 <MapPin className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                <span>Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500046</span>
+                <span>Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500032</span>
               </div>
               <div className="flex items-center space-x-2">
                 <WhatsAppIcon className="w-4 h-4 fill-[#25D366] shrink-0" />

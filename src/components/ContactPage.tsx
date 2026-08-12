@@ -186,7 +186,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({
                   <div>
                     <h5 className="font-bold text-slate-900">Additive Facility Address</h5>
                     <p className="text-slate-600 mt-0.5 leading-relaxed">
-                      Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500046, Telangana, India
+                      Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500032, Telangana, India
                     </p>
                   </div>
                 </div>

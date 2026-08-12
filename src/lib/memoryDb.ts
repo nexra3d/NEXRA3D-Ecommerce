@@ -85,7 +85,7 @@ class MemoryStore {
         apartment: 'TNGOs Colony',
         city: 'Hyderabad',
         state: 'Telangana',
-        postalCode: '500046',
+        postalCode: '500032',
         country: 'India',
         isDefault: true,
         type: 'HOME',

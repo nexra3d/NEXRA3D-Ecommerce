@@ -157,7 +157,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center gap-4 text-slate-300">
             <span className="flex items-center gap-1.5">
               <MapPin className="w-3 h-3 text-cyan-400 shrink-0" />
-              <span>Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500046</span>
+              <span>Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500032</span>
             </span>
           </div>
           <div className="flex items-center gap-4">

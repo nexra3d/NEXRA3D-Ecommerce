@@ -1001,7 +1001,7 @@ export const INITIAL_ADDRESSES: Address[] = [
     apartment: 'TNGOs Colony',
     city: 'Hyderabad',
     state: 'Telangana',
-    postalCode: '500046',
+    postalCode: '500032',
     country: 'India',
     isDefault: true,
     type: 'WORK'

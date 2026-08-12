@@ -771,10 +771,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Coupon Form State
   const [showAddCouponModal, setShowAddCouponModal] = useState(false);
+  const [editingCouponId, setEditingCouponId] = useState<string | null>(null);
   const [coupCode, setCoupCode] = useState('');
+  const [coupDescription, setCoupDescription] = useState('');
   const [coupType, setCoupType] = useState<'PERCENTAGE' | 'FIXED'>('PERCENTAGE');
   const [coupVal, setCoupVal] = useState('');
-  const [coupMinOrder, setCoupMinOrder] = useState('999');
+  const [coupMinOrder, setCoupMinOrder] = useState('0');
+  const [coupMaxDiscount, setCoupMaxDiscount] = useState('');
+  const [coupUsageLimit, setCoupUsageLimit] = useState('');
+  const [coupStartDate, setCoupStartDate] = useState('');
+  const [coupEndDate, setCoupEndDate] = useState('');
+  const [coupIsActive, setCoupIsActive] = useState(true);
+  const [coupError, setCoupError] = useState<string | null>(null);
+  const [isSavingCoupon, setIsSavingCoupon] = useState(false);
 
   // Save Product (Create or Update)
   const handleSaveProduct = async (e: React.FormEvent) => {
@@ -1095,30 +1104,157 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  const handleCreateCoupon = async (e: React.FormEvent) => {
+  const handleOpenCreateCoupon = () => {
+    setEditingCouponId(null);
+    setCoupCode('');
+    setCoupDescription('');
+    setCoupType('PERCENTAGE');
+    setCoupVal('');
+    setCoupMinOrder('0');
+    setCoupMaxDiscount('');
+    setCoupUsageLimit('');
+    setCoupStartDate('');
+    setCoupEndDate('');
+    setCoupIsActive(true);
+    setCoupError(null);
+    setShowAddCouponModal(true);
+  };
+
+  const handleOpenEditCoupon = (c: Coupon) => {
+    setEditingCouponId(c.id);
+    setCoupCode(c.code);
+    setCoupDescription(c.description || '');
+    setCoupType(c.discountType === 'PERCENTAGE' || (c as any).type === 'PERCENTAGE' ? 'PERCENTAGE' : 'FIXED');
+    setCoupVal(String(c.discountValue || ''));
+    setCoupMinOrder(String(c.minOrderAmount ?? c.minimumOrderAmount ?? 0));
+    setCoupMaxDiscount(c.maxDiscount || c.maximumDiscountAmount ? String(c.maxDiscount || c.maximumDiscountAmount) : '');
+    setCoupUsageLimit(c.usageLimit ? String(c.usageLimit) : '');
+    
+    let startIso = '';
+    const rawStart = c.startDate || c.startsAt;
+    if (rawStart) {
+      try { startIso = new Date(rawStart).toISOString().slice(0, 16); } catch {}
+    }
+    setCoupStartDate(startIso);
+
+    let endIso = '';
+    const rawEnd = c.endDate || c.expiresAt || c.expiryDate;
+    if (rawEnd) {
+      try { endIso = new Date(rawEnd).toISOString().slice(0, 16); } catch {}
+    }
+    setCoupEndDate(endIso);
+
+    setCoupIsActive(Boolean(c.isActive));
+    setCoupError(null);
+    setShowAddCouponModal(true);
+  };
+
+  const handleSaveCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!coupCode || !coupVal) return;
+    setCoupError(null);
+
+    if (!coupCode.trim()) {
+      setCoupError('Coupon code is required.');
+      return;
+    }
+    const valNum = Number(coupVal);
+    if (isNaN(valNum) || valNum <= 0) {
+      setCoupError('Discount value must be greater than 0.');
+      return;
+    }
+    if (coupType === 'PERCENTAGE' && valNum > 100) {
+      setCoupError('Percentage discount cannot exceed 100%.');
+      return;
+    }
+
+    if (coupStartDate && coupEndDate && new Date(coupEndDate) <= new Date(coupStartDate)) {
+      setCoupError('Expiry date must be after start date.');
+      return;
+    }
+
+    setIsSavingCoupon(true);
 
     try {
-      const res = await fetch('/api/coupons', {
-        method: 'POST',
+      const isEdit = Boolean(editingCouponId);
+      const url = isEdit ? `/api/admin/coupons/${editingCouponId}` : '/api/admin/coupons';
+      const method = isEdit ? 'PUT' : 'POST';
+
+      const bodyPayload = {
+        code: coupCode.trim().toUpperCase(),
+        description: coupDescription.trim(),
+        discountType: coupType,
+        discountValue: valNum,
+        minOrderAmount: Number(coupMinOrder) || 0,
+        maxDiscount: coupMaxDiscount ? Number(coupMaxDiscount) : null,
+        usageLimit: coupUsageLimit ? Number(coupUsageLimit) : null,
+        startDate: coupStartDate ? new Date(coupStartDate).toISOString() : null,
+        endDate: coupEndDate ? new Date(coupEndDate).toISOString() : null,
+        isActive: coupIsActive
+      };
+
+      const res = await fetch(url, {
+        method,
         headers: getAuthHeaders(),
         credentials: 'include',
-        body: JSON.stringify({
-          code: coupCode,
-          discountType: coupType,
-          discountValue: Number(coupVal),
-          minOrderAmount: Number(coupMinOrder)
-        })
+        body: JSON.stringify(bodyPayload)
       });
+
+      const data = await res.json();
+
       if (res.ok) {
         setShowAddCouponModal(false);
-        setCoupCode('');
-        setCoupVal('');
+        setEditingCouponId(null);
         onRefreshData();
+      } else {
+        setCoupError(data.error || data.message || 'Failed to save coupon.');
+      }
+    } catch (err: any) {
+      setCoupError(err?.message || 'Server error saving coupon.');
+    } finally {
+      setIsSavingCoupon(false);
+    }
+  };
+
+  const handleToggleCouponStatus = async (c: Coupon) => {
+    try {
+      const res = await fetch(`/api/admin/coupons/${c.id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ isActive: !c.isActive })
+      });
+
+      if (res.ok) {
+        onRefreshData();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to update coupon status');
       }
     } catch (err) {
-      console.error(err);
+      alert('Error updating coupon status');
+    }
+  };
+
+  const handleDeleteCoupon = async (couponId: string, couponCode: string) => {
+    if (!window.confirm(`Are you sure you want to permanently delete coupon "${couponCode}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/admin/coupons/${couponId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+
+      if (res.ok) {
+        onRefreshData();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to delete coupon');
+      }
+    } catch (err) {
+      alert('Error deleting coupon');
     }
   };
 
@@ -2624,7 +2760,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               )}
 
                               <p className="text-emerald-100/90 text-[11px] leading-relaxed">
-                                📍 <strong>Collection Location:</strong> NEXRA 3D Store, Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500046, Telangana
+                                📍 <strong>Collection Location:</strong> NEXRA 3D Store, Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500032, Telangana
                                 <span className="block mt-0.5 text-emerald-300 font-medium">Customer Contact: {custPhone} • Registered Email: {custEmail}</span>
                               </p>
                             </div>
@@ -2949,63 +3085,310 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {activeTab === 'coupons' && (
             <div className="space-y-4 text-xs">
               <div className="flex justify-between items-center">
-                <h3 className="text-sm font-bold text-slate-200">Discount Coupons</h3>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-200">Discount Coupons & Promotional Offers</h3>
+                  <p className="text-[11px] text-slate-400">Manage promotional coupons, discount rules, usage caps, and validity dates</p>
+                </div>
                 <button
-                  onClick={() => setShowAddCouponModal(true)}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer"
+                  onClick={handleOpenCreateCoupon}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Add Coupon
+                  <Plus className="w-4 h-4" /> Add Coupon
                 </button>
               </div>
 
+              {/* Add / Edit Coupon Modal Panel */}
               {showAddCouponModal && (
-                <form onSubmit={handleCreateCoupon} className="bg-slate-800 p-4 rounded-2xl border border-slate-700 space-y-3">
-                  <div className="grid grid-cols-3 gap-3">
-                    <input
-                      type="text"
-                      placeholder="Code (e.g. FESTIVE20)"
-                      required
-                      value={coupCode}
-                      onChange={(e) => setCoupCode(e.target.value)}
-                      className="bg-slate-900 border border-slate-700 rounded-xl p-2 text-white uppercase font-mono font-bold"
-                    />
-                    <select
-                      value={coupType}
-                      onChange={(e) => setCoupType(e.target.value as any)}
-                      className="bg-slate-900 border border-slate-700 rounded-xl p-2 text-white font-bold"
+                <div className="bg-slate-800/95 p-5 rounded-2xl border border-indigo-500/40 space-y-4 shadow-xl">
+                  <div className="flex justify-between items-center border-b border-slate-700/80 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Tag className="w-4 h-4 text-indigo-400" />
+                      <h4 className="text-sm font-bold text-slate-100">
+                        {editingCouponId ? `Edit Coupon (${coupCode})` : 'Create New Promotional Coupon'}
+                      </h4>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCouponModal(false)}
+                      className="text-slate-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
                     >
-                      <option value="PERCENTAGE">PERCENTAGE %</option>
-                      <option value="FIXED">FIXED AMOUNT ₹</option>
-                    </select>
-                    <input
-                      type="number"
-                      placeholder="Discount Value"
-                      required
-                      value={coupVal}
-                      onChange={(e) => setCoupVal(e.target.value)}
-                      className="bg-slate-900 border border-slate-700 rounded-xl p-2 text-white"
-                    />
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button type="submit" className="bg-emerald-600 text-white font-bold px-4 py-2 rounded-xl">
-                    Save Coupon
-                  </button>
-                </form>
+
+                  <form onSubmit={handleSaveCoupon} className="space-y-4">
+                    {coupError && (
+                      <div className="bg-rose-500/20 border border-rose-500/50 text-rose-300 p-3 rounded-xl text-xs font-semibold flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                        <span>{coupError}</span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-slate-400 font-bold mb-1 text-[11px]">Coupon Code *</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. FESTIVE20"
+                          required
+                          value={coupCode}
+                          onChange={(e) => setCoupCode(e.target.value.toUpperCase())}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white uppercase font-mono font-bold focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 font-bold mb-1 text-[11px]">Discount Type *</label>
+                        <select
+                          value={coupType}
+                          onChange={(e) => setCoupType(e.target.value as any)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-bold focus:border-indigo-500 focus:outline-hidden"
+                        >
+                          <option value="PERCENTAGE">PERCENTAGE (% OFF)</option>
+                          <option value="FIXED">FIXED AMOUNT (₹ OFF)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 font-bold mb-1 text-[11px]">
+                          Discount Value * {coupType === 'PERCENTAGE' ? '(%)' : '(₹)'}
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder={coupType === 'PERCENTAGE' ? 'e.g. 15' : 'e.g. 500'}
+                          required
+                          value={coupVal}
+                          onChange={(e) => setCoupVal(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-bold focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-slate-400 font-bold mb-1 text-[11px]">Minimum Order Amount (₹)</label>
+                        <input
+                          type="number"
+                          placeholder="0 for no minimum"
+                          value={coupMinOrder}
+                          onChange={(e) => setCoupMinOrder(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-white focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 font-bold mb-1 text-[11px]">
+                          Maximum Discount Cap (₹) {coupType === 'PERCENTAGE' ? '' : '(Optional)'}
+                        </label>
+                        <input
+                          type="number"
+                          placeholder="Optional max cap"
+                          value={coupMaxDiscount}
+                          onChange={(e) => setCoupMaxDiscount(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-white focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 font-bold mb-1 text-[11px]">Usage Limit (Total Times)</label>
+                        <input
+                          type="number"
+                          placeholder="Leave blank for unlimited"
+                          value={coupUsageLimit}
+                          onChange={(e) => setCoupUsageLimit(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-white focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-400 font-bold mb-1 text-[11px]">Description (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Festive discount on orders above ₹1,000"
+                        value={coupDescription}
+                        onChange={(e) => setCoupDescription(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-white focus:border-indigo-500 focus:outline-hidden"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-400 font-bold mb-1 text-[11px]">Start Date & Time (Optional)</label>
+                        <input
+                          type="datetime-local"
+                          value={coupStartDate}
+                          onChange={(e) => setCoupStartDate(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-white focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 font-bold mb-1 text-[11px]">Expiry Date & Time (Optional)</label>
+                        <input
+                          type="datetime-local"
+                          value={coupEndDate}
+                          onChange={(e) => setCoupEndDate(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-white focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2 pt-1">
+                      <input
+                        type="checkbox"
+                        id="coupIsActiveInput"
+                        checked={coupIsActive}
+                        onChange={(e) => setCoupIsActive(e.target.checked)}
+                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-700 bg-slate-900"
+                      />
+                      <label htmlFor="coupIsActiveInput" className="text-slate-200 font-bold text-xs cursor-pointer">
+                        Active & Available for Checkout
+                      </label>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2 border-t border-slate-700/80">
+                      <button
+                        type="button"
+                        onClick={() => setShowAddCouponModal(false)}
+                        className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold rounded-xl transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingCoupon}
+                        className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        {isSavingCoupon ? 'Saving...' : editingCouponId ? 'Update Coupon' : 'Create Coupon'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {coupons.map((c) => (
-                  <div key={c.id} className="bg-slate-800/80 border border-slate-700 p-3 rounded-2xl space-y-1">
-                    <div className="flex justify-between items-center">
-                      <span className="font-mono font-black text-amber-400 text-sm">{c.code}</span>
-                      <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded">
-                        ACTIVE
-                      </span>
+              {/* Coupon List Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {coupons.map((c) => {
+                  const isPct = c.discountType === 'PERCENTAGE' || (c as any).type === 'PERCENTAGE';
+                  const minAmt = Number(c.minOrderAmount ?? c.minimumOrderAmount ?? 0);
+                  const maxCap = c.maxDiscount || c.maximumDiscountAmount ? Number(c.maxDiscount || c.maximumDiscountAmount) : null;
+                  const used = Number(c.usageCount ?? c.usedCount ?? 0);
+                  const limit = c.usageLimit ? Number(c.usageLimit) : null;
+                  const startDateStr = c.startDate || c.startsAt;
+                  const endDateStr = c.endDate || c.expiresAt || c.expiryDate;
+
+                  return (
+                    <div
+                      key={c.id}
+                      className={`bg-slate-800/90 border ${
+                        c.isActive ? 'border-slate-700 hover:border-indigo-500/50' : 'border-slate-800 opacity-60'
+                      } p-4 rounded-2xl space-y-3 shadow-sm transition-all flex flex-col justify-between`}
+                    >
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="font-mono font-black text-amber-400 text-base tracking-wide bg-amber-400/10 px-2.5 py-0.5 rounded-lg border border-amber-400/20">
+                              {c.code}
+                            </span>
+                          </div>
+                          <span
+                            className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md uppercase tracking-wider ${
+                              c.isActive
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                : 'bg-slate-700 text-slate-400 border border-slate-600'
+                            }`}
+                          >
+                            {c.isActive ? 'ACTIVE' : 'INACTIVE'}
+                          </span>
+                        </div>
+
+                        {c.description && (
+                          <p className="text-slate-300 text-xs font-medium line-clamp-2">{c.description}</p>
+                        )}
+
+                        <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-700/60 space-y-1 text-[11px]">
+                          <div className="flex justify-between font-bold text-slate-200">
+                            <span>Discount:</span>
+                            <span className="text-emerald-400">
+                              {isPct ? `${c.discountValue}% OFF` : `₹${c.discountValue} FLAT OFF`}
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between text-slate-400">
+                            <span>Min Order:</span>
+                            <span className="text-slate-300 font-semibold">{minAmt > 0 ? `₹${minAmt}` : 'No Minimum'}</span>
+                          </div>
+
+                          {maxCap && (
+                            <div className="flex justify-between text-slate-400">
+                              <span>Max Discount Cap:</span>
+                              <span className="text-slate-300 font-semibold">₹{maxCap}</span>
+                            </div>
+                          )}
+
+                          <div className="flex justify-between text-slate-400">
+                            <span>Usage Counter:</span>
+                            <span className="text-slate-300 font-semibold">
+                              {used} / {limit ? limit : '∞ Unlimited'}
+                            </span>
+                          </div>
+
+                          {(startDateStr || endDateStr) && (
+                            <div className="flex justify-between text-slate-400 pt-1 border-t border-slate-800 text-[10px]">
+                              <span>Validity:</span>
+                              <span className="text-slate-300 font-medium">
+                                {startDateStr ? new Date(startDateStr).toLocaleDateString() : 'Now'} - {endDateStr ? new Date(endDateStr).toLocaleDateString() : 'No Expiry'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Card Action Controls */}
+                      <div className="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-700/60">
+                        <button
+                          onClick={() => handleToggleCouponStatus(c)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
+                            c.isActive
+                              ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                              : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          }`}
+                        >
+                          {c.isActive ? 'Deactivate' : 'Activate'}
+                        </button>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleOpenEditCoupon(c)}
+                            className="p-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition-colors cursor-pointer"
+                            title="Edit Coupon"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteCoupon(c.id, c.code)}
+                            className="p-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 rounded-lg transition-colors cursor-pointer"
+                            title="Delete Coupon"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-slate-400">
-                      {c.discountType === 'PERCENTAGE' ? `${c.discountValue}% OFF` : `₹${c.discountValue} OFF`} on orders &gt; ₹{c.minOrderAmount}
-                    </p>
+                  );
+                })}
+
+                {coupons.length === 0 && (
+                  <div className="col-span-full bg-slate-800/50 border border-slate-700/80 rounded-2xl p-8 text-center text-slate-400 space-y-2">
+                    <Tag className="w-8 h-8 text-slate-500 mx-auto" />
+                    <p className="font-bold text-slate-300">No discount coupons created yet.</p>
+                    <p className="text-xs text-slate-400">Click "Add Coupon" above to create promotional codes for your customers.</p>
                   </div>
-                ))}
+                )}
               </div>
             </div>
           )}
@@ -3303,11 +3686,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               body: JSON.stringify({
                                 status: 'SHIPPED',
                                 title: 'Ready for Store Pickup',
-                                description: 'Your order is ready for collection at NEXRA 3D Store (Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500046). Helpline: +91 8886159998.'
+                                description: 'Your order is ready for collection at NEXRA 3D Store (Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500032). Helpline: +91 8886159998.'
                               })
                             });
+                            const data = await res.json().catch(() => ({}));
                             if (res.ok) {
-                              alert(`Order #${selectedOrderForShipment.orderNumber} status updated to "Ready for Store Pickup". Notification email sent to ${regEmail}!`);
+                              const eStat = data.emailStatus;
+                              let emailMsg = `Notification email sent to ${regEmail}!`;
+                              if (eStat?.simulated) {
+                                emailMsg = `⚠️ Note: RESEND_API_KEY environment variable is missing on the server. Email was simulated.\nPlease set RESEND_API_KEY in app Settings menu to send real emails.`;
+                              } else if (eStat?.error) {
+                                emailMsg = `⚠️ Email delivery notice from Resend:\n${eStat.error}`;
+                              } else if (eStat?.fromUsed) {
+                                emailMsg = `Live notification email sent to ${regEmail} from ${eStat.fromUsed}!`;
+                              }
+                              alert(`Order #${selectedOrderForShipment.orderNumber} status updated to "Ready for Store Pickup".\n\n${emailMsg}`);
                               setShowCreateShipmentModal(false);
                               onRefreshData();
                             } else {
@@ -3340,8 +3733,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 description: 'Order handed over to customer at NEXRA 3D Store counter in Hyderabad.'
                               })
                             });
+                            const data = await res.json().catch(() => ({}));
                             if (res.ok) {
-                              alert(`Order #${selectedOrderForShipment.orderNumber} marked as "Collected / Delivered". Notification email sent to ${regEmail}!`);
+                              const eStat = data.emailStatus;
+                              let emailMsg = `Notification email sent to ${regEmail}!`;
+                              if (eStat?.simulated) {
+                                emailMsg = `⚠️ Note: RESEND_API_KEY environment variable is missing on the server. Email was simulated.\nPlease set RESEND_API_KEY in app Settings menu to send real emails.`;
+                              } else if (eStat?.error) {
+                                emailMsg = `⚠️ Email delivery notice from Resend:\n${eStat.error}`;
+                              } else if (eStat?.fromUsed) {
+                                emailMsg = `Live notification email sent to ${regEmail} from ${eStat.fromUsed}!`;
+                              }
+                              alert(`Order #${selectedOrderForShipment.orderNumber} marked as "Collected / Delivered".\n\n${emailMsg}`);
                               setShowCreateShipmentModal(false);
                               onRefreshData();
                             } else {

@@ -584,7 +584,7 @@ export async function createShipment(params: {
     consignee_name: addr.fullName || 'Customer',
     consignee_phone: addr.phone || '9876543210',
     consignee_address: addr.streetAddress || addr.addressLine1 || 'Address',
-    consignee_pincode: addr.postalCode || '500046',
+    consignee_pincode: addr.postalCode || '500032',
     consignee_city: addr.city || 'Hyderabad',
     consignee_state: addr.state || 'Telangana',
     pickup_pincode: config.originPincode,

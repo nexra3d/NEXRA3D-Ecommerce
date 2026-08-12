@@ -56,7 +56,7 @@ export async function sendEmail(options: SendEmailOptions) {
         html: options.html
       });
       console.log(`[SMTP Email] Sent successfully to ${targetTo}: ${info.messageId}`);
-      return { success: true, messageId: info.messageId };
+      return { success: true, messageId: info.messageId, provider: 'SMTP' };
     } catch (err: any) {
       console.error(`[SMTP Email] Dispatch failed to ${targetTo}:`, err?.message || err);
       // Fallback to Resend if SMTP failed
@@ -65,33 +65,65 @@ export async function sendEmail(options: SendEmailOptions) {
 
   // 2. Use Resend API if configured
   if (isResendConfigured && resendInstance) {
-    const fromEmail = options.from || process.env.RESEND_FROM_EMAIL || 'NEXRA 3D <onboarding@resend.dev>';
-    try {
-      const data = await resendInstance.emails.send({
-        from: fromEmail,
-        to: options.to,
-        subject: options.subject,
-        html: options.html,
-      });
+    // Candidates for "from" email in order of preference
+    const fromCandidates: string[] = [];
+    if (options.from) fromCandidates.push(options.from);
+    if (process.env.RESEND_FROM_EMAIL) fromCandidates.push(process.env.RESEND_FROM_EMAIL);
+    fromCandidates.push('NEXRA 3D <orders@orders.nexra3d.in>');
+    fromCandidates.push('NEXRA 3D <orders@nexra3d.in>');
+    fromCandidates.push('NEXRA 3D <onboarding@resend.dev>');
 
-      if (data.error) {
-        console.error(`[Resend Error] Failed to send email to ${targetTo}:`, data.error);
-        if (data.error.message?.includes('testing emails') || data.error.name === 'validation_error') {
-          console.warn(`[Resend Domain Notice] Resend sandbox mode limits outgoing emails to the account owner (nexra3d@gmail.com). To send to customer emails (${targetTo}), add a custom domain in Resend (RESEND_FROM_EMAIL) or add SMTP credentials (GMAIL_USER & GMAIL_APP_PASSWORD) in .env`);
+    // Deduplicate candidates
+    const uniqueCandidates = Array.from(new Set(fromCandidates));
+
+    let lastError: string | null = null;
+
+    for (const fromCandidate of uniqueCandidates) {
+      try {
+        const data = await resendInstance.emails.send({
+          from: fromCandidate,
+          to: options.to,
+          subject: options.subject,
+          html: options.html,
+        });
+
+        if (data.error) {
+          const errMsg = data.error.message || JSON.stringify(data.error);
+          console.warn(`[Resend Candidate Failure] Candidate "${fromCandidate}" failed for ${targetTo}: ${errMsg}`);
+          lastError = errMsg;
+          // If error is domain verification related, try next candidate
+          if (errMsg.toLowerCase().includes('domain') || errMsg.toLowerCase().includes('verify') || errMsg.toLowerCase().includes('not found')) {
+            continue;
+          }
+          // If testing email restriction
+          if (errMsg.toLowerCase().includes('testing emails') || errMsg.toLowerCase().includes('validation_error')) {
+            continue;
+          }
+        } else if (data.data?.id) {
+          console.log(`[Resend Success] Email successfully dispatched to ${targetTo} via "${fromCandidate}". Message ID: ${data.data.id}`);
+          return { success: true, id: data.data.id, fromUsed: fromCandidate, provider: 'Resend' };
         }
-        return { success: false, error: data.error.message };
+      } catch (error: any) {
+        const catchErr = error?.message || String(error);
+        console.error(`[Resend Exception] Attempt with "${fromCandidate}" failed: ${catchErr}`);
+        lastError = catchErr;
       }
-
-      console.log(`[Resend] Email sent successfully to ${targetTo}:`, data.data?.id);
-      return { success: true, id: data.data?.id };
-    } catch (error: any) {
-      console.error(`[Resend Exception] Email dispatch failed to ${targetTo}:`, error?.message || error);
-      return { success: false, error: error?.message || 'Failed to send email' };
     }
+
+    console.error(`[Resend Error] All sender candidates failed for ${targetTo}. Last error: ${lastError}`);
+    return { 
+      success: false, 
+      error: lastError || 'Failed to dispatch email via Resend',
+      provider: 'Resend' 
+    };
   }
 
-  // 3. Fallback log if no email credentials configured
-  console.log(`[Email Simulated Mode] Dispatch to ${targetTo}: "${options.subject}"`);
-  return { success: true, simulated: true };
+  // 3. Fallback log if no email credentials configured in environment variables
+  console.warn(`[Email Simulated Mode] RESEND_API_KEY is not set in environment variables. Simulated dispatch to ${targetTo}: "${options.subject}"`);
+  return { 
+    success: false, 
+    simulated: true, 
+    error: 'RESEND_API_KEY environment variable is missing on the server. Please add RESEND_API_KEY in app Settings.' 
+  };
 }
 
