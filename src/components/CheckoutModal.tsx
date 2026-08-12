@@ -14,7 +14,8 @@ import {
   Truck,
   Loader2,
   AlertCircle,
-  Info
+  Info,
+  Tag
 } from 'lucide-react';
 import { Address, CartItem, Coupon, Order, PaymentMethod, User } from '../types';
 import { apiFetch, getStoredToken } from '../lib/api';
@@ -33,6 +34,8 @@ interface CheckoutModalProps {
   savedAddresses: Address[];
   appliedCoupon: Coupon | null;
   discountAmount: number;
+  onApplyCoupon?: (code: string) => Promise<{ success: boolean; message: string }>;
+  onRemoveCoupon?: () => void;
   onAddNewAddress: (address: Partial<Address>) => Promise<Address>;
   onOrderCompleted: (order: Order) => void;
   currentUser?: User | null;
@@ -47,6 +50,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   savedAddresses = [],
   appliedCoupon,
   discountAmount = 0,
+  onApplyCoupon,
+  onRemoveCoupon,
   onAddNewAddress,
   onOrderCompleted,
   currentUser,
@@ -57,6 +62,25 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     ? liveAddresses
     : (Array.isArray(savedAddresses) ? savedAddresses : []);
   const safeCartItems = Array.isArray(cartItems) ? cartItems : [];
+
+  // Promo Code State
+  const [couponCodeInput, setCouponCodeInput] = useState('');
+  const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
+  const [couponFeedback, setCouponFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [availableCoupons, setAvailableCoupons] = useState<Coupon[]>([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      apiFetch('/api/coupons')
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data) => {
+          if (Array.isArray(data)) {
+            setAvailableCoupons(data.filter((c: any) => c.isActive));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen]);
 
   const [step, setStep] = useState<'address' | 'payment' | 'razorpay_modal' | 'success'>('address');
   const [selectedAddressId, setSelectedAddressId] = useState<string>('');
@@ -824,6 +848,133 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     )}
                   </div>
                 )}
+
+                {/* Promo Code / Coupon Box */}
+                <div className="bg-slate-50/80 p-4 rounded-2xl border border-slate-200 space-y-3 text-xs shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-1.5 font-bold text-slate-800">
+                      <Tag className="w-4 h-4 text-indigo-600" />
+                      <span>Apply Promo Code / Coupon</span>
+                    </div>
+                    {appliedCoupon && (
+                      <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-full">
+                        APPLIED
+                      </span>
+                    )}
+                  </div>
+
+                  {appliedCoupon ? (
+                    <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl flex items-center justify-between text-xs">
+                      <div className="flex items-center space-x-2.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <div>
+                          <span className="font-mono font-black text-emerald-950 text-sm block">{appliedCoupon.code}</span>
+                          <span className="text-[11px] text-emerald-700 font-semibold">Saved ₹{discountAmount} on this order</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onRemoveCoupon) onRemoveCoupon();
+                          setCouponFeedback(null);
+                        }}
+                        className="text-rose-600 hover:text-rose-800 text-xs font-bold cursor-pointer hover:underline px-2 py-1"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          if (!couponCodeInput.trim()) return;
+                          setIsApplyingCoupon(true);
+                          setCouponFeedback(null);
+                          try {
+                            if (onApplyCoupon) {
+                              const res = await onApplyCoupon(couponCodeInput.trim());
+                              if (res.success) {
+                                setCouponFeedback({ type: 'success', text: res.message });
+                                setCouponCodeInput('');
+                              } else {
+                                setCouponFeedback({ type: 'error', text: res.message });
+                              }
+                            } else {
+                              setCouponFeedback({ type: 'error', text: 'Coupon service unavailable' });
+                            }
+                          } catch {
+                            setCouponFeedback({ type: 'error', text: 'Error applying coupon' });
+                          } finally {
+                            setIsApplyingCoupon(false);
+                          }
+                        }}
+                        className="flex gap-2"
+                      >
+                        <input
+                          type="text"
+                          placeholder="Enter promo code (e.g. FESTIVE20)"
+                          value={couponCodeInput}
+                          onChange={(e) => setCouponCodeInput(e.target.value)}
+                          className="flex-1 bg-white border border-slate-300 text-slate-900 text-xs rounded-xl px-3 py-2 uppercase font-mono font-bold focus:outline-hidden focus:border-indigo-600"
+                        />
+                        <button
+                          type="submit"
+                          disabled={isApplyingCoupon || !couponCodeInput.trim()}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+                        >
+                          {isApplyingCoupon ? 'Applying...' : 'Apply'}
+                        </button>
+                      </form>
+
+                      {couponFeedback && (
+                        <p className={`text-[11px] font-semibold ${couponFeedback.type === 'success' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {couponFeedback.text}
+                        </p>
+                      )}
+
+                      {availableCoupons.length > 0 && (
+                        <div className="pt-2 border-t border-slate-200/80">
+                          <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Available Offers:</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {availableCoupons.map((c) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={async () => {
+                                  setCouponCodeInput(c.code);
+                                  setIsApplyingCoupon(true);
+                                  setCouponFeedback(null);
+                                  try {
+                                    if (onApplyCoupon) {
+                                      const res = await onApplyCoupon(c.code);
+                                      if (res.success) {
+                                        setCouponFeedback({ type: 'success', text: res.message });
+                                        setCouponCodeInput('');
+                                      } else {
+                                        setCouponFeedback({ type: 'error', text: res.message });
+                                      }
+                                    }
+                                  } catch {
+                                    setCouponFeedback({ type: 'error', text: 'Error applying coupon' });
+                                  } finally {
+                                    setIsApplyingCoupon(false);
+                                  }
+                                }}
+                                className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-[11px] font-mono font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                              >
+                                <span>{c.code}</span>
+                                <span className="text-[9px] font-sans font-semibold text-indigo-600">
+                                  ({c.discountType === 'PERCENTAGE' || (c as any).type === 'PERCENTAGE' ? `${c.discountValue}% OFF` : `₹${c.discountValue} OFF`})
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {/* Order Summary Breakdown Box */}
                 <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-2 text-xs shadow-xs">

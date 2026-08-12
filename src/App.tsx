@@ -1291,6 +1291,8 @@ export default function App() {
         savedAddresses={savedAddresses}
         appliedCoupon={appliedCoupon}
         discountAmount={discountAmount}
+        onApplyCoupon={handleApplyCoupon}
+        onRemoveCoupon={handleRemoveCoupon}
         onAddNewAddress={handleAddNewAddress}
         onOrderCompleted={handleOrderCompleted}
         currentUser={user}
