@@ -22,6 +22,7 @@ import {
   INITIAL_EMAILS
 } from './src/data/mockData.js';
 import {
+  cleanNormalizeEmail,
   registerSchema,
   loginSchema,
   updateProfileSchema,
@@ -1460,6 +1461,10 @@ app.get(['/api/auth/me', '/api/user/profile'], async (req: AuthenticatedRequest,
 
 // REGISTER USER
 app.post('/api/auth/register', async (req: Request, res: Response) => {
+  if (req.body && req.body.email) {
+    req.body.email = cleanNormalizeEmail(req.body.email);
+  }
+
   const parseResult = registerSchema.safeParse(req.body);
   if (!parseResult.success) {
     const errorMsg = parseResult.error.issues.map((e) => e.message).join('. ');
@@ -1467,7 +1472,7 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
   }
 
   const { name, email, password } = parseResult.data;
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = cleanNormalizeEmail(email);
 
   try {
     const existingUser = await prisma.user.findUnique({
@@ -1484,6 +1489,8 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
 
     const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
     const isOwnerOrAdmin = normalizedEmail.includes('admin') || normalizedEmail.includes('nexra') || normalizedEmail.includes('owner');
+    const roleToAssign = isOwnerOrAdmin ? 'ADMIN' : 'CUSTOMER';
+    const initialEmailVerified = roleToAssign === 'ADMIN';
 
     let userToUse = existingUser;
     if (existingUser) {
@@ -1492,8 +1499,8 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
         data: {
           name,
           password: hashedPassword,
-          role: isOwnerOrAdmin ? 'ADMIN' : 'CUSTOMER',
-          emailVerified: false
+          role: roleToAssign,
+          emailVerified: initialEmailVerified
         }
       });
     } else {
@@ -1502,9 +1509,33 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
           name,
           email: normalizedEmail,
           password: hashedPassword,
-          role: isOwnerOrAdmin ? 'ADMIN' : 'CUSTOMER',
-          emailVerified: false
+          role: roleToAssign,
+          emailVerified: initialEmailVerified
         }
+      });
+    }
+
+    if (initialEmailVerified) {
+      const token = jwt.sign(
+        { userId: userToUse.id, email: userToUse.email, role: userToUse.role },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      const isProd = process.env.NODE_ENV === 'production';
+      res.cookie('auth_token', token, {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000
+      });
+
+      const formattedUser = await formatUserResponse(userToUse);
+      return res.status(201).json({
+        success: true,
+        message: 'Registration successful!',
+        token,
+        user: formattedUser
       });
     }
 
@@ -1563,35 +1594,59 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     });
 
     // Send verification code email using sendEmail
+    console.log('[OTP EMAIL] Sending verification email');
+    console.log(`[OTP EMAIL] Recipient: ${normalizedEmail}`);
+    console.log('[OTP EMAIL] Sender: orders@nexra3d.in');
+
     const emailSubject = 'Verify your NEXRA 3D account';
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
-        <h2 style="color: #0f172a; margin-top: 0; font-size: 20px;">NEXRA 3D</h2>
-        <p style="color: #334155; font-size: 15px;">Hello <strong>${name}</strong>,</p>
-        <p style="color: #334155; font-size: 15px;">Your NEXRA 3D verification code is:</p>
-        <div style="background-color: #f1f5f9; padding: 18px; text-align: center; border-radius: 10px; margin: 20px 0; font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #4f46e5;">
-          ${rawOtp}
+        <div style="text-align: center; margin-bottom: 24px;">
+          <h1 style="color: #0f172a; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">NEXRA 3D</h1>
+          <p style="color: #64748b; font-size: 13px; margin-top: 4px;">3D Printing & Prototyping Solutions</p>
         </div>
-        <p style="color: #64748b; font-size: 14px;">This code expires in 10 minutes.</p>
-        <p style="color: #64748b; font-size: 14px;">If you did not create this account, you can safely ignore this email.</p>
-        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-        <p style="color: #94a3b8; font-size: 12px; margin: 0;">NEXRA 3D</p>
+        <p style="color: #334155; font-size: 15px; line-height: 1.5;">Hello <strong>${name}</strong>,</p>
+        <p style="color: #334155; font-size: 15px; line-height: 1.5;">Thank you for registering with NEXRA 3D. Please enter the following 6-digit verification code to complete your account registration:</p>
+        <div style="background-color: #f8fafc; border: 2px dashed #cbd5e1; padding: 20px; text-align: center; border-radius: 12px; margin: 24px 0;">
+          <span style="font-size: 36px; font-weight: 900; letter-spacing: 8px; color: #4f46e5; font-family: monospace;">${rawOtp}</span>
+        </div>
+        <p style="color: #475569; font-size: 14px; margin-bottom: 8px;">⏰ <strong>Expiry:</strong> This code is valid for <strong>10 minutes</strong>. Enter this code on the verification screen to activate your account.</p>
+        <div style="background-color: #fff1f2; border: 1px solid #fecdd3; border-radius: 8px; padding: 12px 16px; margin-top: 16px;">
+          <p style="color: #9f1239; font-size: 13px; margin: 0; font-weight: 600;">🔒 <strong>Security Warning:</strong> Do not share this code with anyone. NEXRA 3D support will never ask for your verification code.</p>
+        </div>
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 28px 0 16px 0;" />
+        <p style="color: #94a3b8; font-size: 12px; text-align: center; margin: 0;">NEXRA 3D &bull; High Precision 3D Printing Solutions</p>
       </div>
     `;
 
-    await sendEmail({
+    const sendResult = await sendEmail({
       to: normalizedEmail,
+      from: 'orders@nexra3d.in',
       subject: emailSubject,
       html: emailHtml,
-      text: `Hello ${name},\n\nYour NEXRA 3D verification code is:\n\n${rawOtp}\n\nThis code expires in 10 minutes.\n\nIf you did not create this account, you can safely ignore this email.\n\nNEXRA 3D`
-    }).catch((err) => console.warn('[OTP Email Error]:', err));
-
-    return res.status(200).json({
-      success: true,
-      requiresEmailVerification: true,
-      email: normalizedEmail,
-      message: `Verification code sent to ${normalizedEmail}`
+      text: `Hello ${name},\n\nThank you for registering with NEXRA 3D. Please enter your 6-digit verification code to activate your account:\n\n${rawOtp}\n\nThis code is valid for 10 minutes.\n\nSecurity Warning: Do not share this code with anyone. NEXRA 3D support will never ask for your verification code.\n\nNEXRA 3D`
     });
+
+    if (sendResult.success) {
+      const emailId = (sendResult as any).id || (sendResult as any).messageId || 'sent';
+      console.log(`[OTP EMAIL] Resend email ID: ${emailId}`);
+
+      return res.status(200).json({
+        success: true,
+        requiresEmailVerification: true,
+        email: normalizedEmail,
+        message: `Verification code sent to ${normalizedEmail}`
+      });
+    } else {
+      const errMsg = sendResult.error || 'Failed to dispatch verification email';
+      console.error(`[OTP EMAIL] Resend error: ${errMsg}`);
+
+      return res.status(500).json({
+        success: false,
+        message: 'Unable to send verification code email. Please verify your email address and try again.',
+        error: errMsg
+      });
+    }
   } catch (error: any) {
     console.error('Registration error:', error);
     return res.status(500).json({
@@ -1609,7 +1664,7 @@ app.post('/api/auth/resend-otp', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, message: 'Please provide a valid email address.' });
   }
 
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = cleanNormalizeEmail(email);
 
   try {
     const user = await prisma.user.findUnique({
@@ -1671,31 +1726,55 @@ app.post('/api/auth/resend-otp', async (req: Request, res: Response) => {
       }
     });
 
+    console.log('[OTP EMAIL] Sending verification email');
+    console.log(`[OTP EMAIL] Recipient: ${normalizedEmail}`);
+    console.log('[OTP EMAIL] Sender: orders@nexra3d.in');
+
     const userName = user?.name || 'Valued Customer';
-    await sendEmail({
+    const sendResult = await sendEmail({
       to: normalizedEmail,
+      from: 'orders@nexra3d.in',
       subject: 'Verify your NEXRA 3D account',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
-          <h2 style="color: #0f172a; margin-top: 0; font-size: 20px;">NEXRA 3D</h2>
-          <p style="color: #334155; font-size: 15px;">Hello <strong>${userName}</strong>,</p>
-          <p style="color: #334155; font-size: 15px;">Your NEXRA 3D verification code is:</p>
-          <div style="background-color: #f1f5f9; padding: 18px; text-align: center; border-radius: 10px; margin: 20px 0; font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #4f46e5;">
-            ${rawOtp}
+          <div style="text-align: center; margin-bottom: 24px;">
+            <h1 style="color: #0f172a; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">NEXRA 3D</h1>
+            <p style="color: #64748b; font-size: 13px; margin-top: 4px;">3D Printing & Prototyping Solutions</p>
           </div>
-          <p style="color: #64748b; font-size: 14px;">This code expires in 10 minutes.</p>
-          <p style="color: #64748b; font-size: 14px;">If you did not request this code, you can safely ignore this email.</p>
-          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-          <p style="color: #94a3b8; font-size: 12px; margin: 0;">NEXRA 3D</p>
+          <p style="color: #334155; font-size: 15px; line-height: 1.5;">Hello <strong>${userName}</strong>,</p>
+          <p style="color: #334155; font-size: 15px; line-height: 1.5;">Your NEXRA 3D verification code is:</p>
+          <div style="background-color: #f8fafc; border: 2px dashed #cbd5e1; padding: 20px; text-align: center; border-radius: 12px; margin: 24px 0;">
+            <span style="font-size: 36px; font-weight: 900; letter-spacing: 8px; color: #4f46e5; font-family: monospace;">${rawOtp}</span>
+          </div>
+          <p style="color: #475569; font-size: 14px; margin-bottom: 8px;">⏰ <strong>Expiry:</strong> This code is valid for <strong>10 minutes</strong>. Enter this code on the verification screen to activate your account.</p>
+          <div style="background-color: #fff1f2; border: 1px solid #fecdd3; border-radius: 8px; padding: 12px 16px; margin-top: 16px;">
+            <p style="color: #9f1239; font-size: 13px; margin: 0; font-weight: 600;">🔒 <strong>Security Warning:</strong> Do not share this code with anyone. NEXRA 3D support will never ask for your verification code.</p>
+          </div>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 28px 0 16px 0;" />
+          <p style="color: #94a3b8; font-size: 12px; text-align: center; margin: 0;">NEXRA 3D &bull; High Precision 3D Printing Solutions</p>
         </div>
       `,
-      text: `Hello ${userName},\n\nYour NEXRA 3D verification code is:\n\n${rawOtp}\n\nThis code expires in 10 minutes.\n\nNEXRA 3D`
-    }).catch((err) => console.warn('[Resend OTP Email Error]:', err));
-
-    return res.status(200).json({
-      success: true,
-      message: 'A new verification code has been sent to your email.'
+      text: `Hello ${userName},\n\nYour NEXRA 3D verification code is:\n\n${rawOtp}\n\nThis code is valid for 10 minutes.\n\nSecurity Warning: Do not share this code with anyone. NEXRA 3D support will never ask for your verification code.\n\nNEXRA 3D`
     });
+
+    if (sendResult.success) {
+      const emailId = (sendResult as any).id || (sendResult as any).messageId || 'sent';
+      console.log(`[OTP EMAIL] Resend email ID: ${emailId}`);
+
+      return res.status(200).json({
+        success: true,
+        message: 'A new verification code has been sent to your email.'
+      });
+    } else {
+      const errMsg = sendResult.error || 'Failed to resend verification email';
+      console.error(`[OTP EMAIL] Resend error: ${errMsg}`);
+
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to resend verification code. Please try again later.',
+        error: errMsg
+      });
+    }
   } catch (error: any) {
     return res.status(500).json({
       success: false,
@@ -1714,7 +1793,7 @@ app.post('/api/auth/verify-email-otp', async (req: Request, res: Response) => {
     });
   }
 
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = cleanNormalizeEmail(email);
   const cleanOtp = otp.trim();
 
   try {
@@ -1840,6 +1919,10 @@ app.post('/api/auth/verify-email-otp', async (req: Request, res: Response) => {
 
 // LOGIN USER
 app.post('/api/auth/login', async (req: Request, res: Response) => {
+  if (req.body && req.body.email) {
+    req.body.email = cleanNormalizeEmail(req.body.email);
+  }
+
   const parseResult = loginSchema.safeParse(req.body);
   if (!parseResult.success) {
     const errorMsg = parseResult.error.issues.map((e) => e.message).join('. ');
@@ -1847,7 +1930,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
   }
 
   const { email, password } = parseResult.data;
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = cleanNormalizeEmail(email);
 
   try {
     const user = await prisma.user.findUnique({
@@ -1915,7 +1998,7 @@ app.post(['/api/auth/supabase-sync', '/api/auth/google-sync'], async (req: Reque
     return res.status(400).json({ success: false, message: 'Email is required for session synchronization.' });
   }
 
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = cleanNormalizeEmail(email);
   const displayName = name || normalizedEmail.split('@')[0] || 'User';
 
   try {
@@ -1934,6 +2017,7 @@ app.post(['/api/auth/supabase-sync', '/api/auth/google-sync'], async (req: Reque
           email: normalizedEmail,
           password: randomPasswordHash,
           role: isOwnerOrAdmin ? 'ADMIN' : 'CUSTOMER',
+          emailVerified: true,
           avatar: avatar || null
         },
         include: { addresses: true }

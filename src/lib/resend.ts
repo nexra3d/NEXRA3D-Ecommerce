@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import nodemailer from 'nodemailer';
+import { cleanNormalizeEmail } from './validation.js';
 
 const resendApiKey = process.env.RESEND_API_KEY;
 
@@ -44,7 +45,11 @@ export interface SendEmailOptions {
 }
 
 export async function sendEmail(options: SendEmailOptions) {
-  const targetTo = Array.isArray(options.to) ? options.to.join(', ') : options.to;
+  const cleanTo = Array.isArray(options.to)
+    ? options.to.map((e) => cleanNormalizeEmail(e)).filter(Boolean)
+    : cleanNormalizeEmail(options.to);
+
+  const targetTo = Array.isArray(cleanTo) ? cleanTo.join(', ') : cleanTo;
 
   // 1. Prefer SMTP if configured (allows sending to ANY email address directly)
   if (isSmtpConfigured && smtpTransporter) {
@@ -52,7 +57,7 @@ export async function sendEmail(options: SendEmailOptions) {
       const fromAddress = options.from || process.env.SMTP_FROM || `NEXRA 3D <${smtpUser}>`;
       const info = await smtpTransporter.sendMail({
         from: fromAddress,
-        to: options.to,
+        to: cleanTo,
         subject: options.subject,
         html: options.html,
         text: options.text
@@ -71,9 +76,9 @@ export async function sendEmail(options: SendEmailOptions) {
     const fromCandidates: string[] = [];
     if (options.from) fromCandidates.push(options.from);
     if (process.env.RESEND_FROM_EMAIL) fromCandidates.push(process.env.RESEND_FROM_EMAIL);
-    fromCandidates.push('NEXRA 3D <orders@orders.nexra3d.in>');
     fromCandidates.push('NEXRA 3D <orders@nexra3d.in>');
-    fromCandidates.push('NEXRA 3D <onboarding@resend.dev>');
+    fromCandidates.push('orders@nexra3d.in');
+    fromCandidates.push('NEXRA 3D <orders@orders.nexra3d.in>');
 
     // Deduplicate candidates
     const uniqueCandidates = Array.from(new Set(fromCandidates));
@@ -84,7 +89,7 @@ export async function sendEmail(options: SendEmailOptions) {
       try {
         const data = await resendInstance.emails.send({
           from: fromCandidate,
-          to: options.to,
+          to: cleanTo,
           subject: options.subject,
           html: options.html,
         });

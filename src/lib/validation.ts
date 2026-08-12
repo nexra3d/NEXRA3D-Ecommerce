@@ -1,9 +1,25 @@
 import { z } from 'zod';
 
+export function cleanNormalizeEmail(rawEmail: any): string {
+  if (!rawEmail || typeof rawEmail !== 'string') return '';
+  let cleaned = rawEmail.trim();
+  const mdMatch = cleaned.match(/\[([^\]]+)\]\((?:mailto:)?([^)]+)\)/i);
+  if (mdMatch) {
+    cleaned = mdMatch[1] || mdMatch[2];
+  }
+  cleaned = cleaned.replace(/^mailto:/i, '');
+  cleaned = cleaned.replace(/^[\s<\[]+|[\s>\]]+$/g, '');
+  const emailMatch = cleaned.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  if (emailMatch) {
+    cleaned = emailMatch[0];
+  }
+  return cleaned.trim().toLowerCase();
+}
+
 export const registerSchema = z
   .object({
     name: z.string().trim().min(2, 'Full name must be at least 2 characters'),
-    email: z.string().trim().toLowerCase().email('Please enter a valid email address'),
+    email: z.preprocess((val) => cleanNormalizeEmail(val), z.string().email('Please enter a valid email address')),
     password: z.string().min(3, 'Password must be at least 3 characters long'),
     confirmPassword: z.string().optional()
   })
@@ -13,13 +29,13 @@ export const registerSchema = z
   });
 
 export const loginSchema = z.object({
-  email: z.string().trim().toLowerCase().email('Please enter a valid email address'),
+  email: z.preprocess((val) => cleanNormalizeEmail(val), z.string().email('Please enter a valid email address')),
   password: z.string().min(1, 'Password is required')
 });
 
 export const updateProfileSchema = z.object({
   name: z.string().trim().min(2, 'Full name must be at least 2 characters'),
-  email: z.string().trim().toLowerCase().email('Please enter a valid email address').optional().or(z.literal('')),
+  email: z.preprocess((val) => cleanNormalizeEmail(val), z.string().email('Please enter a valid email address').optional().or(z.literal(''))),
   phone: z.string().trim().optional().or(z.literal('')),
   avatarUrl: z.string().trim().optional().or(z.literal('')),
   addressLine1: z.string().trim().optional().or(z.literal('')),
