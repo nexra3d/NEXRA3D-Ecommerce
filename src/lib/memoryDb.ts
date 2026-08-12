@@ -523,6 +523,23 @@ class MemoryStore {
         return this.attachIncludes(newItem, modelName, args.include);
       },
 
+      createMany: async (args: any = {}) => {
+        const items = Array.isArray(args.data) ? args.data : [args.data];
+        let count = 0;
+        for (const itemData of items) {
+          const id = itemData.id || generateId(modelName.toLowerCase());
+          const newItem = {
+            id,
+            ...itemData,
+            createdAt: itemData.createdAt || new Date(),
+            updatedAt: itemData.updatedAt || new Date()
+          };
+          store.push(newItem);
+          count++;
+        }
+        return { count };
+      },
+
       update: async (args: any = {}) => {
         const itemIndex = store.findIndex((i) => this.matchWhere(i, args.where));
         if (itemIndex === -1) {

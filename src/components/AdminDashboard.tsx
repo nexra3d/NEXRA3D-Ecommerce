@@ -343,6 +343,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [lampWattages, setLampWattages] = useState<string[]>([]);
   const [newLampColourInput, setNewLampColourInput] = useState('');
   const [newLampWattageInput, setNewLampWattageInput] = useState('');
+  const [newLampWattageDeltaInput, setNewLampWattageDeltaInput] = useState('');
+  const [variantSuccess, setVariantSuccess] = useState<string | null>(null);
 
   // Variant Form State
   const [showAddVariantForm, setShowAddVariantForm] = useState(false);
@@ -409,10 +411,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (lampRes.ok) {
         const lampData = await lampRes.json();
         if (lampData && Array.isArray(lampData.colours)) {
-          setLampColours(lampData.colours.map((c: any) => typeof c === 'string' ? c : (c?.value || c?.colour || '')));
+          setLampColours(
+            lampData.colours.map((c: any) => {
+              if (typeof c === 'string') return c;
+              const val = c?.value || c?.colour || '';
+              const delta = Number(c?.priceDelta || 0);
+              return delta > 0 ? `${val} (+₹${delta})` : val;
+            })
+          );
         }
         if (lampData && Array.isArray(lampData.wattages)) {
-          setLampWattages(lampData.wattages.map((w: any) => typeof w === 'string' ? w : (w?.value || w?.wattage || '')));
+          setLampWattages(
+            lampData.wattages.map((w: any) => {
+              if (typeof w === 'string') return w;
+              const val = w?.value || w?.wattage || '';
+              const delta = Number(w?.priceDelta || 0);
+              return delta > 0 ? `${val} (+₹${delta})` : val;
+            })
+          );
         }
       }
     } catch (err) {
@@ -453,6 +469,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setLampWattages([]);
     setNewLampColourInput('');
     setNewLampWattageInput('');
+    setNewLampWattageDeltaInput('');
+    setVariantSuccess(null);
   };
 
   // Open Add Product Modal
@@ -613,25 +631,69 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  // Helper to parse option text like "4W (+₹30)" or "4W (+30)" or "4W = 30"
+  const parseOptionInput = (input: any, defaultType: 'COLOUR' | 'WATTAGE') => {
+    if (typeof input === 'object' && input !== null) {
+      const val = String(input.value || input.colour || input.wattage || input.optionValue || '').trim();
+      const delta = Number(input.priceDelta ?? input.price_delta ?? 0);
+      return { value: val, priceDelta: delta };
+    }
+
+    const str = String(input || '').trim();
+    if (!str) return { value: '', priceDelta: 0 };
+
+    const match = str.match(/(\(\+?₹?\s*(-?\d+(\.\d+)?)\)|=\s*₹?\s*(-?\d+(\.\d+)?))/);
+    if (match) {
+      const numbers = str.match(/(-?\d+(\.\d+)?)/g);
+      let delta = 0;
+      if (numbers && numbers.length > 0) {
+        delta = Number(numbers[numbers.length - 1]);
+      }
+      const cleanValue = str.replace(/(\(\+?₹?\s*(-?\d+(\.\d+)?)\)|=\s*₹?\s*(-?\d+(\.\d+)?))/, '').trim();
+      return { value: cleanValue, priceDelta: delta };
+    }
+
+    let delta = 0;
+    if (defaultType === 'COLOUR') {
+      if (str.toUpperCase().includes('RGB') || str.toUpperCase().includes('MULTI')) {
+        delta = 200;
+      }
+    } else {
+      const u = str.toUpperCase();
+      if (u === '7W') delta = 100;
+      else if (u === '9W' || u.includes('9W')) delta = 150;
+      else if (u === '12W' || u.includes('12W')) delta = 200;
+      else if (u === '15W' || u.includes('15W')) delta = 250;
+      else if (u.includes('3IN1') || u.includes('3-IN-1') || u.includes('3 IN 1')) delta = 25;
+      else if (u === '4W') delta = 30;
+      else if (u === '6W') delta = 80;
+      else if (u === '2W' || u === '5W') delta = 0;
+    }
+
+    return { value: str, priceDelta: delta };
+  };
+
   // Lamp Matrix Generation Functions
   const handleGenerateLampMatrix = () => {
-    const cols = lampColours.length > 0 ? lampColours : ['Warm White', 'Cool White', 'Neutral White'];
-    const watts = lampWattages.length > 0 ? lampWattages : ['5W', '7W', '9W', '12W'];
+    if (lampColours.length === 0 || lampWattages.length === 0) {
+      setVariantError('Please configure at least one Lamp Colour and one Bulb Wattage before generating matrix.');
+      return;
+    }
+
+    setVariantError(null);
+    setVariantSuccess(null);
     const base = Number(prodPrice || 1499);
     const baseMrp = Number(prodMrp || base * 1.2);
 
-    const generated: any[] = [];
-    cols.forEach((col) => {
-      watts.forEach((watt) => {
-        let delta = 0;
-        const w = watt.toUpperCase().trim();
-        if (w === '7W') delta = 100;
-        if (w === '9W') delta = 150;
-        if (w === '12W') delta = 200;
-        if (w === '15W') delta = 250;
-        if (w === 'NO BULB' || w === 'NONE') delta = -100;
+    const parsedCols = lampColours.map((c) => parseOptionInput(c, 'COLOUR')).filter((c) => c.value);
+    const parsedWatts = lampWattages.map((w) => parseOptionInput(w, 'WATTAGE')).filter((w) => w.value);
 
-        if (col.toUpperCase().includes('RGB') || col.toUpperCase().includes('MULTI')) delta += 200;
+    const generated: any[] = [];
+    parsedCols.forEach((colObj) => {
+      parsedWatts.forEach((wattObj) => {
+        const col = colObj.value;
+        const watt = wattObj.value;
+        const delta = colObj.priceDelta + wattObj.priceDelta;
 
         const price = Math.max(0, base + delta);
         const mrp = Math.max(price, baseMrp + delta);
@@ -645,11 +707,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         generated.push({
           id: existingMatch?.id,
-          sku: cleanSku,
+          sku: existingMatch?.sku || cleanSku,
           name,
           price,
           mrp,
-          stockQuantity: Number(prodStock || 10),
+          stockQuantity: existingMatch ? existingMatch.stockQuantity : Number(prodStock || 10),
           colour: col,
           wattage: watt,
           isActive: true
@@ -671,6 +733,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
 
     setVariantError(null);
+    setVariantSuccess(null);
     try {
       // Sync lamp options and variant matrix in parallel
       const [res] = await Promise.all([
@@ -693,6 +756,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       } else {
         await loadProductImagesAndVariants(editingProductId);
         onRefreshData();
+        setVariantSuccess('Lamp options & variant matrix saved successfully!');
+        setTimeout(() => setVariantSuccess(null), 3000);
       }
     } catch (err: any) {
       setVariantError(err.message || 'Error saving variant matrix');
@@ -909,6 +974,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           });
         } catch (lampErr) {
           console.error('Lamp options sync error:', lampErr);
+        }
+      }
+
+      // Sync variant matrix if defined
+      if (savedProductId && productVariants.length > 0) {
+        try {
+          await fetch(`/api/products/${savedProductId}/variants/matrix`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            credentials: 'include',
+            body: JSON.stringify({ variants: productVariants })
+          });
+        } catch (varErr) {
+          console.error('Variant matrix sync error:', varErr);
         }
       }
 
@@ -2115,20 +2194,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div className="flex gap-2 pt-1">
                         <input
                           type="text"
-                          placeholder="Add wattage option (e.g. 15W)"
+                          placeholder="Wattage (e.g. 4W)"
                           value={newLampWattageInput}
                           onChange={(e) => setNewLampWattageInput(e.target.value)}
                           className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white flex-1"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Price Delta ₹ (e.g. 30)"
+                          value={newLampWattageDeltaInput}
+                          onChange={(e) => setNewLampWattageDeltaInput(e.target.value)}
+                          className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white w-32"
                         />
                         <button
                           type="button"
                           onClick={() => {
                             if (newLampWattageInput.trim()) {
-                              setLampWattages([...lampWattages, newLampWattageInput.trim()]);
+                              const delta = newLampWattageDeltaInput.trim();
+                              const formatted = delta ? `${newLampWattageInput.trim()} (+₹${delta})` : newLampWattageInput.trim();
+                              setLampWattages([...lampWattages, formatted]);
                               setNewLampWattageInput('');
+                              setNewLampWattageDeltaInput('');
                             }
                           }}
-                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3 py-1 rounded-lg"
+                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3 py-1 rounded-lg cursor-pointer"
                         >
                           + Add Wattage
                         </button>
@@ -2138,6 +2227,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     {variantError && (
                       <div className="bg-rose-500/20 text-rose-300 text-xs p-2 rounded-lg border border-rose-500/30">
                         {variantError}
+                      </div>
+                    )}
+
+                    {variantSuccess && (
+                      <div className="bg-emerald-500/20 text-emerald-300 text-xs p-2 rounded-lg border border-emerald-500/30 font-semibold">
+                        {variantSuccess}
                       </div>
                     )}
 

@@ -3110,25 +3110,67 @@ app.post('/api/products/:id/lamp-options/sync', requireAdminMiddleware, async (r
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    // Delete existing lamp options for this product
+    // Delete existing lamp options ONLY for this product ID
     await prisma.productLampOption.deleteMany({
       where: { productId: id }
     });
+
+    const parseOptionInput = (input: any, defaultType: 'COLOUR' | 'WATTAGE') => {
+      if (typeof input === 'object' && input !== null) {
+        const val = String(input.value || input.colour || input.wattage || input.optionValue || '').trim();
+        const delta = Number(input.priceDelta ?? input.price_delta ?? 0);
+        return { value: val, priceDelta: delta };
+      }
+
+      const str = String(input || '').trim();
+      if (!str) return { value: '', priceDelta: 0 };
+
+      // Check if price delta is written inside string e.g. "4W (+30)" or "4W (+₹30)" or "4W = 30"
+      const match = str.match(/(\(\+?₹?\s*(-?\d+(\.\d+)?)\)|=\s*₹?\s*(-?\d+(\.\d+)?))/);
+      if (match) {
+        const numbers = str.match(/(-?\d+(\.\d+)?)/g);
+        let delta = 0;
+        if (numbers && numbers.length > 0) {
+          delta = Number(numbers[numbers.length - 1]);
+        }
+        const cleanValue = str.replace(/(\(\+?₹?\s*(-?\d+(\.\d+)?)\)|=\s*₹?\s*(-?\d+(\.\d+)?))/, '').trim();
+        return { value: cleanValue, priceDelta: delta };
+      }
+
+      let delta = 0;
+      if (defaultType === 'COLOUR') {
+        if (str.toUpperCase().includes('RGB') || str.toUpperCase().includes('MULTI')) {
+          delta = 200;
+        }
+      } else {
+        const u = str.toUpperCase();
+        if (u === '7W') delta = 100;
+        else if (u === '9W' || u.includes('9W')) delta = 150;
+        else if (u === '12W' || u.includes('12W')) delta = 200;
+        else if (u === '15W' || u.includes('15W')) delta = 250;
+        else if (u.includes('3IN1') || u.includes('3-IN-1') || u.includes('3 IN 1')) delta = 25;
+        else if (u === '4W') delta = 30;
+        else if (u === '6W') delta = 80;
+        else if (u === '2W' || u === '5W') delta = 0;
+      }
+
+      return { value: str, priceDelta: delta };
+    };
 
     const newRecords: any[] = [];
     let order = 1;
 
     for (const col of colours) {
-      if (!col || !String(col).trim()) continue;
-      const val = String(col).trim();
-      let delta = 0;
-      if (val.toUpperCase().includes('RGB') || val.toUpperCase().includes('MULTI')) delta = 200;
+      if (!col) continue;
+      const parsed = parseOptionInput(col, 'COLOUR');
+      if (!parsed.value) continue;
+
       newRecords.push({
         id: `lamp-opt-col-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         productId: id,
         optionType: 'COLOUR',
-        optionValue: val,
-        priceDelta: delta,
+        optionValue: parsed.value,
+        priceDelta: parsed.priceDelta,
         sortOrder: order++,
         isActive: true
       });
@@ -3136,23 +3178,16 @@ app.post('/api/products/:id/lamp-options/sync', requireAdminMiddleware, async (r
 
     order = 1;
     for (const watt of wattages) {
-      if (!watt || !String(watt).trim()) continue;
-      const val = String(watt).trim();
-      let delta = 0;
-      const u = val.toUpperCase();
-      if (u === '7W') delta = 100;
-      else if (u === '9W' || u.includes('9W')) delta = 150;
-      else if (u === '12W' || u.includes('12W')) delta = 200;
-      else if (u === '15W' || u.includes('15W')) delta = 250;
-      else if (u.includes('3IN1') || u.includes('3-IN-1') || u.includes('3 IN 1')) delta = 25;
-      else if (u === '4W') delta = 30;
+      if (!watt) continue;
+      const parsed = parseOptionInput(watt, 'WATTAGE');
+      if (!parsed.value) continue;
 
       newRecords.push({
         id: `lamp-opt-wat-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         productId: id,
         optionType: 'WATTAGE',
-        optionValue: val,
-        priceDelta: delta,
+        optionValue: parsed.value,
+        priceDelta: parsed.priceDelta,
         sortOrder: order++,
         isActive: true
       });
