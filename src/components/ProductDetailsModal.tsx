@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { Product, ProductReview, ProductVariant } from '../types';
 import { useSEO } from '../hooks/useSEO';
-import { isNameKeychainProduct } from '../lib/personalization';
+import { isNameKeychainProduct, isLithophaneProduct } from '../lib/personalization';
 
 interface LampOptionItem {
   id: string;
@@ -103,7 +103,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   const [customizationError, setCustomizationError] = useState<string | null>(null);
   const needsCustomization = product ? (product.requiresCustomization === true || isNameKeychainProduct(product)) : false;
 
-  const needsImageUpload = Boolean(product?.requiresImageUpload || ((product as any)?.minimumImageUploads && (product as any).minimumImageUploads > 0));
+  const needsImageUpload = product ? (product.requiresImageUpload === true || isLithophaneProduct(product)) : false;
   const minImageCount = (product as any)?.minimumImageUploads !== undefined && (product as any)?.minimumImageUploads !== null ? Number((product as any).minimumImageUploads) : 1;
   const maxImageCount = (product as any)?.maximumImageUploads !== undefined && (product as any)?.maximumImageUploads !== null ? Number((product as any).maximumImageUploads) : 5;
 

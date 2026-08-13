@@ -418,6 +418,9 @@ export const INITIAL_PRODUCTS: Product[] = [
     subcategoryId: 'sub-lithophane-lamps',
     stock: 25,
     stockQuantity: 25,
+    requiresImageUpload: true,
+    minimumImageUploads: 1,
+    maximumImageUploads: 5,
     images: [
       'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&q=80&w=800'
     ],
