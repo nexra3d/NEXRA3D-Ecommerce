@@ -489,15 +489,21 @@ async function calculateServerShippingFee(input: {
   destinationPincode: string;
   paymentMethod?: string;
   shippingProvider?: string;
+  courierName?: string;
   selectedShippingOptionId?: string;
+  shippingFee?: number;
   orderValue?: number;
 }) {
-  if (
+  const isPickup = (
     input.selectedShippingOptionId === 'pickup-store' ||
     input.shippingProvider === 'Store Pickup' ||
     input.shippingProvider === 'Pickup from Store' ||
-    input.shippingProvider === 'pickup-store'
-  ) {
+    input.shippingProvider === 'pickup-store' ||
+    input.shippingProvider === 'NEXRA Store' ||
+    input.courierName === 'Pickup from Store'
+  );
+
+  if (isPickup) {
     return 0;
   }
 
@@ -554,6 +560,9 @@ async function calculateServerShippingFee(input: {
   }
 
   if (availableOptions.length === 0) {
+    if (typeof input.shippingFee === 'number' && input.shippingFee >= 0) {
+      return Number(input.shippingFee);
+    }
     const delhiveryErr = delhiveryRes.status === 'fulfilled' ? delhiveryRes.value?.error || 'Delhivery rate calculation failed' : (delhiveryRes.reason?.message || 'Delhivery rate calculation failed');
     const nimbusErr = nimbusRes.status === 'fulfilled' ? nimbusRes.value?.error || 'NimbusPost rate calculation failed' : (nimbusRes.reason?.message || 'NimbusPost rate calculation failed');
     const error: any = new Error(`Unable to calculate live shipping rates. Delhivery: (${delhiveryErr}). NimbusPost: (${nimbusErr}).`);
@@ -561,13 +570,29 @@ async function calculateServerShippingFee(input: {
     throw error;
   }
 
-  const providerFiltered = availableOptions.filter((option) => {
-    const providerName = option.provider || '';
-    return preferredProvider.toLowerCase().includes('nimbus') ? providerName.toLowerCase().includes('nimbus') : !providerName.toLowerCase().includes('nimbus');
+  // 1. Direct match by option id if provided
+  if (input.selectedShippingOptionId) {
+    const directMatch = availableOptions.find((opt) => opt.id === input.selectedShippingOptionId);
+    if (directMatch && typeof directMatch.charge === 'number') {
+      return Number(directMatch.charge || 0);
+    }
+  }
+
+  // 2. Filter available options for delivery couriers (do not fallback to pickup-store for courier orders)
+  const deliveryOptions = availableOptions.filter((opt) => opt.id !== 'pickup-store' && !String(opt.name || '').toLowerCase().includes('pickup'));
+  const candidatePool = deliveryOptions.length > 0 ? deliveryOptions : availableOptions;
+
+  // 3. Match by preferred provider
+  const providerFiltered = candidatePool.filter((option) => {
+    const providerName = String(option.provider || '').toLowerCase();
+    return preferredProvider.toLowerCase().includes('nimbus') ? providerName.includes('nimbus') : !providerName.includes('nimbus');
   });
 
-  const selectedOption = providerFiltered[0] || availableOptions[0];
+  const selectedOption = providerFiltered[0] || candidatePool[0];
   if (!selectedOption || typeof selectedOption.charge !== 'number') {
+    if (typeof input.shippingFee === 'number' && input.shippingFee >= 0) {
+      return Number(input.shippingFee);
+    }
     throw new Error('Selected courier is unavailable.');
   }
 
@@ -4632,7 +4657,9 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
         destinationPincode: shippingAddressData?.postalCode || shippingAddressData?.pincode || req.body.destinationPincode || req.body.pincode || '',
         paymentMethod: paymentMethod,
         shippingProvider: selectedProvider,
+        courierName: req.body.courierName,
         selectedShippingOptionId: req.body.selectedShippingOptionId,
+        shippingFee: typeof req.body.shippingFee === 'number' ? req.body.shippingFee : Number(req.body.shippingFee) || undefined,
         orderValue: subtotal + taxAmount - discountAmount
       });
     } catch (error: any) {

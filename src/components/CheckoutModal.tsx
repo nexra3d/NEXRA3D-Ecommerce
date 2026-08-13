@@ -334,8 +334,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           paymentMethod,
           couponCode: appliedCoupon?.code,
           shippingFee,
+          selectedShippingOptionId,
           shippingProvider: selectedShippingOption?.provider || 'Delhivery',
           courierName: selectedShippingOption?.name || 'Delhivery Surface',
+          destinationPincode: chosenAddress?.postalCode || newPostalCode || activePincode || '560001',
           estimatedDeliveryDate: shippingEstimate?.estimatedDeliveryDate,
           items: safeCartItems.map((ci) => ({
             productId: ci.productId || ci.product?.id,

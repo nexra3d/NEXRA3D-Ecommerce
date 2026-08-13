@@ -49,6 +49,7 @@ import {
 
 import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
 import { CookieConsentBanner } from './components/CookieConsentBanner';
+import { useSEO } from './hooks/useSEO';
 
 type ViewType =
   | 'home'
@@ -68,6 +69,77 @@ type ViewType =
   | 'cart'
   | 'wishlist'
   | 'admin';
+
+const VIEW_METADATA: Record<ViewType, { title: string; description: string }> = {
+  home: {
+    title: 'NEXRA 3D | Industrial 3D Printers, Filaments & On-Demand Printing Services',
+    description: 'India’s premier provider of industrial 3D printers, additive manufacturing materials, engineering filaments, SLA resins, and custom CAD on-demand 3D printing services.'
+  },
+  shop: {
+    title: 'Shop 3D Printers, Filaments & Resins | NEXRA 3D',
+    description: 'Browse our complete catalog of industrial 3D printers, engineering filaments, lithophane materials, and 3D printing accessories.'
+  },
+  aerospace: {
+    title: 'Aerospace & Defense 3D Printing | NEXRA 3D',
+    description: 'Mission-critical aerospace grade 3D printing, lightweight high-performance polymers, and precision industrial rapid prototyping.'
+  },
+  services: {
+    title: '3D Printing & Rapid Prototyping Services | NEXRA 3D',
+    description: 'End-to-end additive manufacturing, SLA/FDM on-demand 3D printing, CAD design, reverse engineering, and custom rapid prototyping services.'
+  },
+  'service-detail': {
+    title: 'Service Details | NEXRA 3D',
+    description: 'Explore custom engineering and 3D manufacturing solutions tailored for high precision industrial applications.'
+  },
+  about: {
+    title: 'About Us | NEXRA 3D',
+    description: 'Discover NEXRA 3D (VL Technologies Pvt Ltd) - pioneering industrial additive manufacturing, rapid prototyping, and engineering innovation in India.'
+  },
+  contact: {
+    title: 'Contact Us | NEXRA 3D',
+    description: 'Get in touch with NEXRA 3D for industrial quotes, technical support, 3D printing inquiries, and enterprise solutions.'
+  },
+  'privacy-policy': {
+    title: 'Privacy Policy | NEXRA 3D',
+    description: 'Learn how NEXRA 3D protects your privacy, personal data, CAD files, and intellectual property.'
+  },
+  login: {
+    title: 'Customer Login | NEXRA 3D',
+    description: 'Sign in to your NEXRA 3D customer account to track orders, manage custom quotes, and view saved items.'
+  },
+  register: {
+    title: 'Create Account | NEXRA 3D',
+    description: 'Join NEXRA 3D for personalized custom 3D printing quotes, instant order tracking, and exclusive discounts.'
+  },
+  'forgot-password': {
+    title: 'Forgot Password | NEXRA 3D',
+    description: 'Recover and reset your NEXRA 3D account password securely.'
+  },
+  'reset-password': {
+    title: 'Reset Password | NEXRA 3D',
+    description: 'Set a new secure password for your NEXRA 3D account.'
+  },
+  account: {
+    title: 'My Account | NEXRA 3D',
+    description: 'Manage your profile, shipping addresses, live order history, and account settings.'
+  },
+  unauthorized: {
+    title: 'Access Denied | NEXRA 3D',
+    description: 'You do not have permission to view this restricted page.'
+  },
+  cart: {
+    title: 'Shopping Cart | NEXRA 3D',
+    description: 'Review your selected 3D printers, filaments, custom lamps, and proceed to secure checkout.'
+  },
+  wishlist: {
+    title: 'My Wishlist | NEXRA 3D',
+    description: 'View and manage your saved products and favorite 3D printing equipment.'
+  },
+  admin: {
+    title: 'Admin Portal | NEXRA 3D',
+    description: 'NEXRA 3D store administration, catalog management, customer orders, and live shipping analytics.'
+  }
+};
 
 const viewToPathMap: Record<ViewType, string> = {
   home: '/',
@@ -184,6 +256,19 @@ export default function App() {
   // Selected Item Details Modals
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
+
+  // Dynamic Page Title & SEO synchronization for all views & active items
+  const activeMeta = VIEW_METADATA[currentView] || VIEW_METADATA.home;
+  const activeTitle =
+    currentView === 'service-detail' && selectedService
+      ? `${selectedService.name || selectedService.seoTitle || 'Service Details'} | NEXRA 3D`
+      : activeMeta.title;
+
+  useSEO({
+    title: quickViewProduct ? `${quickViewProduct.name || quickViewProduct.title} | NEXRA 3D` : activeTitle,
+    description: quickViewProduct?.shortDescription || quickViewProduct?.description || activeMeta.description,
+    image: quickViewProduct?.imageUrl || quickViewProduct?.images?.[0]
+  });
 
   // Coupon state
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
@@ -927,25 +1012,46 @@ export default function App() {
             console.error(err);
           }
         }}
-        onNavigateHome={() => setCurrentView('home')}
+        onNavigateHome={() => {
+          setQuickViewProduct(null);
+          setCurrentView('home');
+        }}
         onNavigateShop={() => {
+          setQuickViewProduct(null);
           setFilters({ ...filters, categoryId: undefined, subcategoryId: undefined });
           setCurrentView('shop');
         }}
-        onNavigateServices={() => setCurrentView('services')}
+        onNavigateServices={() => {
+          setQuickViewProduct(null);
+          setCurrentView('services');
+        }}
         onNavigateAerospace={() => {
+          setQuickViewProduct(null);
           setFilters({ ...filters, categoryId: 'cat-aerospace-drones', subcategoryId: undefined });
           setCurrentView('aerospace');
         }}
-        onNavigateAbout={() => setCurrentView('about')}
-        onNavigateContact={() => setCurrentView('contact')}
+        onNavigateAbout={() => {
+          setQuickViewProduct(null);
+          setCurrentView('about');
+        }}
+        onNavigateContact={() => {
+          setQuickViewProduct(null);
+          setCurrentView('contact');
+        }}
         onRequestQuoteClick={() => {
           setQuoteService(null);
           setIsQuoteModalOpen(true);
         }}
-        onNavigateLogin={() => setCurrentView('login')}
-        onNavigateRegister={() => setCurrentView('register')}
+        onNavigateLogin={() => {
+          setQuickViewProduct(null);
+          setCurrentView('login');
+        }}
+        onNavigateRegister={() => {
+          setQuickViewProduct(null);
+          setCurrentView('register');
+        }}
         onNavigateAccount={() => {
+          setQuickViewProduct(null);
           if (user) {
             setAccountSubSection('overview');
             setCurrentView('account');
@@ -1233,12 +1339,30 @@ export default function App() {
 
       {/* Global Footer */}
       <Footer
-        onNavigateHome={() => setCurrentView('home')}
-        onNavigateShop={() => setCurrentView('shop')}
-        onNavigateServices={() => setCurrentView('services')}
-        onNavigateAbout={() => setCurrentView('about')}
-        onNavigateContact={() => setCurrentView('contact')}
-        onNavigatePrivacyPolicy={() => setCurrentView('privacy-policy')}
+        onNavigateHome={() => {
+          setQuickViewProduct(null);
+          setCurrentView('home');
+        }}
+        onNavigateShop={() => {
+          setQuickViewProduct(null);
+          setCurrentView('shop');
+        }}
+        onNavigateServices={() => {
+          setQuickViewProduct(null);
+          setCurrentView('services');
+        }}
+        onNavigateAbout={() => {
+          setQuickViewProduct(null);
+          setCurrentView('about');
+        }}
+        onNavigateContact={() => {
+          setQuickViewProduct(null);
+          setCurrentView('contact');
+        }}
+        onNavigatePrivacyPolicy={() => {
+          setQuickViewProduct(null);
+          setCurrentView('privacy-policy');
+        }}
         onRequestQuoteClick={() => {
           setQuoteService(null);
           setIsQuoteModalOpen(true);
