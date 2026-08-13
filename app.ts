@@ -2124,7 +2124,7 @@ app.post('/api/auth/logout', (req: Request, res: Response) => {
 });
 
 // ==================================================
-// DPDP ACT 2023 + DPDP RULES 2025 PRIVACY ENDPOINTS
+// PRIVACY & DATA PROTECTION ENDPOINTS
 // ==================================================
 
 async function logSecurityEvent(
@@ -2289,7 +2289,7 @@ app.get('/api/privacy/export', requireAuthMiddleware, async (req: AuthenticatedR
     // Sanitize user profile to ensure no security secrets are leaked
     const exportPackage = {
       title: 'NEXRA 3D Personal Data Archive',
-      legalFramework: 'Digital Personal Data Protection Act, 2023 (DPDP Act)',
+      legalFramework: 'Applicable Privacy & Data Protection Laws',
       exportedAt: new Date().toISOString(),
       userProfile: {
         id: user.id,
@@ -2447,7 +2447,7 @@ app.post('/api/privacy/delete-account', requireAuthMiddleware, async (req: Authe
 
     return res.json({
       success: true,
-      message: 'Your account has been deleted and personal information anonymized in accordance with DPDP requirements. Financial order records have been preserved for tax/legal compliance.'
+      message: 'Your account has been deleted and personal information anonymized. Financial order records have been preserved for tax/legal compliance.'
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: 'Account deletion failed: ' + (err.message || String(err)) });
@@ -2651,7 +2651,7 @@ app.get('/api/admin/privacy/stats', requireAdminMiddleware, async (req: Request,
         totalConsents,
         anonymizedUsers,
         securityEventsCount,
-        noticeVersion: 'v1.0 (DPDP Act 2023 & Rules 2025 Compliant)'
+        noticeVersion: 'v1.0 (Privacy & Data Protection Notice)'
       }
     });
   } catch (err: any) {

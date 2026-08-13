@@ -23,7 +23,7 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({ onNavigate
           </button>
           
           <div className="flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-            <Shield className="w-4 h-4 text-emerald-600" /> Privacy & Data Protection Notice (Version 1.0)
+            <Shield className="w-4 h-4 text-emerald-600" /> Privacy & Data Protection Policy (Version 1.0)
           </div>
         </div>
 
@@ -34,10 +34,10 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({ onNavigate
               Privacy Notice & Data Protection Policy
             </div>
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-              NEXRA 3D Privacy Compliance Statement
+              NEXRA 3D Privacy & Data Protection Statement
             </h1>
             <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-              In accordance with the Digital Personal Data Protection Act, 2023 (DPDP Act) and the Digital Personal Data Protection Rules, 2025 of India, this notice informs you of how NEXRA 3D ("Data Fiduciary") collects, uses, processes, stores, and protects your personal data.
+              In accordance with applicable privacy and data protection laws, this notice informs you of how NEXRA 3D ("Data Fiduciary") collects, uses, processes, stores, and protects your personal information.
             </p>
             <div className="pt-2 text-xs text-slate-400">
               <strong>Last Updated:</strong> August 2025 | <strong>Notice Version:</strong> v1.0
@@ -48,10 +48,10 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({ onNavigate
         {/* Navigation Tabs */}
         <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
           {[
-            { id: 'notice', label: '1. Privacy Notice', icon: FileText },
+            { id: 'notice', label: '1. Privacy Overview', icon: FileText },
             { id: 'inventory', label: '2. Data Processing & Inventory', icon: Lock },
-            { id: 'rights', label: '3. Data Principal Rights', icon: UserCheck },
-            { id: 'grievance', label: '4. Grievance Redressal', icon: HelpCircle },
+            { id: 'rights', label: '3. Your Privacy Rights', icon: UserCheck },
+            { id: 'grievance', label: '4. Privacy Complaints & Support', icon: HelpCircle },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -79,18 +79,18 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({ onNavigate
             <div className="space-y-6 text-slate-700 leading-relaxed text-sm sm:text-base">
               <div className="border-l-4 border-indigo-600 pl-4 py-1">
                 <h2 className="text-xl font-bold text-slate-900">1. Data Fiduciary Identity & Overview</h2>
-                <p className="text-xs text-slate-500">Under Section 5 of the DPDP Act, 2023</p>
+                <p className="text-xs text-slate-500">Privacy & Data Protection Overview</p>
               </div>
 
               <p>
-                <strong>NEXRA 3D</strong> ("we", "us", "our") operates as the <strong>Data Fiduciary</strong> responsible for processing personal data provided by customers, visitors, and users ("Data Principals") on the NEXRA 3D platform.
+                <strong>NEXRA 3D</strong> ("we", "us", "our") operates as the <strong>Data Fiduciary</strong> responsible for processing personal data provided by customers, visitors, and users on the NEXRA 3D platform.
               </p>
 
               <div className="bg-slate-50 rounded-xl p-5 border border-slate-200 space-y-3 text-sm">
                 <h3 className="font-bold text-slate-900">Data Fiduciary Credentials:</h3>
                 <ul className="space-y-2 text-slate-600">
                   <li><strong>Legal Name:</strong> NEXRA 3D High Precision Manufacturing Solutions</li>
-                  <li><strong>Registered Lab & Facility Address:</strong> NEXRA 3D Lab, Plot 42, HITECH City Phase 2, Hyderabad, Telangana - 500032, India</li>
+                  <li><strong>Registered Lab & Facility Address:</strong> Plot no 484, TNGOs Colony, Gachibowli, Hyderabad, Telangana - 500032, India</li>
                   <li><strong>Primary Privacy Contact Email:</strong> <a href="mailto:privacy@nexra3d.in" className="text-indigo-600 hover:underline">privacy@nexra3d.in</a></li>
                   <li><strong>Official Grievance Officer Email:</strong> <a href="mailto:grievance@nexra3d.in" className="text-indigo-600 hover:underline">grievance@nexra3d.in</a></li>
                 </ul>
@@ -107,17 +107,17 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({ onNavigate
                   <li>To arrange courier shipping and store pickup dispatch via automated courier partners (Delhivery, NimbusPost).</li>
                   <li>To send transactional notifications, order updates, invoice PDFs, and verification codes (OTP).</li>
                   <li>To respond to custom 3D printing quote requests and engineering consultations.</li>
-                  <li>To provide customer support and handle privacy grievances.</li>
+                  <li>To provide customer support and handle privacy requests.</li>
                 </ul>
               </div>
 
               <div className="bg-amber-50 rounded-xl p-5 border border-amber-200 space-y-3 text-sm text-amber-900">
                 <div className="flex items-center gap-2 font-bold text-amber-800">
                   <AlertTriangle className="w-5 h-5 text-amber-600" />
-                  Children's Data Protection Policy (Users under 18 Years)
+                  Children's Data Protection
                 </div>
                 <p>
-                  Under Section 9 of the DPDP Act 2023, processing of personal data of children requires verifiable consent from a parent or lawful guardian. NEXRA 3D does not knowingly collect or process personal data of individuals under 18 years without parental consent. Furthermore, we do not engage in behavioral tracking, targeted advertising, or processing that may cause harm to children.
+                  NEXRA 3D does not knowingly collect or process personal information from individuals under 18 years of age without appropriate parental or lawful guardian involvement where required by applicable law. Furthermore, we do not engage in behavioral tracking, targeted advertising, or processing that may cause harm to children.
                 </p>
               </div>
             </div>
@@ -194,8 +194,8 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({ onNavigate
           {activeTab === 'rights' && (
             <div className="space-y-6 text-slate-700 leading-relaxed text-sm sm:text-base">
               <div className="border-l-4 border-indigo-600 pl-4 py-1">
-                <h2 className="text-xl font-bold text-slate-900">3. Rights of the Data Principal</h2>
-                <p className="text-xs text-slate-500">Your rights under Sections 11, 12, 13 & 14 of the DPDP Act 2023</p>
+                <h2 className="text-xl font-bold text-slate-900">3. Your Privacy Rights</h2>
+                <p className="text-xs text-slate-500">How you can exercise control over your personal information</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -257,8 +257,8 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({ onNavigate
           {activeTab === 'grievance' && (
             <div className="space-y-6 text-slate-700 leading-relaxed text-sm sm:text-base">
               <div className="border-l-4 border-indigo-600 pl-4 py-1">
-                <h2 className="text-xl font-bold text-slate-900">4. Grievance Redressal Mechanism & Resolution SLA</h2>
-                <p className="text-xs text-slate-500">As mandated under DPDP Rules 2025</p>
+                <h2 className="text-xl font-bold text-slate-900">4. Privacy Complaints & Resolution</h2>
+                <p className="text-xs text-slate-500">Dedicated grievance redressal process</p>
               </div>
 
               <p>
@@ -297,16 +297,16 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({ onNavigate
                     <MapPin className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
                     <div>
                       <strong>Office Address:</strong> <br />
-                      NEXRA 3D Lab, Plot 42, HITECH City Phase 2, Hyderabad, Telangana - 500032, India
+                      Plot no 484, TNGOs Colony, Gachibowli, Hyderabad, Telangana - 500032, India
                     </div>
                   </div>
                 </div>
               </div>
 
               <div className="space-y-3 pt-2">
-                <h3 className="text-lg font-bold text-slate-900">Escalation to Data Protection Board of India</h3>
+                <h3 className="text-lg font-bold text-slate-900">Further Privacy Escalation</h3>
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  If your grievance is not resolved by our Grievance Officer within 30 days or if you are dissatisfied with the resolution provided, you have the statutory right under Section 13(4) of the DPDP Act 2023 to register a complaint with the <strong>Data Protection Board of India (DPBI)</strong>.
+                  If your privacy concern is not resolved satisfactorily by our Grievance Officer within 30 days or if you are dissatisfied with the resolution provided, you may pursue the escalation or complaint mechanisms available under applicable law.
                 </p>
               </div>
             </div>
