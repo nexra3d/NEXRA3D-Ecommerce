@@ -138,9 +138,21 @@ export interface Product {
   metaDescription?: string | null;
   specifications?: Record<string, any>;
   requiresCustomization?: boolean;
+  requiresImageUpload?: boolean;
+  minimumImageUploads?: number;
+  maximumImageUploads?: number;
   tags?: string[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface CustomizationImage {
+  id?: string;
+  imageUrl?: string;
+  url?: string;
+  publicId?: string | null;
+  sortOrder?: number;
+  createdAt?: string;
 }
 
 export interface CartItem {
@@ -155,6 +167,7 @@ export interface CartItem {
   selectedWattage?: string;
   taxPercentage?: number;
   customizationText?: string;
+  customizationImages?: CustomizationImage[];
 }
 
 export interface Coupon {
@@ -197,6 +210,7 @@ export interface OrderItem {
   quantity: number;
   totalPrice: number;
   customizationText?: string;
+  customizationImages?: CustomizationImage[];
 }
 
 export type ShipmentStatus =

@@ -37,6 +37,8 @@ export const updateProfileSchema = z.object({
   name: z.string().trim().min(2, 'Full name must be at least 2 characters'),
   email: z.preprocess((val) => cleanNormalizeEmail(val), z.string().email('Please enter a valid email address').optional().or(z.literal(''))),
   phone: z.string().trim().optional().or(z.literal('')),
+  company: z.string().trim().optional().or(z.literal('')),
+  gst: z.string().trim().optional().or(z.literal('')),
   avatarUrl: z.string().trim().optional().or(z.literal('')),
   addressLine1: z.string().trim().optional().or(z.literal('')),
   addressLine2: z.string().trim().optional().or(z.literal('')),
@@ -103,10 +105,16 @@ export const productCreateSchema = z.object({
   isNewArrival: z.boolean().default(false),
   isBestSeller: z.boolean().default(false),
   requiresCustomization: z.boolean().default(false),
+  requiresImageUpload: z.boolean().default(false),
+  minimumImageUploads: z.coerce.number().int().min(1, 'Minimum uploads must be at least 1').default(1),
+  maximumImageUploads: z.coerce.number().int().min(1, 'Maximum uploads must be at least 1').max(20, 'Maximum uploads cannot exceed 20').default(5),
   categoryId: z.string().min(1, 'Category selection is required')
 }).refine((data) => (data.mrp !== undefined && data.mrp !== null ? data.mrp >= data.price : true), {
   message: 'MRP must be greater than or equal to selling price',
   path: ['mrp']
+}).refine((data) => data.maximumImageUploads >= data.minimumImageUploads, {
+  message: 'Maximum image uploads must be greater than or equal to minimum image uploads',
+  path: ['maximumImageUploads']
 });
 
 export const productUpdateSchema = z.object({
@@ -132,6 +140,9 @@ export const productUpdateSchema = z.object({
   isNewArrival: z.boolean().optional(),
   isBestSeller: z.boolean().optional(),
   requiresCustomization: z.boolean().optional(),
+  requiresImageUpload: z.boolean().optional(),
+  minimumImageUploads: z.coerce.number().int().min(1).optional(),
+  maximumImageUploads: z.coerce.number().int().min(1).max(20).optional(),
   categoryId: z.string().min(1).optional()
 });
 

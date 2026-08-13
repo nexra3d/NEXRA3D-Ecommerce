@@ -319,6 +319,32 @@ export const CartPage: React.FC<CartPageProps> = ({
                         </div>
                       )}
 
+                      {/* Uploaded Customization Photos */}
+                      {((item as any).customizationImages || []).length > 0 && (
+                        <div className="pt-1.5 space-y-1">
+                          <div className="text-[10px] font-extrabold uppercase text-cyan-800 tracking-wider">
+                            Uploaded Personalization Photos ({((item as any).customizationImages || []).length}):
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {((item as any).customizationImages || []).map((cImg: any, cIdx: number) => {
+                              const imgUrl = cImg.imageUrl || cImg.url;
+                              return (
+                                <a
+                                  key={cImg.id || cIdx}
+                                  href={imgUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="block w-10 h-10 rounded-lg overflow-hidden border border-cyan-300 hover:border-cyan-500 hover:scale-105 transition-all relative group shadow-xs"
+                                  title={`Photo #${cIdx + 1} - Click to enlarge`}
+                                >
+                                  <img src={imgUrl} alt={`Custom Photo ${cIdx + 1}`} className="w-full h-full object-cover" />
+                                </a>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Lamp Option Attributes */}
                       {((item as any).selectedColour || (item as any).selectedWattage || (item.variant as any)?.colour || (item.variant as any)?.wattage) && (
                         <div className="flex flex-wrap gap-1.5 pt-1">

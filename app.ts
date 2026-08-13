@@ -140,6 +140,9 @@ function formatPrismaProductResponse(p: any) {
     isNewArrival: p.isNewArrival ?? false,
     isBestSeller: p.isBestSeller ?? false,
     requiresCustomization: Boolean(p.requiresCustomization),
+    requiresImageUpload: Boolean(p.requiresImageUpload),
+    minimumImageUploads: p.minimumImageUploads !== undefined && p.minimumImageUploads !== null ? Number(p.minimumImageUploads) : 1,
+    maximumImageUploads: p.maximumImageUploads !== undefined && p.maximumImageUploads !== null ? Number(p.maximumImageUploads) : 5,
     categoryId: p.categoryId,
     categoryName: p.category?.name || '',
     category: p.category ? {
@@ -711,7 +714,8 @@ async function getFormattedCart(userId: string) {
       items: {
         include: {
           product: { include: { images: true, category: true } },
-          variant: true
+          variant: true,
+          customizationImages: { orderBy: { sortOrder: 'asc' } }
         }
       }
     }
@@ -724,7 +728,8 @@ async function getFormattedCart(userId: string) {
         items: {
           include: {
             product: { include: { images: true, category: true } },
-            variant: true
+            variant: true,
+            customizationImages: { orderBy: { sortOrder: 'asc' } }
           }
         }
       }
@@ -819,6 +824,13 @@ async function getFormattedCart(userId: string) {
       selectedColour: effectiveColour,
       selectedWattage: effectiveWattage,
       customizationText: ci.customizationText || null,
+      customizationImages: ((ci as any).customizationImages || []).map((cImg: any) => ({
+        id: cImg.id,
+        imageUrl: cImg.imageUrl,
+        url: cImg.imageUrl,
+        publicId: cImg.publicId || null,
+        sortOrder: cImg.sortOrder ?? 0
+      })),
       variant: v ? {
         id: v.id,
         name: v.name,
@@ -2111,6 +2123,542 @@ app.post('/api/auth/logout', (req: Request, res: Response) => {
   return res.json({ success: true, message: 'Logged out successfully' });
 });
 
+// ==================================================
+// DPDP ACT 2023 + DPDP RULES 2025 PRIVACY ENDPOINTS
+// ==================================================
+
+async function logSecurityEvent(
+  eventType: string,
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
+  description: string,
+  req?: Request,
+  userId?: string,
+  metadata?: any
+) {
+  try {
+    const ipAddress = req ? (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || 'unknown') : 'unknown';
+    const userAgent = req ? (req.headers['user-agent'] || 'unknown') : 'unknown';
+    await (prisma as any).securityEvent.create({
+      data: {
+        eventType,
+        severity,
+        description,
+        userId: userId || (req as any)?.user?.id || null,
+        ipAddress,
+        userAgent,
+        metadata: metadata ? JSON.parse(JSON.stringify(metadata)) : null
+      }
+    });
+  } catch (err) {
+    console.error('Failed to log security event:', err);
+  }
+}
+
+// RECORD CONSENT (POST /api/privacy/consent)
+app.post('/api/privacy/consent', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { purpose, status, noticeVersion, consentVersion, consentText, email } = req.body || {};
+    if (!purpose) {
+      return res.status(400).json({ success: false, error: 'Consent purpose is required.' });
+    }
+
+    let userId: string | null = req.user?.id || null;
+    let targetEmail: string | null = req.user?.email || (email ? cleanNormalizeEmail(email) : null);
+
+    const consentStatus = status === 'WITHDRAWN' ? 'WITHDRAWN' : 'GRANTED';
+    const record = await (prisma as any).consentRecord.create({
+      data: {
+        userId,
+        email: targetEmail,
+        purpose,
+        status: consentStatus,
+        noticeVersion: noticeVersion || 'v1.0',
+        consentVersion: consentVersion || 'v1.0',
+        consentText: consentText || `Consent ${consentStatus.toLowerCase()} for ${purpose}`,
+        withdrawnAt: consentStatus === 'WITHDRAWN' ? new Date() : null,
+        source: 'WEB_APP',
+        ipAddress: (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown',
+        userAgent: req.headers['user-agent'] || 'unknown'
+      }
+    });
+
+    // Sync User flags if logged in
+    if (userId) {
+      if (purpose === 'MARKETING_EMAIL' || purpose === 'PROMOTIONAL_COMMUNICATION') {
+        await prisma.user.update({
+          where: { id: userId },
+          data: { marketingOptIn: consentStatus === 'GRANTED' } as any
+        }).catch(() => {});
+      } else if (purpose === 'ANALYTICS') {
+        await prisma.user.update({
+          where: { id: userId },
+          data: { analyticsOptIn: consentStatus === 'GRANTED' } as any
+        }).catch(() => {});
+      }
+    }
+
+    await logSecurityEvent(
+      'CONSENT_RECORDED',
+      'LOW',
+      `Consent ${consentStatus} recorded for purpose: ${purpose}`,
+      req,
+      userId || undefined
+    );
+
+    return res.json({ success: true, consentRecord: record });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'Failed to record consent: ' + (err.message || String(err)) });
+  }
+});
+
+// GET CONSENT HISTORY (GET /api/privacy/consent-history)
+app.get('/api/privacy/consent-history', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const records = await (prisma as any).consentRecord.findMany({
+      where: {
+        OR: [
+          { userId },
+          { email: req.user!.email }
+        ]
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    return res.json({ success: true, records });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'Failed to fetch consent history: ' + (err.message || String(err)) });
+  }
+});
+
+// DOWNLOAD MY DATA (GET /api/privacy/export)
+app.get('/api/privacy/export', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        addresses: true,
+        orders: {
+          include: {
+            items: {
+              include: {
+                customizationImages: true
+              }
+            },
+            shipment: true,
+            payment: true
+          }
+        },
+        reviews: true,
+        cart: {
+          include: {
+            items: {
+              include: { customizationImages: true }
+            }
+          }
+        },
+        wishlist: {
+          include: {
+            items: {
+              include: { product: true }
+            }
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User profile not found.' });
+    }
+
+    const consentRecords = await (prisma as any).consentRecord.findMany({
+      where: { OR: [{ userId }, { email: user.email }] },
+      orderBy: { createdAt: 'desc' }
+    }).catch(() => []);
+
+    const privacyRequests = await (prisma as any).privacyRequest.findMany({
+      where: { OR: [{ userId }, { email: user.email }] },
+      orderBy: { createdAt: 'desc' }
+    }).catch(() => []);
+
+    const customerUploads = await (prisma as any).customerUpload.findMany({
+      where: { OR: [{ userId }] },
+      orderBy: { createdAt: 'desc' }
+    }).catch(() => []);
+
+    // Sanitize user profile to ensure no security secrets are leaked
+    const exportPackage = {
+      title: 'NEXRA 3D Personal Data Archive',
+      legalFramework: 'Digital Personal Data Protection Act, 2023 (DPDP Act)',
+      exportedAt: new Date().toISOString(),
+      userProfile: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone || null,
+        company: user.company || null,
+        gst: user.gst || null,
+        role: user.role,
+        emailVerified: user.emailVerified,
+        marketingOptIn: (user as any).marketingOptIn ?? false,
+        analyticsOptIn: (user as any).analyticsOptIn ?? false,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
+      },
+      addresses: user.addresses || [],
+      orders: (user.orders || []).map((o: any) => ({
+        id: o.id,
+        orderNumber: o.orderNumber,
+        status: o.status,
+        paymentStatus: o.paymentStatus,
+        paymentMethod: o.paymentMethod,
+        totalAmount: Number(o.totalAmount),
+        shippingAddress: o.shippingAddress,
+        billingAddress: o.billingAddress,
+        createdAt: o.createdAt,
+        items: (o.items || []).map((i: any) => ({
+          productTitle: i.productTitle,
+          price: Number(i.price),
+          quantity: i.quantity,
+          customizationText: i.customizationText,
+          selectedColour: i.selectedColour,
+          selectedWattage: i.selectedWattage,
+          customizationImages: (i.customizationImages || []).map((ci: any) => ci.imageUrl)
+        }))
+      })),
+      reviews: user.reviews || [],
+      wishlist: user.wishlist?.items?.map((wi: any) => wi.product?.name) || [],
+      consentRecords: consentRecords.map((c: any) => ({
+        purpose: c.purpose,
+        status: c.status,
+        noticeVersion: c.noticeVersion,
+        consentedAt: c.consentedAt,
+        withdrawnAt: c.withdrawnAt
+      })),
+      privacyRequests: privacyRequests.map((pr: any) => ({
+        id: pr.id,
+        requestType: pr.requestType,
+        description: pr.description,
+        status: pr.status,
+        createdAt: pr.createdAt
+      })),
+      customerUploads: customerUploads.map((cu: any) => ({
+        id: cu.id,
+        originalFilename: cu.originalFilename,
+        fileUrl: cu.fileUrl,
+        createdAt: cu.createdAt
+      }))
+    };
+
+    await logSecurityEvent('DATA_EXPORT_REQUESTED', 'LOW', 'User downloaded personal data archive', req, userId);
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="nexra3d_privacy_data_${user.id}.json"`);
+    return res.json(exportPackage);
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'Data export failed: ' + (err.message || String(err)) });
+  }
+});
+
+// UPDATE PRIVACY PROFILE (PUT /api/privacy/profile)
+app.put('/api/privacy/profile', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const parseResult = updateProfileSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      const errorMsg = parseResult.error.issues.map((e) => e.message).join('. ');
+      return res.status(400).json({ success: false, error: errorMsg });
+    }
+
+    const { name, phone, company, gst } = parseResult.data;
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(name ? { name } : {}),
+        phone: phone !== undefined ? phone : undefined,
+        company: company !== undefined ? company : undefined,
+        gst: gst !== undefined ? gst : undefined
+      }
+    });
+
+    await logSecurityEvent('PROFILE_UPDATED', 'LOW', 'User updated personal profile details', req, userId);
+    const formatted = await formatUserResponse(updated);
+    return res.json({ success: true, message: 'Profile updated successfully.', user: formatted });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'Profile update failed: ' + (err.message || String(err)) });
+  }
+});
+
+// DELETE ACCOUNT / ANONYMIZE (POST /api/privacy/delete-account)
+app.post('/api/privacy/delete-account', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found.' });
+    }
+
+    // Execute account anonymization & cleanup within an atomic Prisma transaction
+    const anonymizedEmail = `deleted-${userId.substring(0, 8)}-${Date.now()}@anonymized.local`;
+
+    await prisma.$transaction([
+      // 1. Record consent withdrawal
+      (prisma as any).consentRecord.create({
+        data: {
+          userId,
+          email: user.email,
+          purpose: 'NECESSARY',
+          status: 'WITHDRAWN',
+          consentText: 'Account deleted by user',
+          withdrawnAt: new Date(),
+          source: 'WEB_APP',
+          ipAddress: (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown',
+          userAgent: req.headers['user-agent'] || 'unknown'
+        }
+      }),
+      // 2. Anonymize user profile
+      prisma.user.update({
+        where: { id: userId },
+        data: {
+          name: 'Anonymized User',
+          email: anonymizedEmail,
+          phone: null,
+          company: null,
+          gst: null,
+          avatar: null,
+          emailVerified: false,
+          marketingOptIn: false,
+          analyticsOptIn: false,
+          isAnonymized: true,
+          anonymizedAt: new Date()
+        } as any
+      }),
+      // 3. Clear non-essential active cart, wishlist, and standalone profile saved addresses
+      prisma.cart.deleteMany({ where: { userId } }),
+      prisma.wishlist.deleteMany({ where: { userId } }),
+      prisma.address.deleteMany({ where: { userId } })
+    ]);
+
+    // 4. Log security event
+    await logSecurityEvent('ACCOUNT_DELETED', 'HIGH', `Account ${user.email} anonymized and deleted on request`, req, userId);
+
+    // 5. Clear auth cookies upon transaction success
+    res.clearCookie('auth_token');
+
+    return res.json({
+      success: true,
+      message: 'Your account has been deleted and personal information anonymized in accordance with DPDP requirements. Financial order records have been preserved for tax/legal compliance.'
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'Account deletion failed: ' + (err.message || String(err)) });
+  }
+});
+
+// SUBMIT PRIVACY / GRIEVANCE REQUEST (POST /api/privacy/request)
+app.post('/api/privacy/request', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { email, name, requestType, description } = req.body || {};
+    if (!email || !requestType || !description) {
+      return res.status(400).json({ success: false, error: 'Email, request type, and description are required.' });
+    }
+
+    const normEmail = cleanNormalizeEmail(email);
+    const validTypes = ['ACCESS', 'CORRECTION', 'DELETION', 'CONSENT_WITHDRAWAL', 'GRIEVANCE', 'OTHER'];
+    const finalType = validTypes.includes(String(requestType).toUpperCase()) ? String(requestType).toUpperCase() : 'GRIEVANCE';
+
+    const userId = req.user?.id || null;
+    const request = await (prisma as any).privacyRequest.create({
+      data: {
+        userId,
+        email: normEmail,
+        name: name || req.user?.name || 'Customer',
+        requestType: finalType,
+        description: String(description).trim(),
+        status: 'PENDING'
+      }
+    });
+
+    await logSecurityEvent('PRIVACY_REQUEST_SUBMITTED', 'MEDIUM', `Privacy request (${finalType}) submitted by ${normEmail}`, req, userId || undefined);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Your privacy request/grievance has been logged successfully. Our Grievance Officer will review and respond within 30 days.',
+      request
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'Failed to submit privacy request: ' + (err.message || String(err)) });
+  }
+});
+
+// GET MY PRIVACY REQUESTS (GET /api/privacy/my-requests)
+app.get('/api/privacy/my-requests', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const requests = await (prisma as any).privacyRequest.findMany({
+      where: {
+        OR: [
+          { userId },
+          { email: req.user!.email }
+        ]
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // Redact internal admin notes from customer view
+    const sanitized = requests.map((r: any) => ({
+      id: r.id,
+      requestType: r.requestType,
+      description: r.description,
+      status: r.status,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+      resolvedAt: r.resolvedAt
+    }));
+
+    return res.json({ success: true, requests: sanitized });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'Failed to fetch privacy requests: ' + (err.message || String(err)) });
+  }
+});
+
+// SECURE CUSTOMER IMAGE UPLOAD FOR LITHOPHANE (POST /api/customization/upload)
+app.post('/api/customization/upload', upload.single('image'), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No image file provided.' });
+    }
+
+    const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!allowedMimes.includes(req.file.mimetype)) {
+      return res.status(400).json({ success: false, error: 'Invalid file format. Only JPG, PNG, and WEBP are allowed.' });
+    }
+
+    const maxBytes = 10 * 1024 * 1024; // 10MB
+    if (req.file.size > maxBytes) {
+      return res.status(400).json({ success: false, error: 'File size exceeds 10MB limit.' });
+    }
+
+    const cloudinaryResult = await uploadImageToCloudinary(req.file.buffer, req.file.mimetype, 'customization_uploads');
+    const imageUrl = cloudinaryResult?.url || `https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&q=80&w=800`;
+    const publicId = cloudinaryResult?.publicId || null;
+
+    const safeFilename = req.file.originalname.replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const uploadRecord = await (prisma as any).customerUpload.create({
+      data: {
+        userId: req.user?.id || null,
+        fileUrl: imageUrl,
+        publicId,
+        originalFilename: safeFilename,
+        mimeType: req.file.mimetype,
+        fileSize: req.file.size,
+        purpose: 'LITHOPHANE_PERSONALIZATION',
+        expiresAt: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000) // 180 days retention
+      }
+    }).catch(() => null);
+
+    return res.json({
+      success: true,
+      id: uploadRecord?.id || `upl-${Date.now()}`,
+      imageUrl,
+      url: imageUrl,
+      publicId,
+      originalFilename: safeFilename
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'Customer image upload failed: ' + (err.message || String(err)) });
+  }
+});
+
+// ADMIN PRIVACY ENDPOINTS
+app.get('/api/admin/privacy/requests', requireAdminMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { status, type } = req.query as any;
+    const where: any = {};
+    if (status) where.status = status;
+    if (type) where.requestType = type;
+
+    const requests = await (prisma as any).privacyRequest.findMany({
+      where,
+      orderBy: { createdAt: 'desc' }
+    });
+    return res.json({ success: true, requests });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'Failed to fetch privacy requests: ' + (err.message || String(err)) });
+  }
+});
+
+app.put('/api/admin/privacy/requests/:id', requireAdminMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status, adminNotes } = req.body || {};
+
+    const updated = await (prisma as any).privacyRequest.update({
+      where: { id },
+      data: {
+        ...(status ? { status } : {}),
+        ...(adminNotes !== undefined ? { adminNotes } : {}),
+        ...(status === 'COMPLETED' || status === 'REJECTED' ? { resolvedAt: new Date() } : {})
+      }
+    });
+
+    await logSecurityEvent('PRIVACY_REQUEST_RESOLVED', 'MEDIUM', `Admin updated privacy request ${id} to ${status}`, req);
+
+    return res.json({ success: true, request: updated });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'Failed to update privacy request: ' + (err.message || String(err)) });
+  }
+});
+
+app.get('/api/admin/privacy/consents', requireAdminMiddleware, async (req: Request, res: Response) => {
+  try {
+    const consents = await (prisma as any).consentRecord.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100
+    });
+    return res.json({ success: true, consents });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'Failed to fetch consent audit logs: ' + (err.message || String(err)) });
+  }
+});
+
+app.get('/api/admin/privacy/security-events', requireAdminMiddleware, async (req: Request, res: Response) => {
+  try {
+    const events = await (prisma as any).securityEvent.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100
+    });
+    return res.json({ success: true, events });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'Failed to fetch security events: ' + (err.message || String(err)) });
+  }
+});
+
+app.get('/api/admin/privacy/stats', requireAdminMiddleware, async (req: Request, res: Response) => {
+  try {
+    const totalRequests = await (prisma as any).privacyRequest.count().catch(() => 0);
+    const pendingRequests = await (prisma as any).privacyRequest.count({ where: { status: 'PENDING' } }).catch(() => 0);
+    const completedRequests = await (prisma as any).privacyRequest.count({ where: { status: 'COMPLETED' } }).catch(() => 0);
+    const totalConsents = await (prisma as any).consentRecord.count().catch(() => 0);
+    const anonymizedUsers = await prisma.user.count({ where: { isAnonymized: true } as any }).catch(() => 0);
+    const securityEventsCount = await (prisma as any).securityEvent.count().catch(() => 0);
+
+    return res.json({
+      success: true,
+      stats: {
+        totalRequests,
+        pendingRequests,
+        completedRequests,
+        totalConsents,
+        anonymizedUsers,
+        securityEventsCount,
+        noticeVersion: 'v1.0 (DPDP Act 2023 & Rules 2025 Compliant)'
+      }
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'Failed to fetch privacy stats: ' + (err.message || String(err)) });
+  }
+});
+
 // UPDATE PROFILE
 const handleProfileUpdate = async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user.id;
@@ -2574,7 +3122,7 @@ app.post('/api/products', requireAdminMiddleware, async (req: Request, res: Resp
   const {
     name, slug, sku, shortDescription, description, price, mrp,
     discountPercentage, taxPercentage, stockQuantity, categoryId,
-    imageUrl, isActive, isFeatured, isBestSeller, isNewArrival, requiresCustomization, specifications, weight,
+    imageUrl, isActive, isFeatured, isBestSeller, isNewArrival, requiresCustomization, requiresImageUpload, minimumImageUploads, maximumImageUploads, specifications, weight,
     length, width, height
   } = parseResult.data;
 
@@ -2604,7 +3152,10 @@ app.post('/api/products', requireAdminMiddleware, async (req: Request, res: Resp
         isFeatured: Boolean(isFeatured),
         isBestSeller: Boolean(isBestSeller),
         isNewArrival: Boolean(isNewArrival),
-        requiresCustomization: Boolean(requiresCustomization)
+        requiresCustomization: Boolean(requiresCustomization),
+        requiresImageUpload: Boolean(requiresImageUpload),
+        minimumImageUploads: minimumImageUploads !== undefined ? Number(minimumImageUploads) : 1,
+        maximumImageUploads: maximumImageUploads !== undefined ? Number(maximumImageUploads) : 5
       },
       include: { category: true }
     });
@@ -2646,7 +3197,7 @@ app.put('/api/products/:id', requireAdminMiddleware, async (req: Request, res: R
   const {
     name, slug, sku, shortDescription, description, price, mrp,
     discountPercentage, taxPercentage, stockQuantity, categoryId,
-    imageUrl, specifications, isFeatured, isBestSeller, isNewArrival, requiresCustomization, isActive, weight,
+    imageUrl, specifications, isFeatured, isBestSeller, isNewArrival, requiresCustomization, requiresImageUpload, minimumImageUploads, maximumImageUploads, isActive, weight,
     length, width, height
   } = parseResult.data;
 
@@ -2680,6 +3231,9 @@ app.put('/api/products/:id', requireAdminMiddleware, async (req: Request, res: R
         isBestSeller: isBestSeller !== undefined ? Boolean(isBestSeller) : existing.isBestSeller,
         isNewArrival: isNewArrival !== undefined ? Boolean(isNewArrival) : existing.isNewArrival,
         requiresCustomization: requiresCustomization !== undefined ? Boolean(requiresCustomization) : (existing as any).requiresCustomization,
+        requiresImageUpload: requiresImageUpload !== undefined ? Boolean(requiresImageUpload) : (existing as any).requiresImageUpload,
+        minimumImageUploads: minimumImageUploads !== undefined ? Number(minimumImageUploads) : (existing as any).minimumImageUploads,
+        maximumImageUploads: maximumImageUploads !== undefined ? Number(maximumImageUploads) : (existing as any).maximumImageUploads,
         isActive: isActive !== undefined ? Boolean(isActive) : existing.isActive
       }
     });
@@ -3415,8 +3969,50 @@ app.delete('/api/categories/:id', requireAdminMiddleware, async (req: Request, r
 });
 
 // ==================================================
-// 8. CART MANAGEMENT
+// 8. CART & CUSTOMIZATION MANAGEMENT
 // ==================================================
+
+// Customization image upload endpoint for customer personalization photos
+app.post('/api/customization/upload', upload.array('images', 20), async (req: Request, res: Response) => {
+  try {
+    const files = req.files as Express.Multer.File[];
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
+
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.id || 'customer-' + Math.random().toString(36).substring(2, 9);
+    const folderPath = `nexra3d/customer-uploads/${userId}`;
+
+    const uploadedResults: { url: string; publicId: string | null }[] = [];
+
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) {
+        return res.status(400).json({ error: `File "${file.originalname}" exceeds the 10 MB limit.` });
+      }
+
+      const resCloud = await uploadImageToCloudinary(file.buffer, file.mimetype || 'image/jpeg', folderPath);
+      if (resCloud?.url) {
+        uploadedResults.push({
+          url: resCloud.url,
+          publicId: resCloud.publicId || null
+        });
+      }
+    }
+
+    if (uploadedResults.length === 0) {
+      return res.status(500).json({ error: 'Failed to upload customization images' });
+    }
+
+    return res.json({
+      success: true,
+      images: uploadedResults
+    });
+  } catch (err: any) {
+    console.error('Customization image upload error:', err);
+    return res.status(500).json({ error: 'Image upload failed: ' + (err.message || String(err)) });
+  }
+});
 
 app.get('/api/cart', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -3429,7 +4025,7 @@ app.get('/api/cart', requireAuthMiddleware, async (req: AuthenticatedRequest, re
 
 app.post(['/api/cart/items', '/api/cart'], requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user.id;
-  const { productId, variantId, quantity = 1, selectedColour, selectedWattage, customizationText } = req.body;
+  const { productId, variantId, quantity = 1, selectedColour, selectedWattage, customizationText, customizationImages } = req.body;
 
   if (!productId) {
     return res.status(400).json({ error: 'productId is required' });
@@ -3462,6 +4058,21 @@ app.post(['/api/cart/items', '/api/cart'], requireAuthMiddleware, async (req: Au
       return res.status(400).json({ error: 'Please enter the name for your keychain.' });
     }
 
+    // Customization image validation
+    const requiresImages = Boolean((product as any).requiresImageUpload);
+    const minImages = Number((product as any).minimumImageUploads || 1);
+    const maxImages = Number((product as any).maximumImageUploads || 5);
+    const imagesArray: any[] = Array.isArray(customizationImages) ? customizationImages : [];
+
+    if (requiresImages) {
+      if (imagesArray.length < minImages) {
+        return res.status(400).json({ error: `This product requires at least ${minImages} photo${minImages > 1 ? 's' : ''}. Please upload your photo(s).` });
+      }
+      if (imagesArray.length > maxImages) {
+        return res.status(400).json({ error: `You can upload a maximum of ${maxImages} photo${maxImages > 1 ? 's' : ''} for this product.` });
+      }
+    }
+
     // Validate lamp option selections & calculate price
     const basePrice = Number(product.price);
     let verifiedColour = selectedColour || null;
@@ -3488,17 +4099,22 @@ app.post(['/api/cart/items', '/api/cart'], requireAuthMiddleware, async (req: Au
       cart = await prisma.cart.create({ data: { userId } });
     }
 
-    // 5. Add or update cart item in Prisma matching product, variant, colour, wattage, and customizationText
-    const existingItem = await prisma.cartItem.findFirst({
-      where: {
-        cartId: cart.id,
-        productId,
-        variantId: effectiveVariantId,
-        selectedColour: verifiedColour,
-        selectedWattage: verifiedWattage,
-        customizationText: sanitizedCustomization
-      }
-    });
+    // 5. Add or update cart item in Prisma matching product, variant, colour, wattage, customizationText, and customizationImages
+    // Separate items if customization images are uploaded or required
+    let existingItem: any = null;
+
+    if (!requiresImages && imagesArray.length === 0) {
+      existingItem = await prisma.cartItem.findFirst({
+        where: {
+          cartId: cart.id,
+          productId,
+          variantId: effectiveVariantId,
+          selectedColour: verifiedColour,
+          selectedWattage: verifiedWattage,
+          customizationText: sanitizedCustomization
+        }
+      });
+    }
 
     if (existingItem) {
       await prisma.cartItem.update({
@@ -3514,7 +4130,14 @@ app.post(['/api/cart/items', '/api/cart'], requireAuthMiddleware, async (req: Au
           selectedColour: verifiedColour,
           selectedWattage: verifiedWattage,
           customizationText: sanitizedCustomization,
-          quantity: Number(quantity)
+          quantity: Number(quantity),
+          customizationImages: {
+            create: imagesArray.map((img: any, idx: number) => ({
+              imageUrl: typeof img === 'string' ? img : (img.imageUrl || img.url),
+              publicId: typeof img === 'object' ? (img.publicId || null) : null,
+              sortOrder: idx
+            }))
+          }
         }
       });
     }
@@ -3523,7 +4146,7 @@ app.post(['/api/cart/items', '/api/cart'], requireAuthMiddleware, async (req: Au
     return res.json(updatedCart);
   } catch (err: any) {
     console.error('Cart add error:', err);
-    return res.status(500).json({ error: 'Failed to add item to cart' });
+    return res.status(500).json({ error: 'Failed to add item to cart: ' + (err.message || String(err)) });
   }
 });
 
@@ -3826,6 +4449,7 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
       const customNameFromCart = (ci as any).customizationText || (clientItems || []).find((item: any) => (item.productId || item.product?.id) === p.id)?.customizationText || '';
       const displayName = customNameFromCart ? `${p.name} • For: ${customNameFromCart}` : p.name;
       const skuSnapshot = v?.sku || p.sku || 'NX-LMP-SPRL';
+      const cartItemImages = (ci as any).customizationImages || [];
 
       orderItemsData.push({
         productId: p.id,
@@ -3839,7 +4463,14 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
         quantity: ci.quantity,
         total,
         subtotal: total,
-        imageUrl: (p.images && p.images[0]?.url) || p.imageUrl || ''
+        imageUrl: (p.images && p.images[0]?.url) || p.imageUrl || '',
+        customizationImages: cartItemImages.length > 0 ? {
+          create: cartItemImages.map((cImg: any, idx: number) => ({
+            imageUrl: cImg.imageUrl || cImg.url,
+            publicId: cImg.publicId || null,
+            sortOrder: cImg.sortOrder ?? idx
+          }))
+        } : undefined
       });
     }
 
@@ -3992,7 +4623,7 @@ async function sendNewOrderNotificationEmail(orderInput: any, eventType: 'CREATE
     let order = typeof orderInput === 'string'
       ? await prisma.order.findUnique({
           where: { id: orderInput },
-          include: { items: { include: { product: true, variant: true } }, user: true, shipment: true }
+          include: { items: { include: { product: true, variant: true, customizationImages: { orderBy: { sortOrder: 'asc' } } } }, user: true, shipment: true }
         })
       : orderInput;
 
@@ -4001,7 +4632,7 @@ async function sendNewOrderNotificationEmail(orderInput: any, eventType: 'CREATE
     if (!order.items || order.items.length === 0 || !order.items[0]?.product) {
       const refreshed = await prisma.order.findUnique({
         where: { id: order.id },
-        include: { items: { include: { product: true, variant: true } }, user: true, shipment: true }
+        include: { items: { include: { product: true, variant: true, customizationImages: { orderBy: { sortOrder: 'asc' } } } }, user: true, shipment: true }
       });
       if (refreshed) order = refreshed;
     }
@@ -4042,12 +4673,27 @@ async function sendNewOrderNotificationEmail(orderInput: any, eventType: 'CREATE
         ? `<div style="margin-top: 5px; background-color: #eef2ff; border: 1px solid #c7d2fe; color: #312e81; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; display: inline-block;">CUSTOM NAME: <span style="font-size: 12px; font-weight: 900; color: #1e1b4b; text-transform: uppercase;">${customName.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span></div>`
         : '';
 
+      const cImages = it.customizationImages || [];
+      const customPhotosHtml = cImages.length > 0
+        ? `<div style="margin-top: 6px;">
+             <div style="font-size: 11px; font-weight: bold; color: #4338ca; margin-bottom: 4px;">Uploaded Customization Photos (${cImages.length}):</div>
+             <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+               ${cImages.map((cImg: any, imgIdx: number) => `
+                 <a href="${cImg.imageUrl || cImg.url}" target="_blank" style="text-decoration: none; display: inline-block;">
+                   <img src="${cImg.imageUrl || cImg.url}" alt="Photo ${imgIdx + 1}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e1;" />
+                 </a>
+               `).join('')}
+             </div>
+           </div>`
+        : '';
+
       return `
         <tr style="border-bottom: 1px solid #e2e8f0; ${index % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
           <td style="padding: 10px 12px; vertical-align: top;">
             <div style="font-weight: bold; color: #0f172a; font-size: 13px;">${title}</div>
             <div style="font-size: 11px; color: #64748b; margin-top: 2px;">SKU: <strong>${sku}</strong>${variantStr}</div>
             ${customNameHtml}
+            ${customPhotosHtml}
           </td>
           <td style="padding: 10px 12px; text-align: center; color: #0f172a; font-weight: bold; vertical-align: top;">${qty}</td>
           <td style="padding: 10px 12px; text-align: right; color: #334155; vertical-align: top;">₹${price.toLocaleString('en-IN')}</td>

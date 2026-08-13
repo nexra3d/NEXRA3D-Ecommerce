@@ -37,7 +37,13 @@ class MemoryStore {
     siteSetting: [],
     shipment: [],
     shipmentStatusHistory: [],
-    productLampOption: []
+    productLampOption: [],
+    cartItemCustomizationImage: [],
+    orderItemCustomizationImage: [],
+    consentRecord: [],
+    customerUpload: [],
+    privacyRequest: [],
+    securityEvent: []
   };
 
   constructor() {

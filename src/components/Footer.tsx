@@ -10,6 +10,7 @@ interface FooterProps {
   onNavigateServices?: () => void;
   onNavigateAbout?: () => void;
   onNavigateContact?: () => void;
+  onNavigatePrivacyPolicy?: () => void;
   onRequestQuoteClick?: () => void;
 }
 
@@ -19,6 +20,7 @@ export const Footer: React.FC<FooterProps> = ({
   onNavigateServices,
   onNavigateAbout,
   onNavigateContact,
+  onNavigatePrivacyPolicy,
   onRequestQuoteClick
 }) => {
   return (
@@ -180,6 +182,11 @@ export const Footer: React.FC<FooterProps> = ({
               <li>
                 <button onClick={onNavigateContact} className="hover:text-white transition-colors cursor-pointer">
                   Contact Us
+                </button>
+              </li>
+              <li>
+                <button onClick={onNavigatePrivacyPolicy} className="hover:text-white transition-colors cursor-pointer">
+                  Privacy Policy
                 </button>
               </li>
             </ul>

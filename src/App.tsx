@@ -47,6 +47,9 @@ import {
   Service
 } from './types';
 
+import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
+import { CookieConsentBanner } from './components/CookieConsentBanner';
+
 type ViewType =
   | 'home'
   | 'shop'
@@ -55,6 +58,7 @@ type ViewType =
   | 'service-detail'
   | 'about'
   | 'contact'
+  | 'privacy-policy'
   | 'login'
   | 'register'
   | 'forgot-password'
@@ -73,6 +77,7 @@ const viewToPathMap: Record<ViewType, string> = {
   'service-detail': '/services',
   about: '/about',
   contact: '/contact',
+  'privacy-policy': '/privacy-policy',
   login: '/login',
   register: '/register',
   'forgot-password': '/forgot-password',
@@ -100,6 +105,7 @@ const getViewFromPath = (pathname: string, hash: string = ''): ViewType => {
   if (cleanPath === '/services') return 'services';
   if (cleanPath === '/about') return 'about';
   if (cleanPath === '/contact') return 'contact';
+  if (cleanPath === '/privacy-policy' || cleanPath === '/privacy') return 'privacy-policy';
   if (cleanPath === '/login') return 'login';
   if (cleanPath === '/register') return 'register';
   if (cleanPath === '/forgot-password') return 'forgot-password';
@@ -117,7 +123,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<ViewType>(() =>
     getViewFromPath(window.location.pathname, window.location.hash)
   );
-  const [accountSubSection, setAccountSubSection] = useState<'overview' | 'profile' | 'password' | 'orders' | 'wishlist' | 'addresses'>('overview');
+  const [accountSubSection, setAccountSubSection] = useState<'overview' | 'profile' | 'password' | 'orders' | 'wishlist' | 'addresses' | 'privacy'>('overview');
 
 
   // Global App State
@@ -678,7 +684,8 @@ export default function App() {
     quantity = 1,
     customizationText?: string,
     selectedColour?: string,
-    selectedWattage?: string
+    selectedWattage?: string,
+    customizationImages?: any[]
   ) => {
     if (!user) {
       setIsAuthOpen(true);
@@ -708,7 +715,8 @@ export default function App() {
           quantity: actualQty,
           customizationText: trimmedCustomization,
           selectedColour,
-          selectedWattage
+          selectedWattage,
+          customizationImages: customizationImages || []
         })
       });
       const data = await res.json();
@@ -1122,6 +1130,20 @@ export default function App() {
         />
       )}
 
+      {currentView === 'privacy-policy' && (
+        <PrivacyPolicyPage
+          onNavigateHome={() => setCurrentView('home')}
+          onOpenPrivacyRequest={() => {
+            if (user) {
+              setAccountSubSection('privacy');
+              setCurrentView('account');
+            } else {
+              setCurrentView('login');
+            }
+          }}
+        />
+      )}
+
       {currentView === 'services' && (
         <ServicesPage
           services={services}
@@ -1216,11 +1238,15 @@ export default function App() {
         onNavigateServices={() => setCurrentView('services')}
         onNavigateAbout={() => setCurrentView('about')}
         onNavigateContact={() => setCurrentView('contact')}
+        onNavigatePrivacyPolicy={() => setCurrentView('privacy-policy')}
         onRequestQuoteClick={() => {
           setQuoteService(null);
           setIsQuoteModalOpen(true);
         }}
       />
+
+      {/* Privacy Cookie Consent Banner */}
+      <CookieConsentBanner onNavigatePrivacyPolicy={() => setCurrentView('privacy-policy')} />
 
       {/* MODALS & DRAWERS */}
 
@@ -1252,11 +1278,11 @@ export default function App() {
           }}
           isWishlisted={wishlistProductIds.includes(quickViewProduct.id)}
           onToggleWishlist={handleToggleWishlist}
-          onAddToCart={(p, variantId, qty, customizationText, selectedColour, selectedWattage) =>
-            handleAddToCart(p, variantId, qty || 1, customizationText, selectedColour, selectedWattage)
+          onAddToCart={(p, variantId, qty, customizationText, selectedColour, selectedWattage, customizationImages) =>
+            handleAddToCart(p, variantId, qty || 1, customizationText, selectedColour, selectedWattage, customizationImages)
           }
-          onBuyNow={(p, customizationText, selectedColour, selectedWattage, variantId) => {
-            handleAddToCart(p, variantId, 1, customizationText, selectedColour, selectedWattage);
+          onBuyNow={(p, customizationText, selectedColour, selectedWattage, variantId, customizationImages) => {
+            handleAddToCart(p, variantId, 1, customizationText, selectedColour, selectedWattage, customizationImages);
             handleProceedToCheckout();
           }}
           onSelectRelatedProduct={(p) => setQuickViewProduct(p)}

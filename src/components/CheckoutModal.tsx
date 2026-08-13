@@ -343,7 +343,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             variantId: ci.variantId,
             customizationText: ci.customizationText || (ci as any).customizationText || ((ci.product?.title || ci.product?.name || '').includes('• For:') ? (ci.product?.title || ci.product?.name || '').split('• For:')[1]?.trim() : undefined) || undefined,
             selectedColour: ci.selectedColour,
-            selectedWattage: ci.selectedWattage
+            selectedWattage: ci.selectedWattage,
+            customizationImages: ci.customizationImages || (ci as any).customizationImages || []
           }))
         })
       });

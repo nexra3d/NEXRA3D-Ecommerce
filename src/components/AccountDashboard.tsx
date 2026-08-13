@@ -29,10 +29,13 @@ import { User, Order, Address } from '../types';
 import { apiFetch, setStoredAuth } from '../lib/api';
 import { INDIAN_STATES, lookupPincode } from '../lib/pincode';
 
+import { CustomerPrivacyTab } from './CustomerPrivacyTab';
+import { Shield } from 'lucide-react';
+
 interface AccountDashboardProps {
   user: User | null;
-  currentSubSection?: 'overview' | 'profile' | 'password' | 'orders' | 'wishlist' | 'addresses';
-  onNavigateSubSection: (section: 'overview' | 'profile' | 'password' | 'orders' | 'wishlist' | 'addresses') => void;
+  currentSubSection?: 'overview' | 'profile' | 'password' | 'orders' | 'wishlist' | 'addresses' | 'privacy';
+  onNavigateSubSection: (section: 'overview' | 'profile' | 'password' | 'orders' | 'wishlist' | 'addresses' | 'privacy') => void;
   onUpdateUserSuccess: (user: User) => void;
   onLogout: () => void;
   onNavigateHome: () => void;
@@ -566,6 +569,20 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
           >
             <MapPin className="w-4 h-4" />
             <span>My Addresses</span>
+          </button>
+
+          <div className="pt-3 px-3 text-[10px] font-black text-slate-400 uppercase tracking-wider border-t border-slate-100 mt-2">
+            Privacy Center
+          </div>
+
+          <button
+            onClick={() => onNavigateSubSection('privacy')}
+            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+              currentSubSection === 'privacy' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100' : 'text-slate-700 hover:bg-slate-100'
+            }`}
+          >
+            <Shield className="w-4 h-4 text-emerald-500" />
+            <span>Privacy & Data Rights</span>
           </button>
         </div>
 
@@ -1422,6 +1439,11 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                 </div>
               )}
             </div>
+          )}
+
+          {/* SECTION 7: PRIVACY & DATA RIGHTS */}
+          {currentSubSection === 'privacy' && (
+            <CustomerPrivacyTab user={user} onLogout={onLogout} />
           )}
         </div>
       </div>

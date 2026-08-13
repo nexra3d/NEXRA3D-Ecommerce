@@ -133,6 +133,25 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       </div>
                     )}
 
+                    {/* Uploaded Customization Photos */}
+                    {((item as any).customizationImages || []).length > 0 && (
+                      <div className="py-1">
+                        <div className="flex flex-wrap gap-1">
+                          {((item as any).customizationImages || []).map((cImg: any, cIdx: number) => {
+                            const imgUrl = cImg.imageUrl || cImg.url;
+                            return (
+                              <img
+                                key={cImg.id || cIdx}
+                                src={imgUrl}
+                                alt={`Photo ${cIdx + 1}`}
+                                className="w-8 h-8 object-cover rounded border border-cyan-300"
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Variant & Lamp Attribute Badges */}
                     {(item.selectedColour || item.selectedWattage || item.variant?.colour || item.variant?.wattage || item.variant?.name) && (
                       <div className="flex flex-wrap gap-1 py-1">

@@ -254,6 +254,25 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
                             Custom Name: {item.customizationText}
                           </span>
                         )}
+                        {((item as any).customizationImages || []).length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {((item as any).customizationImages || []).map((cImg: any, cIdx: number) => {
+                              const imgUrl = cImg.imageUrl || cImg.url;
+                              return (
+                                <a
+                                  key={cImg.id || cIdx}
+                                  href={imgUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="block w-7 h-7 rounded overflow-hidden border border-cyan-300 hover:border-cyan-500 hover:scale-105 transition-all"
+                                  title={`Custom photo #${cIdx + 1}`}
+                                >
+                                  <img src={imgUrl} alt={`Custom photo ${cIdx + 1}`} className="w-full h-full object-cover" />
+                                </a>
+                              );
+                            })}
+                          </div>
+                        )}
                         {(item.selectedColour || item.selectedWattage) && (
                           <span className="block text-[10px] text-slate-500 font-semibold mt-0.5">
                             {[item.selectedColour && `Colour: ${item.selectedColour}`, item.selectedWattage && `Wattage: ${item.selectedWattage}`].filter(Boolean).join(' | ')}

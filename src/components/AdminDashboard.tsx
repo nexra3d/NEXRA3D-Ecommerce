@@ -44,6 +44,9 @@ import {
   ShipmentStatus
 } from '../types';
 
+import { AdminPrivacyTab } from './AdminPrivacyTab';
+import { Shield } from 'lucide-react';
+
 interface AdminDashboardProps {
   isOpen: boolean;
   onClose: () => void;
@@ -64,7 +67,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onRefreshData
 }) => {
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'products' | 'categories' | 'inventory' | 'orders' | 'shipments' | 'coupons' | 'customers' | 'payments' | 'reports' | 'integrations'
+    'overview' | 'products' | 'categories' | 'inventory' | 'orders' | 'shipments' | 'coupons' | 'customers' | 'payments' | 'reports' | 'integrations' | 'privacy'
   >('overview');
 
   const [analytics, setAnalytics] = useState<SalesReport | null>(null);
@@ -326,6 +329,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [prodIsNewArrival, setProdIsNewArrival] = useState(false);
   const [prodIsBestSeller, setProdIsBestSeller] = useState(false);
   const [prodRequiresCustomization, setProdRequiresCustomization] = useState(false);
+  const [prodRequiresImageUpload, setProdRequiresImageUpload] = useState(false);
+  const [prodMinimumImageUploads, setProdMinimumImageUploads] = useState('1');
+  const [prodMaximumImageUploads, setProdMaximumImageUploads] = useState('5');
   const [prodWeight, setProdWeight] = useState('');
   const [prodLength, setProdLength] = useState('');
   const [prodWidth, setProdWidth] = useState('');
@@ -457,6 +463,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setProdIsNewArrival(false);
     setProdIsBestSeller(false);
     setProdRequiresCustomization(false);
+    setProdRequiresImageUpload(false);
+    setProdMinimumImageUploads('1');
+    setProdMaximumImageUploads('5');
     setProdWeight('');
     setProdLength('');
     setProdWidth('');
@@ -501,6 +510,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setProdIsNewArrival(p.isNewArrival ?? false);
     setProdIsBestSeller(p.isBestSeller ?? p.isTrending ?? false);
     setProdRequiresCustomization(p.requiresCustomization ?? false);
+    setProdRequiresImageUpload(p.requiresImageUpload ?? false);
+    setProdMinimumImageUploads(String(p.minimumImageUploads ?? 1));
+    setProdMaximumImageUploads(String(p.maximumImageUploads ?? 5));
     setProdWeight(p.weight !== null && p.weight !== undefined ? String(p.weight) : '');
     setProdLength(p.length !== null && p.length !== undefined ? String(p.length) : '');
     setProdWidth(p.width !== null && p.width !== undefined ? String(p.width) : '');
@@ -922,7 +934,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       isFeatured: prodIsFeatured,
       isNewArrival: prodIsNewArrival,
       isBestSeller: prodIsBestSeller,
-      requiresCustomization: prodRequiresCustomization
+      requiresCustomization: prodRequiresCustomization,
+      requiresImageUpload: prodRequiresImageUpload,
+      minimumImageUploads: Number(prodMinimumImageUploads || 1),
+      maximumImageUploads: Number(prodMaximumImageUploads || 5)
     };
 
     try {
@@ -1572,10 +1587,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <Settings className="w-4 h-4 text-amber-400" />
             <span>Services & Setup</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('privacy')}
+            className={`px-4 py-2.5 rounded-t-xl transition-colors cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'privacy' ? 'bg-slate-900 text-emerald-400 border-t-2 border-emerald-500' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Shield className="w-4 h-4 text-emerald-400" />
+            <span>Privacy & Security</span>
+          </button>
         </div>
 
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+          {activeTab === 'privacy' && <AdminPrivacyTab />}
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
@@ -2363,7 +2389,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       />
                       <span>Requires Custom Name ({prodRequiresCustomization ? 'YES' : 'NO'})</span>
                     </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-cyan-300 bg-cyan-950/60 border border-cyan-500/40 px-3 py-1 rounded-lg">
+                      <input
+                        type="checkbox"
+                        checked={prodRequiresImageUpload}
+                        onChange={(e) => setProdRequiresImageUpload(e.target.checked)}
+                        className="w-4 h-4 accent-cyan-500 rounded"
+                      />
+                      <span>Requires Photo Upload ({prodRequiresImageUpload ? 'YES' : 'NO'})</span>
+                    </label>
                   </div>
+
+                  {prodRequiresImageUpload && (
+                    <div className="bg-cyan-950/40 border border-cyan-500/30 rounded-xl p-3 grid grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <label className="block text-slate-300 font-bold mb-1">Minimum Photos Required</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={prodMinimumImageUploads}
+                          onChange={(e) => setProdMinimumImageUploads(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-300 font-bold mb-1">Maximum Photos Allowed</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={prodMaximumImageUploads}
+                          onChange={(e) => setProdMaximumImageUploads(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold"
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex space-x-2 pt-2">
                     <button
@@ -2475,6 +2537,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {p.isBestSeller && <span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded text-[9px] font-bold">BEST SELLER</span>}
                             <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${p.requiresCustomization ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-slate-800 text-slate-400'}`}>
                               Requires Custom Name: {p.requiresCustomization ? 'YES' : 'NO'}
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${p.requiresImageUpload ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-slate-800 text-slate-400'}`}>
+                              Photos: {p.requiresImageUpload ? `YES (${p.minimumImageUploads || 1}-${p.maximumImageUploads || 5})` : 'NO'}
                             </span>
                           </div>
                         </td>
@@ -2978,6 +3043,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <div className="bg-indigo-950/90 border border-indigo-500/60 rounded-md px-2.5 py-1 text-xs font-bold text-indigo-200 flex items-center gap-2 my-1">
                                       <span className="text-indigo-400 font-extrabold uppercase text-[10px] tracking-wider">CUSTOM NAME:</span>
                                       <span className="text-white font-black text-sm tracking-wide bg-indigo-900/80 px-2 py-0.5 rounded border border-indigo-400/50">{customName}</span>
+                                    </div>
+                                  )}
+
+                                  {((item as any).customizationImages || []).length > 0 && (
+                                    <div className="bg-slate-950/80 border border-indigo-500/40 rounded-lg p-2.5 my-1.5 space-y-2">
+                                      <div className="flex items-center justify-between text-[11px] font-bold text-indigo-300">
+                                        <span>📷 CUSTOMER UPLOADED PHOTOS ({((item as any).customizationImages || []).length}):</span>
+                                        <span className="text-[10px] text-slate-400 font-normal">Click thumbnail to view full-resolution image</span>
+                                      </div>
+                                      <div className="flex flex-wrap gap-2.5">
+                                        {((item as any).customizationImages || []).map((cImg: any, cIdx: number) => {
+                                          const imgUrl = cImg.imageUrl || cImg.url;
+                                          return (
+                                            <div key={cImg.id || cIdx} className="bg-slate-900 rounded-lg border border-slate-700 p-1.5 flex flex-col items-center">
+                                              <a
+                                                href={imgUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="block overflow-hidden rounded border border-slate-700 hover:border-indigo-400 transition-all group"
+                                              >
+                                                <img
+                                                  src={imgUrl}
+                                                  alt={`Customer Photo ${cIdx + 1}`}
+                                                  className="w-16 h-16 object-cover rounded group-hover:scale-105 transition-transform"
+                                                />
+                                              </a>
+                                              <div className="flex items-center justify-between w-full mt-1.5 px-0.5">
+                                                <span className="text-[9px] font-mono text-indigo-300 font-black">Photo #{cIdx + 1}</span>
+                                                <a
+                                                  href={imgUrl}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="text-[9px] text-cyan-400 hover:text-cyan-300 font-extrabold underline"
+                                                >
+                                                  View / Download
+                                                </a>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
                                     </div>
                                   )}
 

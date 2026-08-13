@@ -236,12 +236,14 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
               </div>
             </div>
 
-            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-[11px] text-slate-500 space-y-1">
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-[11px] text-slate-500 space-y-2">
               <div className="flex items-center space-x-1.5 text-slate-700 font-semibold">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Mandatory Email OTP Verification</span>
+                <span>Privacy & Data Protection Notice (v1.0)</span>
               </div>
-              <p>We send a 6-digit verification code to your email upon registration.</p>
+              <p>
+                By registering, you consent to processing your personal data for account creation and order execution in accordance with NEXRA 3D's Privacy Policy.
+              </p>
             </div>
 
             <button

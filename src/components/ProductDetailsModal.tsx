@@ -21,7 +21,12 @@ import {
   Check,
   ThumbsUp,
   Flag,
-  Filter
+  Filter,
+  Camera,
+  Upload,
+  Trash2,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import { Product, ProductReview, ProductVariant } from '../types';
 import { useSEO } from '../hooks/useSEO';
@@ -40,8 +45,8 @@ interface ProductDetailsModalProps {
   onClose: () => void;
   isWishlisted: boolean;
   onToggleWishlist: (p: Product) => void;
-  onAddToCart: (p: Product, variantId?: string, quantity?: number, customizationText?: string, selectedColour?: string, selectedWattage?: string) => void;
-  onBuyNow: (p: Product, customizationText?: string, selectedColour?: string, selectedWattage?: string, variantId?: string) => void;
+  onAddToCart: (p: Product, variantId?: string, quantity?: number, customizationText?: string, selectedColour?: string, selectedWattage?: string, customizationImages?: any[]) => void;
+  onBuyNow: (p: Product, customizationText?: string, selectedColour?: string, selectedWattage?: string, variantId?: string, customizationImages?: any[]) => void;
   onSelectRelatedProduct?: (p: Product) => void;
 }
 
@@ -98,6 +103,63 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   const [customizationError, setCustomizationError] = useState<string | null>(null);
   const needsCustomization = product ? (product.requiresCustomization === true || isNameKeychainProduct(product)) : false;
 
+  const needsImageUpload = Boolean(product?.requiresImageUpload || ((product as any)?.minimumImageUploads && (product as any).minimumImageUploads > 0));
+  const minImageCount = (product as any)?.minimumImageUploads !== undefined && (product as any)?.minimumImageUploads !== null ? Number((product as any).minimumImageUploads) : 1;
+  const maxImageCount = (product as any)?.maximumImageUploads !== undefined && (product as any)?.maximumImageUploads !== null ? Number((product as any).maximumImageUploads) : 5;
+
+  const [customizationImages, setCustomizationImages] = useState<{ id?: string; url: string; publicId?: string | null }[]>([]);
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+
+  const handlePhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const files = Array.from(e.target.files);
+
+    if (customizationImages.length + files.length > maxImageCount) {
+      setImageUploadError(`Maximum allowed photos for this product is ${maxImageCount}. You currently have ${customizationImages.length} photo(s).`);
+      return;
+    }
+
+    for (const f of files) {
+      if (f.size > 10 * 1024 * 1024) {
+        setImageUploadError(`File "${f.name}" exceeds the 10 MB limit.`);
+        return;
+      }
+    }
+
+    setImageUploadError(null);
+    setIsUploadingImages(true);
+
+    try {
+      const formData = new FormData();
+      files.forEach((file) => formData.append('images', file));
+
+      const res = await fetch('/api/customization/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to upload photo(s)');
+      }
+
+      const uploaded: { url: string; publicId: string | null }[] = data.images || [];
+      setCustomizationImages((prev) => [...prev, ...uploaded]);
+      setCustomizationError(null);
+    } catch (err: any) {
+      console.error('Photo upload error:', err);
+      setImageUploadError(err.message || 'Photo upload failed. Please try again.');
+    } finally {
+      setIsUploadingImages(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemovePhoto = (indexToRemove: number) => {
+    setCustomizationImages((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
   // SEO Hook
   useSEO({
     title: product ? `${productName} | NEXRA 3D` : 'NEXRA 3D',
@@ -128,6 +190,10 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     if (!product) return;
     setSelectedImageIndex(0);
     setQuantity(1);
+    setCustomizationText('');
+    setCustomizationImages([]);
+    setImageUploadError(null);
+    setCustomizationError(null);
     if (variantsList.length > 0) {
       setSelectedVariant(variantsList[0]);
     } else {
@@ -404,11 +470,15 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   const handleAddCustomProduct = () => {
     if (!product) return;
     if (needsCustomization && !customizationText.trim()) {
-      setCustomizationError('Please enter the name for your keychain.');
+      setCustomizationError('Please enter the name for your keychain / customization.');
+      return;
+    }
+    if (needsImageUpload && customizationImages.length < minImageCount) {
+      setCustomizationError(`This product requires at least ${minImageCount} photo${minImageCount > 1 ? 's' : ''}. Please upload your photo(s).`);
       return;
     }
     setCustomizationError(null);
-    onAddToCart(product, selectedVariant?.id, quantity, customizationText.trim(), selectedColour, selectedWattage);
+    onAddToCart(product, selectedVariant?.id, quantity, customizationText.trim(), selectedColour, selectedWattage, customizationImages);
   };
 
   const handleAddReview = async (e: React.FormEvent) => {
@@ -807,6 +877,101 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                 </div>
               )}
 
+              {needsImageUpload && (
+                <div className="space-y-3 pt-1 p-4 bg-cyan-50/70 rounded-2xl border border-cyan-200">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black uppercase tracking-wider text-cyan-950 flex items-center gap-1.5">
+                      <Camera className="w-4 h-4 text-cyan-600" />
+                      <span>UPLOAD PERSONALIZATION PHOTOS</span>
+                    </label>
+                    <span className="text-[10px] text-cyan-800 font-bold bg-cyan-100 px-2 py-0.5 rounded-full">
+                      {minImageCount === maxImageCount ? `${minImageCount} Photo${minImageCount > 1 ? 's' : ''}` : `${minImageCount} to ${maxImageCount} Photos`}
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-cyan-900 font-medium leading-relaxed">
+                    Upload your high-resolution photos for 3D Lithophane rendering / personalization (JPG, PNG, WEBP, max 10MB per file).
+                  </p>
+
+                  {customizationImages.length < maxImageCount && (
+                    <label className={`block border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+                      isUploadingImages
+                        ? 'bg-cyan-100/50 border-cyan-400'
+                        : 'bg-white hover:bg-cyan-100/30 border-cyan-300 hover:border-cyan-500'
+                    }`}>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/jpg,image/png,image/webp"
+                        multiple={maxImageCount > 1}
+                        onChange={handlePhotoFileChange}
+                        disabled={isUploadingImages}
+                        className="hidden"
+                      />
+                      <div className="flex flex-col items-center justify-center space-y-2">
+                        {isUploadingImages ? (
+                          <>
+                            <Loader2 className="w-6 h-6 text-cyan-600 animate-spin" />
+                            <span className="text-xs font-bold text-cyan-800">Uploading photos...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-6 h-6 text-cyan-600" />
+                            <div className="text-xs font-bold text-slate-800">
+                              Click or Drag & Drop to Upload Photos
+                            </div>
+                            <span className="text-[10px] text-slate-500">
+                              ({customizationImages.length} of {maxImageCount} uploaded)
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </label>
+                  )}
+
+                  {imageUploadError && (
+                    <p className="text-xs font-bold text-rose-600 flex items-center gap-1.5 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>{imageUploadError}</span>
+                    </p>
+                  )}
+
+                  {customizationImages.length > 0 && (
+                    <div className="space-y-2 pt-1">
+                      <div className="text-[11px] font-bold text-slate-700 flex items-center justify-between">
+                        <span>Uploaded Photos ({customizationImages.length} / {maxImageCount}):</span>
+                        {customizationImages.length < minImageCount && (
+                          <span className="text-rose-600 font-extrabold text-[10px]">
+                            Upload {minImageCount - customizationImages.length} more photo(s)
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-4 gap-2">
+                        {customizationImages.map((img, imgIdx) => (
+                          <div key={img.id || imgIdx} className="relative group rounded-xl overflow-hidden border border-cyan-300 bg-white shadow-xs aspect-square">
+                            <img
+                              src={img.url}
+                              alt={`Uploaded photo ${imgIdx + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute top-1 left-1 bg-slate-900/80 text-white text-[9px] font-black px-1.5 py-0.5 rounded">
+                              #{imgIdx + 1}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemovePhoto(imgIdx)}
+                              className="absolute top-1 right-1 bg-rose-600 hover:bg-rose-700 text-white p-1 rounded-full shadow-md transition-transform hover:scale-110 cursor-pointer"
+                              title="Remove photo"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {needsCustomization && (
                 <div className="space-y-2 pt-1 p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
                   <div className="flex items-center justify-between">
@@ -843,6 +1008,13 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                 </div>
               )}
 
+              {customizationError && (
+                <p className="text-xs font-bold text-rose-600 p-2.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{customizationError}</span>
+                </p>
+              )}
+
               {/* Main CTA Buttons */}
               <div className="space-y-3 pt-2">
                 <div className="grid grid-cols-2 gap-3">
@@ -857,13 +1029,17 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
 
                   <button
                     onClick={() => {
-                      if (isCombinationUnavailable) return;
+                      if (isCombinationUnavailable || !product) return;
                       if (needsCustomization && !customizationText.trim()) {
-                        setCustomizationError('Please enter the name for your keychain.');
+                        setCustomizationError('Please enter the name for your keychain / customization.');
+                        return;
+                      }
+                      if (needsImageUpload && customizationImages.length < minImageCount) {
+                        setCustomizationError(`This product requires at least ${minImageCount} photo${minImageCount > 1 ? 's' : ''}. Please upload your photo(s).`);
                         return;
                       }
                       setCustomizationError(null);
-                      onBuyNow(product, customizationText.trim(), selectedColour, selectedWattage, selectedVariant?.id);
+                      onBuyNow(product, customizationText.trim(), selectedColour, selectedWattage, selectedVariant?.id, customizationImages);
                       onClose();
                     }}
                     disabled={isCombinationUnavailable || stockQty <= 0}

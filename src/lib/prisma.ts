@@ -48,8 +48,31 @@ export function ensureDbSchema() {
         `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "width" DOUBLE PRECISION;`,
         `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "height" DOUBLE PRECISION;`,
         `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "requiresCustomization" BOOLEAN NOT NULL DEFAULT false;`,
+        `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "requiresImageUpload" BOOLEAN NOT NULL DEFAULT false;`,
+        `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "minimumImageUploads" INTEGER NOT NULL DEFAULT 1;`,
+        `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "maximumImageUploads" INTEGER NOT NULL DEFAULT 5;`,
         `ALTER TABLE "cart_items" ADD COLUMN IF NOT EXISTS "customizationText" TEXT;`,
         `ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "customizationText" TEXT;`,
+
+        `CREATE TABLE IF NOT EXISTS "cart_item_customization_images" (
+          "id" TEXT NOT NULL,
+          "cartItemId" TEXT NOT NULL,
+          "imageUrl" TEXT NOT NULL,
+          "publicId" TEXT,
+          "sortOrder" INTEGER NOT NULL DEFAULT 0,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "cart_item_customization_images_pkey" PRIMARY KEY ("id")
+        );`,
+
+        `CREATE TABLE IF NOT EXISTS "order_item_customization_images" (
+          "id" TEXT NOT NULL,
+          "orderItemId" TEXT NOT NULL,
+          "imageUrl" TEXT NOT NULL,
+          "publicId" TEXT,
+          "sortOrder" INTEGER NOT NULL DEFAULT 0,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "order_item_customization_images_pkey" PRIMARY KEY ("id")
+        );`,
 
         `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shippingProvider" TEXT;`,
         `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "awbNumber" TEXT;`,
@@ -105,6 +128,74 @@ export function ensureDbSchema() {
 
         `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "emailVerified" BOOLEAN DEFAULT false;`,
         `UPDATE "users" SET "emailVerified" = true WHERE "emailVerified" IS NULL;`,
+        `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "marketingOptIn" BOOLEAN DEFAULT false;`,
+        `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "analyticsOptIn" BOOLEAN DEFAULT false;`,
+        `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "isAnonymized" BOOLEAN DEFAULT false;`,
+        `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "anonymizedAt" TIMESTAMP(3);`,
+
+        `CREATE TABLE IF NOT EXISTS "consent_records" (
+          "id" TEXT NOT NULL,
+          "userId" TEXT,
+          "email" TEXT,
+          "purpose" TEXT NOT NULL,
+          "status" TEXT NOT NULL DEFAULT 'GRANTED',
+          "noticeVersion" TEXT NOT NULL DEFAULT 'v1.0',
+          "consentVersion" TEXT NOT NULL DEFAULT 'v1.0',
+          "consentedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "withdrawnAt" TIMESTAMP(3),
+          "source" TEXT NOT NULL DEFAULT 'WEB_APP',
+          "consentText" TEXT,
+          "ipAddress" TEXT,
+          "userAgent" TEXT,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "consent_records_pkey" PRIMARY KEY ("id")
+        );`,
+
+        `CREATE TABLE IF NOT EXISTS "customer_uploads" (
+          "id" TEXT NOT NULL,
+          "userId" TEXT,
+          "orderId" TEXT,
+          "cartItemId" TEXT,
+          "fileUrl" TEXT NOT NULL,
+          "publicId" TEXT,
+          "originalFilename" TEXT NOT NULL,
+          "mimeType" TEXT NOT NULL,
+          "fileSize" INTEGER NOT NULL,
+          "purpose" TEXT NOT NULL DEFAULT 'LITHOPHANE_PERSONALIZATION',
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "expiresAt" TIMESTAMP(3),
+          "deletedAt" TIMESTAMP(3),
+          CONSTRAINT "customer_uploads_pkey" PRIMARY KEY ("id")
+        );`,
+
+        `CREATE TABLE IF NOT EXISTS "privacy_requests" (
+          "id" TEXT NOT NULL,
+          "userId" TEXT,
+          "email" TEXT NOT NULL,
+          "name" TEXT,
+          "requestType" TEXT NOT NULL,
+          "description" TEXT NOT NULL,
+          "status" TEXT NOT NULL DEFAULT 'PENDING',
+          "adminNotes" TEXT,
+          "resolvedAt" TIMESTAMP(3),
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "privacy_requests_pkey" PRIMARY KEY ("id")
+        );`,
+
+        `CREATE TABLE IF NOT EXISTS "security_events" (
+          "id" TEXT NOT NULL,
+          "eventType" TEXT NOT NULL,
+          "severity" TEXT NOT NULL DEFAULT 'LOW',
+          "description" TEXT NOT NULL,
+          "userId" TEXT,
+          "ipAddress" TEXT,
+          "userAgent" TEXT,
+          "metadata" JSONB,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "security_events_pkey" PRIMARY KEY ("id")
+        );`,
 
         `CREATE TABLE IF NOT EXISTS "email_verification_otps" (
           "id" TEXT NOT NULL,
