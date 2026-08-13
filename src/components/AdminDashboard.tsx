@@ -887,27 +887,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const price = Number(prodPrice);
     const mrp = prodMrp && !isNaN(Number(prodMrp)) && Number(prodMrp) >= price ? Number(prodMrp) : price;
 
-    const numWeight = Number(prodWeight);
-    const numLength = Number(prodLength);
-    const numWidth = Number(prodWidth);
-    const numHeight = Number(prodHeight);
-
-    if (isNaN(numWeight) || numWeight <= 0) {
-      setProductFormError('Weight must be a valid number greater than 0 kg.');
-      return;
-    }
-    if (isNaN(numLength) || numLength <= 0) {
-      setProductFormError('Length must be a valid number greater than 0 cm.');
-      return;
-    }
-    if (isNaN(numWidth) || numWidth <= 0) {
-      setProductFormError('Width must be a valid number greater than 0 cm.');
-      return;
-    }
-    if (isNaN(numHeight) || numHeight <= 0) {
-      setProductFormError('Height must be a valid number greater than 0 cm.');
-      return;
-    }
+    const numWeight = (prodWeight && !isNaN(Number(prodWeight)) && Number(prodWeight) > 0) ? Number(prodWeight) : 0.5;
+    const numLength = (prodLength && !isNaN(Number(prodLength)) && Number(prodLength) > 0) ? Number(prodLength) : 10;
+    const numWidth = (prodWidth && !isNaN(Number(prodWidth)) && Number(prodWidth) > 0) ? Number(prodWidth) : 10;
+    const numHeight = (prodHeight && !isNaN(Number(prodHeight)) && Number(prodHeight) > 0) ? Number(prodHeight) : 10;
 
     const existingP = editingProductId ? products.find((p) => p.id === editingProductId) : null;
     const existingSpecs = (existingP?.specifications as any) || {};

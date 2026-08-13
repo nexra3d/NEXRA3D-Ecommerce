@@ -133,13 +133,26 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     try {
       const formData = new FormData();
       files.forEach((file) => formData.append('images', file));
+      if (product?.id) {
+        formData.append('productId', product.id);
+      }
+      formData.append('maxImages', String(maxImageCount));
+      formData.append('currentCount', String(customizationImages.length));
 
       const res = await fetch('/api/customization/upload', {
         method: 'POST',
         body: formData
       });
 
-      const data = await res.json();
+      let data: any = {};
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await res.json().catch(() => ({}));
+      } else {
+        const text = await res.text().catch(() => '');
+        data = { error: text || `Server error (${res.status})` };
+      }
+
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to upload photo(s)');
       }

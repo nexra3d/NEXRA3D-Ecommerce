@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Download, Trash2, HelpCircle, Check, AlertTriangle, FileText, Lock, Clock } from 'lucide-react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, getStoredToken } from '../lib/api';
 
 interface CustomerPrivacyTabProps {
   user: any;
@@ -89,14 +89,16 @@ export const CustomerPrivacyTab: React.FC<CustomerPrivacyTabProps> = ({ user, on
   const handleExportData = async () => {
     setIsExporting(true);
     try {
+      const token = getStoredToken() || localStorage.getItem('auth_token') || localStorage.getItem('nexra3d_auth_token') || '';
       const response = await fetch('/api/privacy/export', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('nexra3d_auth_token') || ''}`
+          'Authorization': `Bearer ${token}`
         }
       });
 
       if (!response.ok) {
-        throw new Error('Export failed');
+        const errJson = await response.json().catch(() => null);
+        throw new Error(errJson?.error || errJson?.message || `Export failed with status ${response.status}`);
       }
 
       const blob = await response.blob();

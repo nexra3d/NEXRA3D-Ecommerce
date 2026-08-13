@@ -2401,9 +2401,9 @@ app.post('/api/privacy/delete-account', requireAuthMiddleware, async (req: Authe
     // Execute account anonymization & cleanup within an atomic Prisma transaction
     const anonymizedEmail = `deleted-${userId.substring(0, 8)}-${Date.now()}@anonymized.local`;
 
-    await prisma.$transaction([
+    await prisma.$transaction(async (tx) => {
       // 1. Record consent withdrawal
-      (prisma as any).consentRecord.create({
+      await (tx as any).consentRecord.create({
         data: {
           userId,
           email: user.email,
@@ -2415,9 +2415,10 @@ app.post('/api/privacy/delete-account', requireAuthMiddleware, async (req: Authe
           ipAddress: (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown',
           userAgent: req.headers['user-agent'] || 'unknown'
         }
-      }),
+      });
+
       // 2. Anonymize user profile
-      prisma.user.update({
+      await tx.user.update({
         where: { id: userId },
         data: {
           name: 'Anonymized User',
@@ -2432,12 +2433,13 @@ app.post('/api/privacy/delete-account', requireAuthMiddleware, async (req: Authe
           isAnonymized: true,
           anonymizedAt: new Date()
         } as any
-      }),
+      });
+
       // 3. Clear non-essential active cart, wishlist, and standalone profile saved addresses
-      prisma.cart.deleteMany({ where: { userId } }),
-      prisma.wishlist.deleteMany({ where: { userId } }),
-      prisma.address.deleteMany({ where: { userId } })
-    ]);
+      await tx.cart.deleteMany({ where: { userId } });
+      await tx.wishlist.deleteMany({ where: { userId } });
+      await tx.address.deleteMany({ where: { userId } });
+    });
 
     // 4. Log security event
     await logSecurityEvent('ACCOUNT_DELETED', 'HIGH', `Account ${user.email} anonymized and deleted on request`, req, userId);
@@ -2518,54 +2520,6 @@ app.get('/api/privacy/my-requests', requireAuthMiddleware, async (req: Authentic
     return res.json({ success: true, requests: sanitized });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: 'Failed to fetch privacy requests: ' + (err.message || String(err)) });
-  }
-});
-
-// SECURE CUSTOMER IMAGE UPLOAD FOR LITHOPHANE (POST /api/customization/upload)
-app.post('/api/customization/upload', upload.single('image'), async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, error: 'No image file provided.' });
-    }
-
-    const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    if (!allowedMimes.includes(req.file.mimetype)) {
-      return res.status(400).json({ success: false, error: 'Invalid file format. Only JPG, PNG, and WEBP are allowed.' });
-    }
-
-    const maxBytes = 10 * 1024 * 1024; // 10MB
-    if (req.file.size > maxBytes) {
-      return res.status(400).json({ success: false, error: 'File size exceeds 10MB limit.' });
-    }
-
-    const cloudinaryResult = await uploadImageToCloudinary(req.file.buffer, req.file.mimetype, 'customization_uploads');
-    const imageUrl = cloudinaryResult?.url || `https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&q=80&w=800`;
-    const publicId = cloudinaryResult?.publicId || null;
-
-    const safeFilename = req.file.originalname.replace(/[^a-zA-Z0-9_.-]/g, '_');
-    const uploadRecord = await (prisma as any).customerUpload.create({
-      data: {
-        userId: req.user?.id || null,
-        fileUrl: imageUrl,
-        publicId,
-        originalFilename: safeFilename,
-        mimeType: req.file.mimetype,
-        fileSize: req.file.size,
-        purpose: 'LITHOPHANE_PERSONALIZATION',
-        expiresAt: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000) // 180 days retention
-      }
-    }).catch(() => null);
-
-    return res.json({
-      success: true,
-      id: uploadRecord?.id || `upl-${Date.now()}`,
-      imageUrl,
-      url: imageUrl,
-      publicId,
-      originalFilename: safeFilename
-    });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, error: 'Customer image upload failed: ' + (err.message || String(err)) });
   }
 });
 
@@ -3260,7 +3214,8 @@ app.put('/api/products/:id', requireAdminMiddleware, async (req: Request, res: R
 
     return res.json(formatPrismaProductResponse(fullProduct));
   } catch (err: any) {
-    return res.status(500).json({ error: 'Failed to update product' });
+    console.error('Product update error:', err);
+    return res.status(500).json({ error: 'Failed to update product: ' + (err.message || String(err)) });
   }
 });
 
@@ -3973,44 +3928,113 @@ app.delete('/api/categories/:id', requireAdminMiddleware, async (req: Request, r
 // ==================================================
 
 // Customization image upload endpoint for customer personalization photos
-app.post('/api/customization/upload', upload.array('images', 20), async (req: Request, res: Response) => {
+app.post('/api/customization/upload', (req: Request, res: Response, next: NextFunction) => {
+  upload.fields([{ name: 'images', maxCount: 20 }, { name: 'image', maxCount: 20 }])(req, res, (err: any) => {
+    if (err) {
+      const msg = err.message || 'File upload error';
+      return res.status(400).json({ success: false, error: msg });
+    }
+    next();
+  });
+}, async (req: Request, res: Response) => {
   try {
-    const files = req.files as Express.Multer.File[];
+    const filesMap = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    let files: Express.Multer.File[] = [];
+    if (filesMap) {
+      if (Array.isArray(filesMap.images)) files.push(...filesMap.images);
+      if (Array.isArray(filesMap.image)) files.push(...filesMap.image);
+    }
+    if (files.length === 0 && Array.isArray((req as any).files)) {
+      files = (req as any).files;
+    }
+
     if (!files || files.length === 0) {
-      return res.status(400).json({ error: 'No files uploaded' });
+      return res.status(400).json({ success: false, error: 'No image files uploaded' });
+    }
+
+    // Determine dynamic max allowed image count based on product configuration
+    let maxAllowed = 5;
+    const productId = req.body.productId || req.query.productId;
+    if (productId && typeof productId === 'string' && productId.trim().length > 0) {
+      const prod = await prisma.product.findUnique({
+        where: { id: productId.trim() },
+        select: { maximumImageUploads: true }
+      }).catch(() => null);
+
+      if (prod && prod.maximumImageUploads !== undefined && prod.maximumImageUploads !== null) {
+        maxAllowed = Number(prod.maximumImageUploads);
+      }
+    } else if (req.body.maxImages && !isNaN(Number(req.body.maxImages))) {
+      maxAllowed = Number(req.body.maxImages);
+    }
+
+    const rawCurrentCount = req.body?.currentCount !== undefined ? req.body.currentCount : req.query?.currentCount;
+    const currentCount = !isNaN(Number(rawCurrentCount)) ? Number(rawCurrentCount) : 0;
+    const totalAfterUpload = currentCount + files.length;
+
+    if (totalAfterUpload > maxAllowed) {
+      if (currentCount > 0) {
+        return res.status(400).json({
+          success: false,
+          error: `Maximum allowed photos for this product is ${maxAllowed}. You currently have ${currentCount} photo(s) and attempted to upload ${files.length} more.`
+        });
+      }
+      return res.status(400).json({
+        success: false,
+        error: `Maximum allowed photos for this product is ${maxAllowed}. You attempted to upload ${files.length} photo(s).`
+      });
     }
 
     const authReq = req as AuthenticatedRequest;
     const userId = authReq.user?.id || 'customer-' + Math.random().toString(36).substring(2, 9);
     const folderPath = `nexra3d/customer-uploads/${userId}`;
 
-    const uploadedResults: { url: string; publicId: string | null }[] = [];
+    const uploadedResults: { url: string; imageUrl: string; publicId: string | null }[] = [];
+    const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 
     for (const file of files) {
+      if (file.mimetype && !allowedMimes.includes(file.mimetype.toLowerCase())) {
+        return res.status(400).json({ success: false, error: `Invalid file format for "${file.originalname}". Allowed: JPG, PNG, WEBP.` });
+      }
+
       if (file.size > 10 * 1024 * 1024) {
-        return res.status(400).json({ error: `File "${file.originalname}" exceeds the 10 MB limit.` });
+        return res.status(400).json({ success: false, error: `File "${file.originalname}" exceeds the 10 MB limit.` });
       }
 
       const resCloud = await uploadImageToCloudinary(file.buffer, file.mimetype || 'image/jpeg', folderPath);
-      if (resCloud?.url) {
-        uploadedResults.push({
-          url: resCloud.url,
-          publicId: resCloud.publicId || null
-        });
-      }
-    }
+      const url = resCloud?.url || `https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&q=80&w=800`;
+      const publicId = resCloud?.publicId || null;
 
-    if (uploadedResults.length === 0) {
-      return res.status(500).json({ error: 'Failed to upload customization images' });
+      const safeFilename = file.originalname.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      await (prisma as any).customerUpload.create({
+        data: {
+          userId: authReq.user?.id || null,
+          fileUrl: url,
+          publicId,
+          originalFilename: safeFilename,
+          mimeType: file.mimetype,
+          fileSize: file.size,
+          purpose: 'LITHOPHANE_PERSONALIZATION',
+          expiresAt: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000)
+        }
+      }).catch(() => null);
+
+      uploadedResults.push({
+        url,
+        imageUrl: url,
+        publicId
+      });
     }
 
     return res.json({
       success: true,
-      images: uploadedResults
+      images: uploadedResults,
+      imageUrl: uploadedResults[0]?.url,
+      publicId: uploadedResults[0]?.publicId
     });
   } catch (err: any) {
     console.error('Customization image upload error:', err);
-    return res.status(500).json({ error: 'Image upload failed: ' + (err.message || String(err)) });
+    return res.status(500).json({ success: false, error: 'Image upload failed: ' + (err.message || String(err)) });
   }
 });
 
@@ -4131,13 +4155,13 @@ app.post(['/api/cart/items', '/api/cart'], requireAuthMiddleware, async (req: Au
           selectedWattage: verifiedWattage,
           customizationText: sanitizedCustomization,
           quantity: Number(quantity),
-          customizationImages: {
+          customizationImages: (imagesArray && imagesArray.length > 0) ? {
             create: imagesArray.map((img: any, idx: number) => ({
               imageUrl: typeof img === 'string' ? img : (img.imageUrl || img.url),
               publicId: typeof img === 'object' ? (img.publicId || null) : null,
               sortOrder: idx
             }))
-          }
+          } : undefined
         }
       });
     }
