@@ -2286,6 +2286,28 @@ app.get('/api/privacy/export', requireAuthMiddleware, async (req: AuthenticatedR
       orderBy: { createdAt: 'desc' }
     }).catch(() => []);
 
+    // Collect order item IDs to query customization images as a fallback if relation is empty
+    const orderItemIds: string[] = [];
+    (user.orders || []).forEach((o: any) => {
+      (o.items || []).forEach((i: any) => {
+        if (i.id) orderItemIds.push(i.id);
+      });
+    });
+
+    let extraCustomizationImages: any[] = [];
+    if (orderItemIds.length > 0) {
+      extraCustomizationImages = await (prisma as any).orderItemCustomizationImage.findMany({
+        where: { orderItemId: { in: orderItemIds } }
+      }).catch(() => []);
+    }
+
+    const imagesByOrderItemId = new Map<string, string[]>();
+    extraCustomizationImages.forEach((ci: any) => {
+      const list = imagesByOrderItemId.get(ci.orderItemId) || [];
+      if (ci.imageUrl) list.push(ci.imageUrl);
+      imagesByOrderItemId.set(ci.orderItemId, list);
+    });
+
     // Sanitize user profile to ensure no security secrets are leaked
     const exportPackage = {
       title: 'NEXRA 3D Personal Data Archive',
@@ -2316,15 +2338,20 @@ app.get('/api/privacy/export', requireAuthMiddleware, async (req: AuthenticatedR
         shippingAddress: o.shippingAddress,
         billingAddress: o.billingAddress,
         createdAt: o.createdAt,
-        items: (o.items || []).map((i: any) => ({
-          productTitle: i.productTitle,
-          price: Number(i.price),
-          quantity: i.quantity,
-          customizationText: i.customizationText,
-          selectedColour: i.selectedColour,
-          selectedWattage: i.selectedWattage,
-          customizationImages: (i.customizationImages || []).map((ci: any) => ci.imageUrl)
-        }))
+        items: (o.items || []).map((i: any) => {
+          const inlineImages = (i.customizationImages || []).map((ci: any) => (typeof ci === 'string' ? ci : ci.imageUrl));
+          const fallbackImages = imagesByOrderItemId.get(i.id) || [];
+          const combinedImages = Array.from(new Set([...inlineImages, ...fallbackImages]));
+          return {
+            productTitle: i.productTitle,
+            price: Number(i.price),
+            quantity: i.quantity,
+            customizationText: i.customizationText,
+            selectedColour: i.selectedColour,
+            selectedWattage: i.selectedWattage,
+            customizationImages: combinedImages
+          };
+        })
       })),
       reviews: user.reviews || [],
       wishlist: user.wishlist?.items?.map((wi: any) => wi.product?.name) || [],
@@ -2403,16 +2430,18 @@ app.post('/api/privacy/delete-account', requireAuthMiddleware, async (req: Authe
 
     await prisma.$transaction(async (tx) => {
       // 1. Record consent withdrawal
-      await (tx as any).consentRecord.create({
+      await tx.consentRecord.create({
         data: {
           userId,
           email: user.email,
           purpose: 'NECESSARY',
           status: 'WITHDRAWN',
+          noticeVersion: 'v1.0',
+          consentVersion: 'v1.0',
           consentText: 'Account deleted by user',
           withdrawnAt: new Date(),
           source: 'WEB_APP',
-          ipAddress: (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown',
+          ipAddress: (req.headers['x-forwarded-for'] as string) || req.socket?.remoteAddress || 'unknown',
           userAgent: req.headers['user-agent'] || 'unknown'
         }
       });
@@ -2427,12 +2456,13 @@ app.post('/api/privacy/delete-account', requireAuthMiddleware, async (req: Authe
           company: null,
           gst: null,
           avatar: null,
+          password: `ANONYMIZED_${crypto.randomBytes(16).toString('hex')}`,
           emailVerified: false,
           marketingOptIn: false,
           analyticsOptIn: false,
           isAnonymized: true,
           anonymizedAt: new Date()
-        } as any
+        }
       });
 
       // 3. Clear non-essential active cart, wishlist, and standalone profile saved addresses
@@ -3075,12 +3105,24 @@ app.post('/api/products', requireAdminMiddleware, async (req: Request, res: Resp
 
   const {
     name, slug, sku, shortDescription, description, price, mrp,
-    discountPercentage, taxPercentage, stockQuantity, categoryId,
+    discountPercentage, taxPercentage, stockQuantity, lowStockThreshold, categoryId,
     imageUrl, isActive, isFeatured, isBestSeller, isNewArrival, requiresCustomization, requiresImageUpload, minimumImageUploads, maximumImageUploads, specifications, weight,
-    length, width, height
+    length, width, height, seoTitle, seoDescription, metaDescription
   } = parseResult.data;
 
   try {
+    const targetCategoryId = categoryId ? String(categoryId).trim() : null;
+    if (!targetCategoryId) {
+      return res.status(400).json({ error: 'Category selection is required' });
+    }
+
+    const categoryExists = await prisma.category.findUnique({
+      where: { id: targetCategoryId }
+    });
+    if (!categoryExists) {
+      return res.status(400).json({ error: `Selected category ID '${targetCategoryId}' does not exist` });
+    }
+
     const generatedSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-' + Math.floor(Math.random() * 1000);
 
     const newProduct = await prisma.product.create({
@@ -3095,7 +3137,12 @@ app.post('/api/products', requireAdminMiddleware, async (req: Request, res: Resp
         discountPercentage: discountPercentage || 0,
         taxPercentage: taxPercentage || 0,
         stockQuantity: stockQuantity ?? 10,
-        categoryId,
+        lowStockThreshold: lowStockThreshold ?? 5,
+        category: {
+          connect: {
+            id: targetCategoryId
+          }
+        },
         weight: weight !== undefined && weight !== null ? Number(weight) : null,
         length: length !== undefined && length !== null ? Number(length) : null,
         width: width !== undefined && width !== null ? Number(width) : null,
@@ -3109,7 +3156,10 @@ app.post('/api/products', requireAdminMiddleware, async (req: Request, res: Resp
         requiresCustomization: Boolean(requiresCustomization),
         requiresImageUpload: Boolean(requiresImageUpload),
         minimumImageUploads: minimumImageUploads !== undefined ? Number(minimumImageUploads) : 1,
-        maximumImageUploads: maximumImageUploads !== undefined ? Number(maximumImageUploads) : 5
+        maximumImageUploads: maximumImageUploads !== undefined ? Number(maximumImageUploads) : 5,
+        seoTitle: seoTitle || null,
+        seoDescription: seoDescription || null,
+        metaDescription: metaDescription || null
       },
       include: { category: true }
     });
@@ -3150,9 +3200,9 @@ app.put('/api/products/:id', requireAdminMiddleware, async (req: Request, res: R
   const { images } = req.body;
   const {
     name, slug, sku, shortDescription, description, price, mrp,
-    discountPercentage, taxPercentage, stockQuantity, categoryId,
+    discountPercentage, taxPercentage, stockQuantity, lowStockThreshold, categoryId,
     imageUrl, specifications, isFeatured, isBestSeller, isNewArrival, requiresCustomization, requiresImageUpload, minimumImageUploads, maximumImageUploads, isActive, weight,
-    length, width, height
+    length, width, height, seoTitle, seoDescription, metaDescription
   } = parseResult.data;
 
   try {
@@ -3161,35 +3211,58 @@ app.put('/api/products/:id', requireAdminMiddleware, async (req: Request, res: R
       return res.status(404).json({ error: 'Product not found' });
     }
 
+    let categoryData: any = undefined;
+    if (categoryId !== undefined && categoryId !== null && String(categoryId).trim() !== '') {
+      const targetCategoryId = String(categoryId).trim();
+      const categoryExists = await prisma.category.findUnique({ where: { id: targetCategoryId } });
+      if (!categoryExists) {
+        return res.status(400).json({ error: `Selected category ID '${targetCategoryId}' does not exist` });
+      }
+      categoryData = {
+        connect: {
+          id: targetCategoryId
+        }
+      };
+    }
+
+    const updateData: any = {
+      name: name !== undefined ? name : existing.name,
+      slug: slug !== undefined ? slug : existing.slug,
+      sku: sku !== undefined ? sku : existing.sku,
+      shortDescription: shortDescription !== undefined ? shortDescription : existing.shortDescription,
+      description: description !== undefined ? description : existing.description,
+      price: price !== undefined ? price : existing.price,
+      mrp: mrp !== undefined ? mrp : existing.mrp,
+      discountPercentage: discountPercentage !== undefined ? discountPercentage : existing.discountPercentage,
+      taxPercentage: taxPercentage !== undefined ? taxPercentage : existing.taxPercentage,
+      stockQuantity: stockQuantity !== undefined ? stockQuantity : existing.stockQuantity,
+      lowStockThreshold: lowStockThreshold !== undefined ? lowStockThreshold : existing.lowStockThreshold,
+      weight: weight !== undefined ? (weight !== null ? Number(weight) : null) : existing.weight,
+      length: length !== undefined ? (length !== null ? Number(length) : null) : (existing as any).length,
+      width: width !== undefined ? (width !== null ? Number(width) : null) : (existing as any).width,
+      height: height !== undefined ? (height !== null ? Number(height) : null) : (existing as any).height,
+      imageUrl: imageUrl !== undefined ? imageUrl : existing.imageUrl,
+      specifications: specifications !== undefined ? specifications : existing.specifications,
+      isFeatured: isFeatured !== undefined ? Boolean(isFeatured) : existing.isFeatured,
+      isBestSeller: isBestSeller !== undefined ? Boolean(isBestSeller) : existing.isBestSeller,
+      isNewArrival: isNewArrival !== undefined ? Boolean(isNewArrival) : existing.isNewArrival,
+      requiresCustomization: requiresCustomization !== undefined ? Boolean(requiresCustomization) : (existing as any).requiresCustomization,
+      requiresImageUpload: requiresImageUpload !== undefined ? Boolean(requiresImageUpload) : (existing as any).requiresImageUpload,
+      minimumImageUploads: minimumImageUploads !== undefined ? Number(minimumImageUploads) : (existing as any).minimumImageUploads,
+      maximumImageUploads: maximumImageUploads !== undefined ? Number(maximumImageUploads) : (existing as any).maximumImageUploads,
+      isActive: isActive !== undefined ? Boolean(isActive) : existing.isActive,
+      seoTitle: seoTitle !== undefined ? seoTitle : (existing as any).seoTitle,
+      seoDescription: seoDescription !== undefined ? seoDescription : (existing as any).seoDescription,
+      metaDescription: metaDescription !== undefined ? metaDescription : (existing as any).metaDescription
+    };
+
+    if (categoryData) {
+      updateData.category = categoryData;
+    }
+
     const updated = await prisma.product.update({
       where: { id },
-      data: {
-        name: name !== undefined ? name : existing.name,
-        slug: slug !== undefined ? slug : existing.slug,
-        sku: sku !== undefined ? sku : existing.sku,
-        shortDescription: shortDescription !== undefined ? shortDescription : existing.shortDescription,
-        description: description !== undefined ? description : existing.description,
-        price: price !== undefined ? price : existing.price,
-        mrp: mrp !== undefined ? mrp : existing.mrp,
-        discountPercentage: discountPercentage !== undefined ? discountPercentage : existing.discountPercentage,
-        taxPercentage: taxPercentage !== undefined ? taxPercentage : existing.taxPercentage,
-        stockQuantity: stockQuantity !== undefined ? stockQuantity : existing.stockQuantity,
-        categoryId: categoryId !== undefined ? categoryId : existing.categoryId,
-        weight: weight !== undefined ? (weight !== null ? Number(weight) : null) : existing.weight,
-        length: length !== undefined ? (length !== null ? Number(length) : null) : (existing as any).length,
-        width: width !== undefined ? (width !== null ? Number(width) : null) : (existing as any).width,
-        height: height !== undefined ? (height !== null ? Number(height) : null) : (existing as any).height,
-        imageUrl: imageUrl !== undefined ? imageUrl : existing.imageUrl,
-        specifications: specifications !== undefined ? specifications : existing.specifications,
-        isFeatured: isFeatured !== undefined ? Boolean(isFeatured) : existing.isFeatured,
-        isBestSeller: isBestSeller !== undefined ? Boolean(isBestSeller) : existing.isBestSeller,
-        isNewArrival: isNewArrival !== undefined ? Boolean(isNewArrival) : existing.isNewArrival,
-        requiresCustomization: requiresCustomization !== undefined ? Boolean(requiresCustomization) : (existing as any).requiresCustomization,
-        requiresImageUpload: requiresImageUpload !== undefined ? Boolean(requiresImageUpload) : (existing as any).requiresImageUpload,
-        minimumImageUploads: minimumImageUploads !== undefined ? Number(minimumImageUploads) : (existing as any).minimumImageUploads,
-        maximumImageUploads: maximumImageUploads !== undefined ? Number(maximumImageUploads) : (existing as any).maximumImageUploads,
-        isActive: isActive !== undefined ? Boolean(isActive) : existing.isActive
-      }
+      data: updateData
     });
 
     if (Array.isArray(images) && images.length > 0) {

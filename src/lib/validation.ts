@@ -108,7 +108,10 @@ export const productCreateSchema = z.object({
   requiresImageUpload: z.boolean().default(false),
   minimumImageUploads: z.coerce.number().int().min(1, 'Minimum uploads must be at least 1').default(1),
   maximumImageUploads: z.coerce.number().int().min(1, 'Maximum uploads must be at least 1').max(20, 'Maximum uploads cannot exceed 20').default(5),
-  categoryId: z.string().min(1, 'Category selection is required')
+  categoryId: z.string().min(1, 'Category selection is required'),
+  seoTitle: z.string().trim().optional().nullable(),
+  seoDescription: z.string().trim().optional().nullable(),
+  metaDescription: z.string().trim().optional().nullable()
 }).refine((data) => (data.mrp !== undefined && data.mrp !== null ? data.mrp >= data.price : true), {
   message: 'MRP must be greater than or equal to selling price',
   path: ['mrp']
@@ -143,7 +146,10 @@ export const productUpdateSchema = z.object({
   requiresImageUpload: z.boolean().optional(),
   minimumImageUploads: z.coerce.number().int().min(1).optional(),
   maximumImageUploads: z.coerce.number().int().min(1).max(20).optional(),
-  categoryId: z.string().min(1).optional()
+  categoryId: z.string().min(1).optional(),
+  seoTitle: z.string().trim().optional().nullable(),
+  seoDescription: z.string().trim().optional().nullable(),
+  metaDescription: z.string().trim().optional().nullable()
 });
 
 export type CategoryCreateInput = z.infer<typeof categoryCreateSchema>;

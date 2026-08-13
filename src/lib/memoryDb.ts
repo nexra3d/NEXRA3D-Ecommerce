@@ -312,7 +312,22 @@ class MemoryStore {
     ];
   }
 
+  snapshot(): string {
+    return JSON.stringify(this.collections);
+  }
+
+  restore(snapshotStr: string) {
+    try {
+      this.collections = JSON.parse(snapshotStr);
+    } catch (e) {
+      console.error('Failed to restore memoryStore snapshot:', e);
+    }
+  }
+
   getStore(model: string): any[] {
+    if (!model || typeof model !== 'string') {
+      return [];
+    }
     const key = model.toLowerCase();
     const storeKey = Object.keys(this.collections).find((k) => k.toLowerCase() === key);
     if (!storeKey) {
@@ -372,13 +387,37 @@ class MemoryStore {
   attachIncludes(item: any, model: string, include: any): any {
     if (!item || !include) return item;
     const cloned = { ...item };
-    const modelLower = model.toLowerCase();
+    const modelLower = typeof model === 'string' ? model.toLowerCase() : '';
 
     if (include.addresses) {
       cloned.addresses = this.getStore('address').filter((a) => a.userId === item.id);
     }
     if (include.orders) {
-      cloned.orders = this.getStore('order').filter((o) => o.userId === item.id);
+      const rawOrders = this.getStore('order').filter((o) => o.userId === item.id);
+      const orderIncludes = typeof include.orders === 'object' ? include.orders.include : null;
+      cloned.orders = rawOrders.map((o) => this.attachIncludes(o, 'order', orderIncludes));
+    }
+    if (include.cart) {
+      const c = this.getStore('cart').find((c) => c.userId === item.id) || null;
+      const cartIncludes = typeof include.cart === 'object' ? include.cart.include : null;
+      cloned.cart = c ? this.attachIncludes(c, 'cart', cartIncludes) : null;
+    }
+    if (include.wishlist) {
+      const w = this.getStore('wishlist').find((w) => w.userId === item.id) || null;
+      const wishlistIncludes = typeof include.wishlist === 'object' ? include.wishlist.include : null;
+      cloned.wishlist = w ? this.attachIncludes(w, 'wishlist', wishlistIncludes) : null;
+    }
+    if (include.reviews) {
+      cloned.reviews = this.getStore('review').filter((r) => r.userId === item.id);
+    }
+    if (include.consentRecords) {
+      cloned.consentRecords = this.getStore('consentRecord').filter((c) => c.userId === item.id || (item.email && c.email === item.email));
+    }
+    if (include.customerUploads) {
+      cloned.customerUploads = this.getStore('customerUpload').filter((u) => u.userId === item.id);
+    }
+    if (include.privacyRequests) {
+      cloned.privacyRequests = this.getStore('privacyRequest').filter((p) => p.userId === item.id || (item.email && p.email === item.email));
     }
     if (include.category && item.categoryId) {
       const cat = this.getStore('category').find((c) => c.id === item.categoryId) || null;
@@ -389,6 +428,13 @@ class MemoryStore {
     }
     if (include.variants) {
       cloned.variants = this.getStore('productVariant').filter((v) => v.productId === item.id);
+    }
+    if (include.customizationImages) {
+      if (modelLower === 'cartitem') {
+        cloned.customizationImages = this.getStore('cartItemCustomizationImage').filter((ci) => ci.cartItemId === item.id);
+      } else if (modelLower === 'orderitem') {
+        cloned.customizationImages = this.getStore('orderItemCustomizationImage').filter((oi) => oi.orderItemId === item.id);
+      }
     }
     if (include.items) {
       let rawItems: any[] = [];
@@ -420,6 +466,13 @@ class MemoryStore {
         cloned.variant = this.getStore('productVariant').find((v) => v.id === item.variantId) || null;
       }
     }
+    if (include.payment) {
+      if (modelLower === 'order') {
+        cloned.payment = this.getStore('payment').find((p) => p.orderId === item.id) || null;
+      } else {
+        cloned.payments = this.getStore('payment').filter((p) => p.userId === item.id);
+      }
+    }
     if (include.shipment && modelLower === 'order') {
       const shp = this.getStore('shipment').find((s) => s.orderId === item.id) || null;
       if (shp) {
@@ -436,6 +489,23 @@ class MemoryStore {
     }
 
     return cloned;
+  }
+
+  private processDataRelations(data: any) {
+    if (!data || typeof data !== 'object') return data;
+    const processed = { ...data };
+    for (const key of Object.keys(processed)) {
+      const val = processed[key];
+      if (val && typeof val === 'object' && val.connect && typeof val.connect === 'object') {
+        const connectId = val.connect.id || val.connect.slug;
+        if (connectId) {
+          const foreignKeyField = key + 'Id';
+          processed[foreignKeyField] = connectId;
+        }
+        delete processed[key];
+      }
+    }
+    return processed;
   }
 
   createModelHandler(modelName: string) {
@@ -475,7 +545,7 @@ class MemoryStore {
       },
 
       create: async (args: any = {}) => {
-        const data = { ...(args.data || {}) };
+        const data = this.processDataRelations(args.data || {});
         const id = data.id || generateId(modelName.toLowerCase());
 
         let nestedItemsToCreate: any[] = [];
@@ -490,6 +560,12 @@ class MemoryStore {
           delete data.statusHistory;
         }
 
+        let nestedPaymentToCreate: any = null;
+        if (data.payment && typeof data.payment === 'object' && data.payment.create) {
+          nestedPaymentToCreate = data.payment.create;
+          delete data.payment;
+        }
+
         const newItem = {
           id,
           ...data,
@@ -497,6 +573,18 @@ class MemoryStore {
           updatedAt: data.updatedAt || new Date()
         };
         store.push(newItem);
+
+        if (nestedPaymentToCreate && modelName.toLowerCase() === 'order') {
+          const paymentStore = this.getStore('payment');
+          const paymentItem = {
+            id: nestedPaymentToCreate.id || generateId('payment'),
+            orderId: id,
+            ...nestedPaymentToCreate,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          };
+          paymentStore.push(paymentItem);
+        }
 
         if (nestedItemsToCreate.length > 0 && modelName.toLowerCase() === 'order') {
           const orderItemStore = this.getStore('orderItem');
@@ -552,9 +640,10 @@ class MemoryStore {
           throw new Error(`Record to update not found in memory db (${modelName})`);
         }
         const current = store[itemIndex];
+        const updateData = this.processDataRelations(args.data || {});
         const updated = {
           ...current,
-          ...args.data,
+          ...updateData,
           updatedAt: new Date()
         };
         store[itemIndex] = updated;
@@ -563,9 +652,10 @@ class MemoryStore {
 
       updateMany: async (args: any = {}) => {
         let count = 0;
+        const updateData = this.processDataRelations(args.data || {});
         store.forEach((item, idx) => {
           if (this.matchWhere(item, args.where)) {
-            store[idx] = { ...item, ...args.data, updatedAt: new Date() };
+            store[idx] = { ...item, ...updateData, updatedAt: new Date() };
             count++;
           }
         });

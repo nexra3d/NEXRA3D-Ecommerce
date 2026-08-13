@@ -240,11 +240,17 @@ export function ensureDbSchema() {
   return dbSchemaPromise;
 }
 
-function createModelProxy(modelName: string) {
+function createModelProxy(modelName: string | symbol) {
+  if (typeof modelName !== 'string') {
+    return undefined;
+  }
   const memoryHandler = memoryStore.createModelHandler(modelName);
 
   return new Proxy({}, {
-    get(_target, prop: string) {
+    get(_target, prop: string | symbol) {
+      if (typeof prop !== 'string') {
+        return undefined;
+      }
       return async (...args: any[]) => {
         if (!hasDatabaseUrl) {
           const fn = (memoryHandler as any)[prop];
@@ -305,20 +311,40 @@ function createModelProxy(modelName: string) {
 }
 
 export const prisma = new Proxy(rawPrisma, {
-  get(target, prop: string) {
+  get(target, prop: string | symbol) {
+    if (typeof prop === 'symbol') {
+      return (target as any)[prop];
+    }
     if (prop === '$connect' || prop === '$disconnect') {
       return async () => {};
     }
     if (prop === '$transaction') {
       return async (cbOrArray: any) => {
         if (!hasDatabaseUrl) {
+          const snapshot = memoryStore.snapshot();
           if (typeof cbOrArray === 'function') {
-            return cbOrArray(prisma);
+            try {
+              return await cbOrArray(prisma);
+            } catch (err) {
+              memoryStore.restore(snapshot);
+              throw err;
+            }
           }
           if (Array.isArray(cbOrArray)) {
-            return Promise.all(cbOrArray);
+            try {
+              return await Promise.all(cbOrArray);
+            } catch (err) {
+              memoryStore.restore(snapshot);
+              throw err;
+            }
           }
           return null;
+        }
+        await ensureDbSchema();
+        if (typeof cbOrArray === 'function') {
+          return rawPrisma.$transaction(async (rawTx: any) => {
+            return cbOrArray(rawTx);
+          });
         }
         return rawPrisma.$transaction(cbOrArray);
       };
