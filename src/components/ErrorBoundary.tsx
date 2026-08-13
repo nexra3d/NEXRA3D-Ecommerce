@@ -1,9 +1,9 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 
 interface Props {
-  children: ReactNode;
   fallbackTitle?: string;
   onReset?: () => void;
+  children: ReactNode;
 }
 
 interface State {
@@ -12,30 +12,34 @@ interface State {
 }
 
 export class ErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
-    super(props);
-    this.state = {
-      hasError: false,
-      error: null,
+  state: State = {
+    hasError: false,
+    error: null,
+  };
+
+  static getDerivedStateFromError(error: Error): State {
+    return {
+      hasError: true,
+      error,
     };
   }
 
-  public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
-  }
-
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     console.error('[Admin ErrorBoundary] Caught error:', error, errorInfo);
   }
 
-  public handleReset = () => {
-    this.setState({ hasError: false, error: null });
+  handleReset = (): void => {
+    this.setState({
+      hasError: false,
+      error: null,
+    });
+
     if (this.props.onReset) {
       this.props.onReset();
     }
   };
 
-  public render() {
+  render() {
     if (this.state.hasError) {
       return (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 my-4 text-center text-slate-200 shadow-xl">

@@ -103,7 +103,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   const [customizationError, setCustomizationError] = useState<string | null>(null);
   const needsCustomization = product ? (product.requiresCustomization === true || isNameKeychainProduct(product)) : false;
 
-  const needsImageUpload = product ? (product.requiresImageUpload === true || isLithophaneProduct(product)) : false;
+  const needsImageUpload = Boolean(product && product.requiresImageUpload === true);
   const minImageCount = (product as any)?.minimumImageUploads !== undefined && (product as any)?.minimumImageUploads !== null ? Number((product as any).minimumImageUploads) : 1;
   const maxImageCount = (product as any)?.maximumImageUploads !== undefined && (product as any)?.maximumImageUploads !== null ? Number((product as any).maximumImageUploads) : 5;
 
@@ -113,7 +113,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
 
   const handlePhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    const files = Array.from(e.target.files);
+    const files: File[] = Array.from(e.target.files);
 
     if (customizationImages.length + files.length > maxImageCount) {
       setImageUploadError(`Maximum allowed photos for this product is ${maxImageCount}. You currently have ${customizationImages.length} photo(s).`);
@@ -132,7 +132,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
 
     try {
       const formData = new FormData();
-      files.forEach((file) => formData.append('images', file));
+      files.forEach((file: File) => formData.append('images', file));
       if (product?.id) {
         formData.append('productId', product.id);
       }

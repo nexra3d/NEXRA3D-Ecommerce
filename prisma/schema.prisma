@@ -66,24 +66,32 @@ enum CouponType {
 }
 
 model User {
-  id            String    @id @default(uuid())
-  name          String
-  email         String    @unique
-  password      String
-  role          Role      @default(CUSTOMER)
-  emailVerified Boolean   @default(false)
-  phone         String?
-  company       String?
-  gst           String?
-  avatar        String?
-  cart          Cart?
-  wishlist      Wishlist?
-  addresses     Address[]
-  orders        Order[]
-  payments      Payment[]
-  reviews       Review[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id              String           @id @default(uuid())
+  name            String
+  email           String           @unique
+  password        String
+  role            Role             @default(CUSTOMER)
+  emailVerified   Boolean          @default(false)
+  marketingOptIn  Boolean          @default(false)
+  analyticsOptIn  Boolean          @default(false)
+  isAnonymized    Boolean          @default(false)
+  anonymizedAt    DateTime?
+  phone           String?
+  company         String?
+  gst             String?
+  avatar          String?
+  cart            Cart?
+  wishlist        Wishlist?
+  addresses       Address[]
+  orders          Order[]
+  payments        Payment[]
+  reviews         Review[]
+  consentRecords  ConsentRecord[]
+  customerUploads CustomerUpload[]
+  privacyRequests PrivacyRequest[]
+  securityEvents  SecurityEvent[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   @@index([email])
   @@index([role])
@@ -163,6 +171,9 @@ model Product {
   categoryId            String
   category              Category            @relation(fields: [categoryId], references: [id])
   requiresCustomization Boolean             @default(false)
+  requiresImageUpload   Boolean             @default(false)
+  minimumImageUploads   Int                 @default(1)
+  maximumImageUploads   Int                 @default(5)
   images                ProductImage[]
   variants              ProductVariant[]
   cartItems             CartItem[]
@@ -234,24 +245,38 @@ model Cart {
 }
 
 model CartItem {
-  id                String          @id @default(uuid())
-  cartId            String
-  cart              Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  productId         String
-  product           Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
-  variantId         String?
-  variant           ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
-  quantity          Int             @default(1)
-  selectedColour    String?
-  selectedWattage   String?
-  customizationText String?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  id                  String                         @id @default(uuid())
+  cartId              String
+  cart                Cart                           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId           String
+  product             Product                        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId           String?
+  variant             ProductVariant?                @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  quantity            Int                            @default(1)
+  selectedColour      String?
+  selectedWattage     String?
+  customizationText   String?
+  customizationImages CartItemCustomizationImage[]
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
 
   @@index([cartId])
   @@index([productId])
   @@index([variantId])
   @@map("cart_items")
+}
+
+model CartItemCustomizationImage {
+  id         String   @id @default(uuid())
+  cartItemId String
+  cartItem   CartItem @relation(fields: [cartItemId], references: [id], onDelete: Cascade)
+  imageUrl   String
+  publicId   String?
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([cartItemId])
+  @@map("cart_item_customization_images")
 }
 
 model Wishlist {
@@ -333,28 +358,42 @@ model Order {
 }
 
 model OrderItem {
-  id                String          @id @default(uuid())
-  orderId           String
-  order             Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId         String
-  product           Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
-  variantId         String?
-  variant           ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
-  productTitle      String
-  skuSnapshot       String?
-  selectedColour    String?
-  selectedWattage   String?
-  customizationText String?
-  price             Decimal
-  quantity          Int             @default(1)
-  subtotal          Decimal?
-  total             Decimal
-  imageUrl          String?
-  createdAt         DateTime        @default(now())
+  id                  String                         @id @default(uuid())
+  orderId             String
+  order               Order                          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId           String
+  product             Product                        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variantId           String?
+  variant             ProductVariant?                @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  productTitle        String
+  skuSnapshot         String?
+  selectedColour      String?
+  selectedWattage     String?
+  customizationText   String?
+  customizationImages OrderItemCustomizationImage[]
+  price               Decimal
+  quantity            Int                            @default(1)
+  subtotal            Decimal?
+  total               Decimal
+  imageUrl            String?
+  createdAt           DateTime                       @default(now())
 
   @@index([orderId])
   @@index([productId])
   @@map("order_items")
+}
+
+model OrderItemCustomizationImage {
+  id          String    @id @default(uuid())
+  orderItemId String
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  imageUrl    String
+  publicId    String?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  @@index([orderItemId])
+  @@map("order_item_customization_images")
 }
 
 model Payment {
@@ -647,4 +686,84 @@ model EmailVerificationOTP {
 
   @@index([email])
   @@map("email_verification_otps")
+}
+
+model ConsentRecord {
+  id             String    @id @default(uuid())
+  userId         String?
+  user           User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email          String?
+  purpose        String
+  status         String    @default("GRANTED")
+  noticeVersion  String    @default("v1.0")
+  consentVersion String    @default("v1.0")
+  consentedAt    DateTime  @default(now())
+  withdrawnAt    DateTime?
+  source         String    @default("WEB_APP")
+  consentText    String?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([email])
+  @@map("consent_records")
+}
+
+model CustomerUpload {
+  id               String    @id @default(uuid())
+  userId           String?
+  user             User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orderId          String?
+  cartItemId       String?
+  fileUrl          String
+  publicId         String?
+  originalFilename String
+  mimeType         String
+  fileSize         Int
+  purpose          String    @default("LITHOPHANE_PERSONALIZATION")
+  createdAt        DateTime  @default(now())
+  expiresAt        DateTime?
+  deletedAt        DateTime?
+
+  @@index([userId])
+  @@index([orderId])
+  @@map("customer_uploads")
+}
+
+model PrivacyRequest {
+  id          String    @id @default(uuid())
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email       String
+  name        String?
+  requestType String
+  description String
+  status      String    @default("PENDING")
+  adminNotes  String?
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([email])
+  @@map("privacy_requests")
+}
+
+model SecurityEvent {
+  id          String   @id @default(uuid())
+  eventType   String
+  severity    String   @default("LOW")
+  description String
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  ipAddress   String?
+  userAgent   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([eventType])
+  @@map("security_events")
 }

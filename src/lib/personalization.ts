@@ -22,7 +22,5 @@ export function isNameKeychainProduct(product: any) {
 
 export function isLithophaneProduct(product: any) {
   if (!product) return false;
-  if (product.requiresImageUpload === true) return true;
-  const target = `${product.id || ''} ${product.slug || ''} ${product.title || ''} ${product.name || ''}`.toLowerCase();
-  return target.includes('lithophane');
+  return product.requiresImageUpload === true;
 }
