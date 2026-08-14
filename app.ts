@@ -5225,24 +5225,27 @@ const formatOrder = (o: any) => {
 
   const items = (o.items || []).map((it: any) => {
     const p = it.product || {};
+    const v = it.variant || {};
     const price = Number(it.price ?? p.price ?? 0);
     const qty = Number(it.quantity ?? 1);
     const itemTot = Number(it.totalPrice ?? it.total ?? it.subtotal ?? (price * qty));
-    const img = it.imageUrl || it.productImage || p.imageUrl || (p.images && p.images[0]?.url) || '';
+    const img = it.imageUrl || (p.images && p.images[0]?.url) || p.imageUrl || '';
     const title = it.productTitle || p.name || p.title || 'Product';
     return {
       ...it,
-      variantId: it.variantId || null,
-      skuSnapshot: it.skuSnapshot || it.variant?.sku || p.sku || '',
-      selectedColour: it.selectedColour || it.variant?.colour || (it.variant?.attributes as any)?.colour || null,
-      selectedWattage: it.selectedWattage || it.variant?.wattage || (it.variant?.attributes as any)?.wattage || null,
+      variantId: it.variantId || v.id || null,
+      skuSnapshot: it.skuSnapshot || v.sku || p.sku || '',
+      selectedColour: it.selectedColour || v.colour || (v.attributes as any)?.colour || null,
+      selectedWattage: it.selectedWattage || v.wattage || (v.attributes as any)?.wattage || null,
       productTitle: title,
       productImage: img,
       imageUrl: img,
       price,
       quantity: qty,
       totalPrice: itemTot,
-      total: itemTot
+      total: itemTot,
+      customizationText: it.customizationText || null,
+      customizationImages: it.customizationImages || []
     };
   });
 
@@ -5274,61 +5277,90 @@ const formatOrder = (o: any) => {
     customerName: addr.fullName || o.user?.name || 'Customer',
     customerEmail: addr.email || o.user?.email || '',
     customerPhone: addr.phone || o.user?.phone || '',
-    paymentId: o.razorpayPaymentId || o.paymentId || null,
-    razorpayPaymentId: o.razorpayPaymentId || o.paymentId || null,
-    razorpayOrderId: o.razorpayOrderId || null
+    paymentId: o.razorpayPaymentId || o.payment?.razorpayPaymentId || o.paymentId || null,
+    razorpayPaymentId: o.razorpayPaymentId || o.payment?.razorpayPaymentId || o.paymentId || null,
+    razorpayOrderId: o.razorpayOrderId || o.payment?.razorpayOrderId || null
   };
 };
 
 app.get('/api/orders', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
-  const userId = req.user.id;
-  const userEmail = req.user.email;
-  const isAdmin = req.user.role === 'ADMIN' ||
+  const userId = req.user?.id;
+  const userEmail = req.user?.email;
+  const adminQueryParam = req.query.admin === 'true';
+  const isAdmin = req.user?.role === 'ADMIN' ||
     req.headers['x-admin-bypass'] === 'true' ||
-    req.query.admin === 'true' ||
+    adminQueryParam ||
     (req.headers['x-user-email'] && String(req.headers['x-user-email']).includes('admin'));
   const includePending = req.query.includePending === 'true';
+
+  console.log(`[GET /api/orders] Request received. admin=${adminQueryParam}, userId=${userId}, userEmail=${userEmail}, isAdmin=${isAdmin}`);
 
   try {
     const whereClause: any = {};
     if (!isAdmin) {
-      const orConditions: any[] = [{ userId: userId }];
+      const orConditions: any[] = [];
+      if (userId) {
+        orConditions.push({ userId: userId });
+      }
       if (userEmail) {
         orConditions.push({ user: { email: { equals: userEmail, mode: 'insensitive' } } });
       }
-      whereClause.OR = orConditions;
-    } else if (req.query.userId) {
-      whereClause.userId = String(req.query.userId);
-    }
+      if (orConditions.length > 0) {
+        whereClause.OR = orConditions;
+      }
 
-    if (!includePending) {
-      whereClause.AND = [
-        {
-          OR: [
-            { paymentMethod: { in: ['COD', 'CASH_ON_DELIVERY'] } },
-            { paymentStatus: { in: ['PAID', 'COD', 'SUCCESS', 'CAPTURED', 'REFUNDED'] } },
-            { status: { in: ['CONFIRMED', 'PROCESSING', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED', 'REFUNDED'] } }
-          ]
+      if (!includePending) {
+        whereClause.AND = [
+          {
+            OR: [
+              { paymentMethod: { in: ['COD', 'CASH_ON_DELIVERY'] } },
+              { paymentStatus: { in: ['PAID', 'COD', 'REFUNDED'] } },
+              { status: { in: ['CONFIRMED', 'PROCESSING', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED', 'REFUNDED'] } }
+            ]
+          }
+        ];
+      }
+    } else {
+      if (req.query.userId) {
+        whereClause.userId = String(req.query.userId);
+      }
+      if (req.query.status) {
+        const queryStatus = String(req.query.status).toUpperCase();
+        if (['PENDING', 'PROCESSING', 'CONFIRMED', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED', 'REFUNDED'].includes(queryStatus)) {
+          whereClause.status = queryStatus;
         }
-      ];
+      }
     }
 
+    console.log('[GET /api/orders] Prisma query start...');
     const rawOrders = await prisma.order.findMany({
       where: whereClause,
       include: {
-        items: { include: { product: true } },
+        items: {
+          include: {
+            product: { include: { images: true } },
+            variant: true,
+            customizationImages: true
+          }
+        },
         user: true,
-        shipment: { include: { statusHistory: true } }
+        shipment: { include: { statusHistory: true } },
+        payment: true,
+        coupon: true
       },
       orderBy: { createdAt: 'desc' }
     });
 
+    console.log(`[GET /api/orders] Prisma query completion. Orders count: ${rawOrders.length}`);
+    console.log('[GET /api/orders] Formatter start...');
     const orders = rawOrders.map(formatOrder);
+    console.log('[GET /api/orders] Formatter completion.');
 
     return res.json(orders);
-  } catch (err: any) {
-    console.error('Failed to fetch orders:', err);
-    return res.status(500).json({ error: 'Failed to fetch orders' });
+  } catch (error: any) {
+    console.error('[GET /api/orders] FAILED');
+    console.error(error);
+    return res.status(500).json({ error: 'Failed to load orders' });
   }
 });
 
@@ -5345,9 +5377,17 @@ app.get('/api/orders/:id', requireAuthMiddleware, async (req: AuthenticatedReque
         ]
       },
       include: {
-        items: { include: { product: true } },
+        items: {
+          include: {
+            product: { include: { images: true } },
+            variant: true,
+            customizationImages: true
+          }
+        },
         user: true,
-        shipment: { include: { statusHistory: true } }
+        shipment: { include: { statusHistory: true } },
+        payment: true,
+        coupon: true
       }
     });
 

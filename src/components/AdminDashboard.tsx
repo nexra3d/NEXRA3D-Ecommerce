@@ -82,7 +82,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [shipmentFilterProvider, setShipmentFilterProvider] = useState<string>('ALL');
   const [shipmentSearchQuery, setShipmentSearchQuery] = useState<string>('');
   const [orderFulfillmentFilter, setOrderFulfillmentFilter] = useState<'ALL' | 'PICKUP' | 'DELIVERY'>('ALL');
-  const [orderStatusFilter, setOrderStatusFilter] = useState<'ALL' | 'PENDING' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED'>('ALL');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'ALL' | 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED'>('ALL');
 
   // Cancel Order Modal State
   const [cancelOrderModal, setCancelOrderModal] = useState<{
@@ -1471,8 +1471,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const countAllOrders = adminOrders.length;
   const countPendingOrders = adminOrders.filter((o) => (o.orderStatus || o.status) === 'PENDING').length;
-  const countProcessingOrders = adminOrders.filter((o) => ['PROCESSING', 'CONFIRMED'].includes(o.orderStatus || o.status)).length;
-  const countShippedOrders = adminOrders.filter((o) => ['SHIPPED', 'OUT_FOR_DELIVERY'].includes(o.orderStatus || o.status)).length;
+  const countConfirmedOrders = adminOrders.filter((o) => (o.orderStatus || o.status) === 'CONFIRMED').length;
+  const countProcessingOrders = adminOrders.filter((o) => (o.orderStatus || o.status) === 'PROCESSING').length;
+  const countShippedOrders = adminOrders.filter((o) => ['SHIPPED', 'OUT_FOR_DELIVERY', 'READY_FOR_PICKUP'].includes(o.orderStatus || o.status)).length;
   const countDeliveredOrders = adminOrders.filter((o) => (o.orderStatus || o.status) === 'DELIVERED').length;
   const countCancelledOrders = adminOrders.filter((o) => (o.orderStatus || o.status) === 'CANCELLED').length;
 
@@ -1482,8 +1483,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     const st = (ord.orderStatus || ord.status || 'PENDING') as string;
     if (orderStatusFilter === 'PENDING') return st === 'PENDING';
-    if (orderStatusFilter === 'PROCESSING') return st === 'PROCESSING' || st === 'CONFIRMED';
-    if (orderStatusFilter === 'SHIPPED') return st === 'SHIPPED' || st === 'OUT_FOR_DELIVERY';
+    if (orderStatusFilter === 'CONFIRMED') return st === 'CONFIRMED';
+    if (orderStatusFilter === 'PROCESSING') return st === 'PROCESSING';
+    if (orderStatusFilter === 'SHIPPED') return ['SHIPPED', 'OUT_FOR_DELIVERY', 'READY_FOR_PICKUP'].includes(st);
     if (orderStatusFilter === 'DELIVERED') return st === 'DELIVERED';
     if (orderStatusFilter === 'CANCELLED') return st === 'CANCELLED';
     return true;
@@ -2882,45 +2884,128 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* TAB 4: ORDERS MANAGEMENT */}
           {activeTab === 'orders' && (
             <div className="space-y-4 text-xs">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                <h3 className="text-sm font-bold text-slate-200">Customer Orders Control</h3>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <h3 className="text-sm font-bold text-slate-200">Customer Orders Control</h3>
 
-                {/* Fulfillment Filter Pills */}
-                <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                  {/* Fulfillment Filter Pills */}
+                  <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setOrderFulfillmentFilter('ALL')}
+                      className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                        orderFulfillmentFilter === 'ALL'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      All Orders ({adminOrders.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOrderFulfillmentFilter('PICKUP')}
+                      className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1 ${
+                        orderFulfillmentFilter === 'PICKUP'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-emerald-400/80 hover:text-emerald-300'
+                      }`}
+                    >
+                      <Building2 className="w-3 h-3" />
+                      <span>Store Pickup ({adminOrders.filter(checkIsStorePickup).length})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOrderFulfillmentFilter('DELIVERY')}
+                      className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1 ${
+                        orderFulfillmentFilter === 'DELIVERY'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-indigo-400/80 hover:text-indigo-300'
+                      }`}
+                    >
+                      <Truck className="w-3 h-3" />
+                      <span>Home Delivery ({adminOrders.filter(o => !checkIsStorePickup(o)).length})</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Status Filter Pills */}
+                <div className="flex flex-wrap items-center gap-1.5 bg-slate-950/80 p-1.5 rounded-xl border border-slate-800/80">
                   <button
                     type="button"
-                    onClick={() => setOrderFulfillmentFilter('ALL')}
+                    onClick={() => setOrderStatusFilter('ALL')}
                     className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
-                      orderFulfillmentFilter === 'ALL'
+                      orderStatusFilter === 'ALL'
                         ? 'bg-indigo-600 text-white shadow-xs'
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    All Orders ({adminOrders.length})
+                    All ({countAllOrders})
                   </button>
                   <button
                     type="button"
-                    onClick={() => setOrderFulfillmentFilter('PICKUP')}
-                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1 ${
-                      orderFulfillmentFilter === 'PICKUP'
+                    onClick={() => setOrderStatusFilter('PENDING')}
+                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                      orderStatusFilter === 'PENDING'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'text-amber-400/80 hover:text-amber-300'
+                    }`}
+                  >
+                    Pending ({countPendingOrders})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderStatusFilter('CONFIRMED')}
+                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                      orderStatusFilter === 'CONFIRMED'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-blue-400/80 hover:text-blue-300'
+                    }`}
+                  >
+                    Confirmed ({countConfirmedOrders})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderStatusFilter('PROCESSING')}
+                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                      orderStatusFilter === 'PROCESSING'
+                        ? 'bg-purple-600 text-white shadow-xs'
+                        : 'text-purple-400/80 hover:text-purple-300'
+                    }`}
+                  >
+                    Processing ({countProcessingOrders})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderStatusFilter('SHIPPED')}
+                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                      orderStatusFilter === 'SHIPPED'
+                        ? 'bg-cyan-600 text-white shadow-xs'
+                        : 'text-cyan-400/80 hover:text-cyan-300'
+                    }`}
+                  >
+                    Shipped ({countShippedOrders})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderStatusFilter('DELIVERED')}
+                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                      orderStatusFilter === 'DELIVERED'
                         ? 'bg-emerald-600 text-white shadow-xs'
                         : 'text-emerald-400/80 hover:text-emerald-300'
                     }`}
                   >
-                    <Building2 className="w-3 h-3" />
-                    <span>Store Pickup ({adminOrders.filter(checkIsStorePickup).length})</span>
+                    Delivered ({countDeliveredOrders})
                   </button>
                   <button
                     type="button"
-                    onClick={() => setOrderFulfillmentFilter('DELIVERY')}
-                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1 ${
-                      orderFulfillmentFilter === 'DELIVERY'
-                        ? 'bg-indigo-600 text-white shadow-xs'
-                        : 'text-indigo-400/80 hover:text-indigo-300'
+                    onClick={() => setOrderStatusFilter('CANCELLED')}
+                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                      orderStatusFilter === 'CANCELLED'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'text-rose-400/80 hover:text-rose-300'
                     }`}
                   >
-                    <Truck className="w-3 h-3" />
-                    <span>Home Delivery ({adminOrders.filter(o => !checkIsStorePickup(o)).length})</span>
+                    Cancelled ({countCancelledOrders})
                   </button>
                 </div>
               </div>
@@ -2976,10 +3061,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               className="bg-slate-900 border border-slate-700 text-indigo-400 font-bold text-xs rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer"
                             >
                               <option value="PENDING">PENDING</option>
+                              <option value="CONFIRMED">CONFIRMED</option>
                               <option value="PROCESSING">PROCESSING</option>
                               <option value="SHIPPED">SHIPPED (Ready for Pickup)</option>
                               <option value="OUT_FOR_DELIVERY">OUT_FOR_DELIVERY</option>
                               <option value="DELIVERED">DELIVERED (Collected)</option>
+                              <option value="CANCELLED">CANCELLED</option>
                             </select>
                           </div>
                         </div>
@@ -3045,6 +3132,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </span>
 
                           <div className="flex items-center gap-1.5">
+                            {ord.orderStatus !== 'CANCELLED' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCancelOrderModal({
+                                    isOpen: true,
+                                    order: ord,
+                                    reason: '',
+                                    isSubmitting: false,
+                                    error: null
+                                  });
+                                }}
+                                className="font-bold text-[11px] px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer transition-colors bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 hover:text-white"
+                                title="Cancel Order and Restore Stock"
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                                <span>Cancel Order</span>
+                              </button>
+                            )}
+
                             {isPickup && (
                               <button
                                 type="button"
