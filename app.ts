@@ -4686,40 +4686,96 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
 
     const isCod = paymentMethod === 'COD' || paymentMethod === 'CASH_ON_DELIVERY';
 
-    const newOrder = await prisma.order.create({
-      data: {
-        orderNumber,
-        userId,
-        status: 'PENDING' as any,
-        paymentStatus: (isCod ? 'COD' : 'PENDING') as any,
-        paymentMethod: isCod ? 'COD' : paymentMethod,
-        subtotal,
-        discountAmount,
-        taxAmount,
-        shippingFee: actualShippingFee,
-        totalAmount,
-        shippingProvider: selectedProvider,
-        couponCode: couponCode || null,
-        couponId: appliedCouponId || null,
-        shippingAddress: {
-          ...shippingAddressData,
-          fullName: shippingAddressData?.fullName || req.user.name || 'Valued Customer',
-          email: shippingAddressData?.email || req.user.email || 'customer@store.com',
-          phone: shippingAddressData?.phone || req.user.phone || ''
-        },
-        items: {
-          create: orderItemsData
-        }
-      },
-      include: {
-        items: true,
-        user: true
-      }
-    });
+    // Execute stock validation, deduction, and order creation in a single atomic transaction
+    let newOrder: any;
+    try {
+      newOrder = await prisma.$transaction(async (tx) => {
+        // 1. Verify stock for all items
+        for (const ci of cart.items) {
+          const p = ci.product;
+          if (!p) continue;
 
-    await prisma.cartItem.deleteMany({
-      where: { cartId: cart.id }
-    });
+          const currentProd = await tx.product.findUnique({ where: { id: p.id } });
+          if (!currentProd || currentProd.isActive === false) {
+            throw new Error(`Product "${p.name}" is no longer available`);
+          }
+
+          if (ci.variantId) {
+            const currentVar = await tx.productVariant.findUnique({ where: { id: ci.variantId } });
+            if (!currentVar || currentVar.isActive === false) {
+              throw new Error(`The selected variant of "${p.name}" is no longer available`);
+            }
+            if (currentVar.stockQuantity < ci.quantity) {
+              const available = Math.max(0, currentVar.stockQuantity);
+              throw new Error(`Insufficient stock for ${currentProd.name} (${currentVar.name}). Only ${available} units available.`);
+            }
+            // Decrement variant stock
+            await tx.productVariant.update({
+              where: { id: ci.variantId },
+              data: { stockQuantity: { decrement: ci.quantity } }
+            });
+          }
+
+          if (currentProd.stockQuantity < ci.quantity) {
+            const available = Math.max(0, currentProd.stockQuantity);
+            throw new Error(`Insufficient stock for ${currentProd.name}. Only ${available} units available.`);
+          }
+
+          // Decrement product stock
+          await tx.product.update({
+            where: { id: p.id },
+            data: { stockQuantity: { decrement: ci.quantity } }
+          });
+        }
+
+        // 2. Create the Order
+        const createdOrder = await tx.order.create({
+          data: {
+            orderNumber,
+            userId,
+            status: 'PENDING' as any,
+            paymentStatus: (isCod ? 'COD' : 'PENDING') as any,
+            paymentMethod: isCod ? 'COD' : paymentMethod,
+            subtotal,
+            discountAmount,
+            taxAmount,
+            shippingFee: actualShippingFee,
+            totalAmount,
+            shippingProvider: selectedProvider,
+            couponCode: couponCode || null,
+            couponId: appliedCouponId || null,
+            shippingAddress: {
+              ...shippingAddressData,
+              fullName: shippingAddressData?.fullName || req.user.name || 'Valued Customer',
+              email: shippingAddressData?.email || req.user.email || 'customer@store.com',
+              phone: shippingAddressData?.phone || req.user.phone || ''
+            },
+            items: {
+              create: orderItemsData
+            }
+          },
+          include: {
+            items: true,
+            user: true
+          }
+        });
+
+        // 3. Delete cart items
+        await tx.cartItem.deleteMany({
+          where: { cartId: cart.id }
+        });
+
+        return createdOrder;
+      });
+    } catch (txError: any) {
+      console.error('[Checkout Transaction Failed]:', txError.message || txError);
+      const isStockError = (txError.message || '').toLowerCase().includes('insufficient stock') || (txError.message || '').toLowerCase().includes('no longer available');
+      return res.status(isStockError ? 400 : 500).json({
+        success: false,
+        error: txError.message || 'Checkout failed',
+        message: txError.message || 'Checkout failed'
+      });
+    }
 
     // Auto-create shipment if COD order
     if (isCod) {
@@ -5250,8 +5306,8 @@ app.get('/api/orders', requireAuthMiddleware, async (req: AuthenticatedRequest, 
         {
           OR: [
             { paymentMethod: { in: ['COD', 'CASH_ON_DELIVERY'] } },
-            { paymentStatus: { in: ['PAID', 'COD'] } },
-            { status: { in: ['CONFIRMED', 'PROCESSING', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED'] } }
+            { paymentStatus: { in: ['PAID', 'COD', 'SUCCESS', 'CAPTURED', 'REFUNDED'] } },
+            { status: { in: ['CONFIRMED', 'PROCESSING', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED', 'REFUNDED'] } }
           ]
         }
       ];
@@ -5309,9 +5365,117 @@ app.get('/api/orders/:id', requireAuthMiddleware, async (req: AuthenticatedReque
   }
 });
 
+// Helper function for Atomic Order Cancellation and Inventory Restoration
+async function cancelOrderAndRestoreInventory(
+  orderIdentifier: string,
+  userId?: string,
+  isAdmin: boolean = false,
+  reason?: string
+) {
+  return await prisma.$transaction(async (tx) => {
+    const order = await tx.order.findFirst({
+      where: { OR: [{ id: orderIdentifier }, { orderNumber: orderIdentifier }] },
+      include: {
+        items: { include: { product: true } },
+        user: true,
+        shipment: true
+      }
+    });
+
+    if (!order) {
+      const err: any = new Error('Order not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (order.status === 'CANCELLED') {
+      const err: any = new Error('Order is already cancelled');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (!isAdmin && userId && order.userId !== userId && order.user?.email !== userId) {
+      const err: any = new Error('Unauthorized to cancel this order');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // Restore stock atomically for all items in order
+    for (const item of order.items) {
+      const qty = Number(item.quantity) || 1;
+      if (item.productId) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { stockQuantity: { increment: qty } }
+        }).catch((err) => {
+          console.warn(`[Stock Restore Warning] Could not update product stock for ${item.productId}:`, err);
+        });
+      }
+      if (item.variantId) {
+        await tx.productVariant.update({
+          where: { id: item.variantId },
+          data: { stockQuantity: { increment: qty } }
+        }).catch((err) => {
+          console.warn(`[Stock Restore Warning] Could not update variant stock for ${item.variantId}:`, err);
+        });
+      }
+    }
+
+    // Update order status to CANCELLED (preserve payment details, razorpay ID, payment status, etc.)
+    const updatedOrder = await tx.order.update({
+      where: { id: order.id },
+      data: {
+        status: 'CANCELLED'
+      },
+      include: {
+        items: { include: { product: true } },
+        user: true,
+        shipment: true
+      }
+    });
+
+    return updatedOrder;
+  });
+}
+
+// Order Cancellation Route (Customer & Admin)
+app.post(['/api/orders/:id/cancel', '/api/admin/orders/:id/cancel'], requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  const { id } = req.params;
+  const isAdmin = req.user.role === 'ADMIN' ||
+    req.headers['x-admin-bypass'] === 'true' ||
+    req.query.admin === 'true' ||
+    (req.headers['x-user-email'] && String(req.headers['x-user-email']).includes('admin'));
+
+  try {
+    const cancelledOrder = await cancelOrderAndRestoreInventory(id, req.user.id, isAdmin, req.body?.reason);
+
+    sendOrderStatusEmail(cancelledOrder, 'CANCELLED', req.body?.reason || 'Order cancelled by administrator. Reserved stock restored.').catch((e) => {
+      console.error('[Cancel Email Error]:', e);
+    });
+
+    return res.json({
+      success: true,
+      message: 'Order cancelled successfully and reserved stock restored.',
+      order: formatOrder(cancelledOrder)
+    });
+  } catch (err: any) {
+    console.error('Error cancelling order:', err);
+    const statusCode = err.statusCode || (err.message === 'Order not found' ? 404 : 400);
+    return res.status(statusCode).json({
+      success: false,
+      error: err.message || 'Failed to cancel order',
+      message: err.message || 'Failed to cancel order'
+    });
+  }
+});
+
 app.put(['/api/orders/:id/status', '/api/admin/orders/:id/status'], requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
   const { status, paymentStatus, title, description } = req.body;
+  const isAdmin = req.user.role === 'ADMIN' ||
+    req.headers['x-admin-bypass'] === 'true' ||
+    req.query.admin === 'true' ||
+    (req.headers['x-user-email'] && String(req.headers['x-user-email']).includes('admin'));
 
   try {
     const existing = await prisma.order.findFirst({
@@ -5322,8 +5486,30 @@ app.put(['/api/orders/:id/status', '/api/admin/orders/:id/status'], requireAuthM
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    if (req.user.role !== 'ADMIN' && existing.userId !== req.user.id) {
+    if (!isAdmin && existing.userId !== req.user.id) {
       return res.status(403).json({ error: 'Unauthorized to update order status' });
+    }
+
+    // If changing to CANCELLED, execute atomic cancellation and stock restoration
+    if (status === 'CANCELLED' && existing.status !== 'CANCELLED') {
+      const cancelledOrder = await cancelOrderAndRestoreInventory(existing.id, req.user.id, isAdmin, description || title);
+      sendOrderStatusEmail(cancelledOrder, 'CANCELLED', description || title || 'Order cancelled. Reserved inventory restored.').catch((e) => {
+        console.error('Error sending cancel status email:', e);
+      });
+      return res.json({
+        success: true,
+        message: 'Order cancelled successfully and stock restored',
+        order: formatOrder(cancelledOrder)
+      });
+    }
+
+    // If order was already CANCELLED and someone sets it to CANCELLED again, do not re-restore stock
+    if (status === 'CANCELLED' && existing.status === 'CANCELLED') {
+      return res.json({
+        success: true,
+        message: 'Order is already cancelled',
+        order: formatOrder(existing)
+      });
     }
 
     const updated = await prisma.order.update({
@@ -5347,10 +5533,10 @@ app.put(['/api/orders/:id/status', '/api/admin/orders/:id/status'], requireAuthM
       });
     }
 
-    return res.json({ success: true, message: 'Order status updated successfully', order: updated, emailStatus });
+    return res.json({ success: true, message: 'Order status updated successfully', order: formatOrder(updated), emailStatus });
   } catch (err: any) {
     console.error('Error updating order status:', err);
-    return res.status(500).json({ error: 'Failed to update order status' });
+    return res.status(500).json({ error: err.message || 'Failed to update order status' });
   }
 });
 

@@ -63,8 +63,8 @@ export const Footer: React.FC<FooterProps> = ({
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="font-bold text-white text-sm">OEM Certified Materials</h4>
-              <p className="text-slate-400 text-[11px] mt-0.5">Directly sourced resins, filaments & 3D printers</p>
+              <h4 className="font-bold text-white text-sm">Premium Craftsmanship</h4>
+              <p className="text-slate-400 text-[11px] mt-0.5">Hand-finished custom 3D printed creations</p>
             </div>
           </div>
         </div>
@@ -75,7 +75,7 @@ export const Footer: React.FC<FooterProps> = ({
           <div className="md:col-span-2 space-y-4">
             <NexraLogo variant="dark" size="md" />
             <p className="text-slate-400 leading-relaxed max-w-sm">
-              NEXRA 3D is India's premier platform for 3D printed consumer products, customized gifts, idols, home decor, and industrial additive manufacturing services.
+              NEXRA 3D is India's premier platform for custom 3D printed products, personalized photo lithophane lamps, divine idols, anime collectibles, and bespoke gifts.
             </p>
             <div className="space-y-1.5 text-slate-400">
               <div className="flex items-start space-x-2">
@@ -166,12 +166,12 @@ export const Footer: React.FC<FooterProps> = ({
               </li>
               <li>
                 <button onClick={onNavigateShop} className="hover:text-white transition-colors cursor-pointer">
-                  E-Commerce Shop
+                  Shop Products
                 </button>
               </li>
               <li>
                 <button onClick={onNavigateServices} className="hover:text-white transition-colors cursor-pointer">
-                  Additive Services
+                  Custom Services
                 </button>
               </li>
               <li>
@@ -194,31 +194,31 @@ export const Footer: React.FC<FooterProps> = ({
 
           {/* Customer Care & Quote CTA */}
           <div className="space-y-3">
-            <h4 className="font-extrabold text-white text-sm uppercase tracking-wider">On-Demand Manufacturing</h4>
+            <h4 className="font-extrabold text-white text-sm uppercase tracking-wider">Custom Creations</h4>
             <ul className="space-y-2 text-slate-400">
               <li>
                 <button onClick={onRequestQuoteClick} className="text-cyan-400 font-bold hover:underline cursor-pointer flex items-center gap-1">
-                  <Send className="w-3 h-3" /> Request Instant CAD Quote
+                  <Send className="w-3 h-3" /> Custom 3D Printing Inquiry
                 </button>
               </li>
               <li>
-                <button onClick={onNavigateServices} className="hover:text-white transition-colors cursor-pointer text-left block">
-                  Precision Tooling & Fixtures
+                <button onClick={onNavigateShop} className="hover:text-white transition-colors cursor-pointer text-left block">
+                  Lithophane Moon Lamps
                 </button>
               </li>
               <li>
-                <button onClick={onNavigateServices} className="hover:text-white transition-colors cursor-pointer text-left block">
-                  Aerospace Carbon Fiber Jigs
+                <button onClick={onNavigateShop} className="hover:text-white transition-colors cursor-pointer text-left block">
+                  Spiritual & Temple Idols
                 </button>
               </li>
               <li>
-                <button onClick={onNavigateServices} className="hover:text-white transition-colors cursor-pointer text-left block">
-                  Architectural BIM Physical Models
+                <button onClick={onNavigateShop} className="hover:text-white transition-colors cursor-pointer text-left block">
+                  Personalized Photo Frames
                 </button>
               </li>
               <li>
-                <button onClick={onNavigateServices} className="hover:text-white transition-colors cursor-pointer text-left block">
-                  Castable Jewelry Prototyping
+                <button onClick={onNavigateShop} className="hover:text-white transition-colors cursor-pointer text-left block">
+                  Custom Keychains & Anime Figures
                 </button>
               </li>
             </ul>
@@ -226,12 +226,12 @@ export const Footer: React.FC<FooterProps> = ({
 
           {/* Newsletter Box */}
           <div className="space-y-3">
-            <h4 className="font-extrabold text-white text-sm uppercase tracking-wider">Engineering Updates</h4>
-            <p className="text-slate-400">Subscribe for technical whitepapers, resin guides, and new product dispatches.</p>
-            <form onSubmit={(e) => { e.preventDefault(); alert('Subscribed to NEXRA 3D engineering updates!'); }} className="space-y-2">
+            <h4 className="font-extrabold text-white text-sm uppercase tracking-wider">Stay Connected</h4>
+            <p className="text-slate-400">Subscribe for exclusive offers, new customized designs, and holiday specials.</p>
+            <form onSubmit={(e) => { e.preventDefault(); alert('Subscribed to NEXRA 3D updates!'); }} className="space-y-2">
               <input
                 type="email"
-                placeholder="Enter work email address"
+                placeholder="Enter your email address"
                 required
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-hidden focus:border-cyan-500"
               />

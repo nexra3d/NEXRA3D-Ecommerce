@@ -14,6 +14,8 @@ import {
   Edit,
   CheckCircle2,
   AlertTriangle,
+  AlertCircle,
+  XCircle,
   Download,
   Search,
   Filter,
@@ -80,6 +82,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [shipmentFilterProvider, setShipmentFilterProvider] = useState<string>('ALL');
   const [shipmentSearchQuery, setShipmentSearchQuery] = useState<string>('');
   const [orderFulfillmentFilter, setOrderFulfillmentFilter] = useState<'ALL' | 'PICKUP' | 'DELIVERY'>('ALL');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'ALL' | 'PENDING' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED'>('ALL');
+
+  // Cancel Order Modal State
+  const [cancelOrderModal, setCancelOrderModal] = useState<{
+    isOpen: boolean;
+    order: Order | null;
+    reason: string;
+    isSubmitting: boolean;
+    error: string | null;
+  }>({
+    isOpen: false,
+    order: null,
+    reason: '',
+    isSubmitting: false,
+    error: null
+  });
 
   // Create Shipment Modal
   const [showCreateShipmentModal, setShowCreateShipmentModal] = useState(false);
@@ -1347,6 +1365,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: OrderStatus) => {
+    if (newStatus === 'CANCELLED') {
+      const targetOrd = adminOrders.find((o) => (o.id === orderId || o.orderNumber === orderId));
+      if (targetOrd) {
+        setCancelOrderModal({
+          isOpen: true,
+          order: targetOrd,
+          reason: '',
+          isSubmitting: false,
+          error: null
+        });
+        return;
+      }
+    }
+
     try {
       const res = await fetch(`/api/orders/${orderId}/status`, {
         method: 'PUT',
@@ -1359,10 +1391,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         })
       });
       if (res.ok) {
+        fetchAdminOrders();
         onRefreshData();
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleConfirmCancelOrder = async () => {
+    if (!cancelOrderModal.order) return;
+    setCancelOrderModal((prev) => ({ ...prev, isSubmitting: true, error: null }));
+    try {
+      const orderId = cancelOrderModal.order.id || cancelOrderModal.order.orderNumber;
+      const res = await fetch(`/api/admin/orders/${orderId}/cancel`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({
+          reason: cancelOrderModal.reason || 'Cancelled by admin'
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCancelOrderModal((prev) => ({
+          ...prev,
+          isSubmitting: false,
+          error: data.message || data.error || 'Failed to cancel order'
+        }));
+        return;
+      }
+      setCancelOrderModal({ isOpen: false, order: null, reason: '', isSubmitting: false, error: null });
+      fetchAdminOrders();
+      onRefreshData();
+    } catch (err: any) {
+      setCancelOrderModal((prev) => ({
+        ...prev,
+        isSubmitting: false,
+        error: err.message || 'Network error cancelling order'
+      }));
     }
   };
 
@@ -1402,9 +1469,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     );
   };
 
+  const countAllOrders = adminOrders.length;
+  const countPendingOrders = adminOrders.filter((o) => (o.orderStatus || o.status) === 'PENDING').length;
+  const countProcessingOrders = adminOrders.filter((o) => ['PROCESSING', 'CONFIRMED'].includes(o.orderStatus || o.status)).length;
+  const countShippedOrders = adminOrders.filter((o) => ['SHIPPED', 'OUT_FOR_DELIVERY'].includes(o.orderStatus || o.status)).length;
+  const countDeliveredOrders = adminOrders.filter((o) => (o.orderStatus || o.status) === 'DELIVERED').length;
+  const countCancelledOrders = adminOrders.filter((o) => (o.orderStatus || o.status) === 'CANCELLED').length;
+
   const displayOrders = adminOrders.filter((ord) => {
-    if (orderFulfillmentFilter === 'PICKUP') return checkIsStorePickup(ord);
-    if (orderFulfillmentFilter === 'DELIVERY') return !checkIsStorePickup(ord);
+    if (orderFulfillmentFilter === 'PICKUP' && !checkIsStorePickup(ord)) return false;
+    if (orderFulfillmentFilter === 'DELIVERY' && checkIsStorePickup(ord)) return false;
+
+    const st = (ord.orderStatus || ord.status || 'PENDING') as string;
+    if (orderStatusFilter === 'PENDING') return st === 'PENDING';
+    if (orderStatusFilter === 'PROCESSING') return st === 'PROCESSING' || st === 'CONFIRMED';
+    if (orderStatusFilter === 'SHIPPED') return st === 'SHIPPED' || st === 'OUT_FOR_DELIVERY';
+    if (orderStatusFilter === 'DELIVERED') return st === 'DELIVERED';
+    if (orderStatusFilter === 'CANCELLED') return st === 'CANCELLED';
     return true;
   });
   const overviewRevenue = (analytics && typeof analytics.totalRevenue === 'number' && analytics.totalRevenue > 0)
@@ -4191,7 +4272,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <button
                   onClick={() => setShowLabelModal(false)}
-                  className="text-slate-400 hover:text-slate-700 p-1"
+                  className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -4202,7 +4283,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="flex justify-between items-start border-b-2 border-slate-900 pb-3">
                   <div>
                     <h4 className="font-black text-lg text-slate-900 tracking-tight">NEXRA 3D LOGISTICS</h4>
-                    <span className="text-[10px] text-slate-500 font-mono block">ORIGIN: PUNE INDUSTRIAL COMPLEX, MH - 411057</span>
+                    <span className="text-[10px] text-slate-500 font-mono block">ORIGIN: NEXRA 3D HUB, GACHIBOWLI, HYDERABAD - 500032</span>
                   </div>
                   <div className="text-right">
                     <span className="bg-slate-900 text-white text-[10px] font-bold px-2 py-0.5 rounded">EXPRESS</span>
@@ -4244,6 +4325,81 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 >
                   <Printer className="w-4 h-4" />
                   <span>Print Label Now</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: CANCEL ORDER CONFIRMATION */}
+        {cancelOrderModal.isOpen && cancelOrderModal.order && (
+          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-rose-500/40 w-full max-w-md rounded-2xl p-6 text-slate-100 shadow-2xl space-y-4">
+              <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2 text-rose-400">
+                  <AlertCircle className="w-5 h-5" />
+                  <h3 className="font-bold text-base">Cancel Order Confirmation</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCancelOrderModal({ isOpen: false, order: null, reason: '', isSubmitting: false, error: null })}
+                  className="text-slate-400 hover:text-white p-1 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div className="bg-rose-950/40 border border-rose-500/30 rounded-xl p-3.5 space-y-1.5">
+                  <p className="font-bold text-rose-200">
+                    Are you sure you want to cancel order <span className="font-mono text-amber-400 font-bold">{cancelOrderModal.order.orderNumber}</span>?
+                  </p>
+                  <p className="text-slate-300 text-[11px] leading-relaxed">
+                    This action will mark the order as <strong className="text-rose-300">CANCELLED</strong> and <strong className="text-emerald-400">automatically restore the reserved product stock</strong> in the inventory database.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-slate-300 font-medium block">Reason for Cancellation (Optional):</label>
+                  <input
+                    type="text"
+                    value={cancelOrderModal.reason}
+                    onChange={(e) => setCancelOrderModal((prev) => ({ ...prev, reason: e.target.value }))}
+                    placeholder="e.g., Customer requested cancellation, out of stock, etc."
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 text-xs focus:outline-none focus:border-rose-500"
+                  />
+                </div>
+
+                {cancelOrderModal.error && (
+                  <div className="bg-rose-900/50 border border-rose-500 text-rose-200 p-2.5 rounded-xl text-xs">
+                    {cancelOrderModal.error}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setCancelOrderModal({ isOpen: false, order: null, reason: '', isSubmitting: false, error: null })}
+                  disabled={cancelOrderModal.isSubmitting}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl cursor-pointer disabled:opacity-50"
+                >
+                  No, Keep Order
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmCancelOrder}
+                  disabled={cancelOrderModal.isSubmitting}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm"
+                >
+                  {cancelOrderModal.isSubmitting ? (
+                    <span>Cancelling & Restoring Stock...</span>
+                  ) : (
+                    <>
+                      <XCircle className="w-4 h-4" />
+                      <span>Yes, Cancel & Restore Stock</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

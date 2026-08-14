@@ -72,32 +72,32 @@ type ViewType =
 
 const VIEW_METADATA: Record<ViewType, { title: string; description: string }> = {
   home: {
-    title: 'NEXRA 3D | Industrial 3D Printers, Filaments & On-Demand Printing Services',
-    description: 'India’s premier provider of industrial 3D printers, additive manufacturing materials, engineering filaments, SLA resins, and custom CAD on-demand 3D printing services.'
+    title: 'NEXRA 3D | Custom 3D Printed Products, Lithophane Lamps & Personalized Gifts',
+    description: 'India’s premier store for custom 3D printed lithophane moon lamps, personalized keychains, divine idols, anime collectibles, and bespoke gifts.'
   },
   shop: {
-    title: 'Shop 3D Printers, Filaments & Resins | NEXRA 3D',
-    description: 'Browse our complete catalog of industrial 3D printers, engineering filaments, lithophane materials, and 3D printing accessories.'
+    title: 'Shop Custom 3D Printed Products & Gifts | NEXRA 3D',
+    description: 'Browse our complete catalog of personalized lithophane lamps, customized gifts, divine idols, home decor, and anime collectibles.'
   },
   aerospace: {
-    title: 'Aerospace & Defense 3D Printing | NEXRA 3D',
-    description: 'Mission-critical aerospace grade 3D printing, lightweight high-performance polymers, and precision industrial rapid prototyping.'
+    title: 'Custom 3D Printing | NEXRA 3D',
+    description: 'Custom 3D printing, lightweight high-performance polymers, and precision rapid prototyping.'
   },
   services: {
-    title: '3D Printing & Rapid Prototyping Services | NEXRA 3D',
-    description: 'End-to-end additive manufacturing, SLA/FDM on-demand 3D printing, CAD design, reverse engineering, and custom rapid prototyping services.'
+    title: 'Custom 3D Printing & Prototyping Services | NEXRA 3D',
+    description: 'End-to-end 3D printing, custom design personalization, photo lithophane carving, and on-demand rapid prototyping services.'
   },
   'service-detail': {
     title: 'Service Details | NEXRA 3D',
-    description: 'Explore custom engineering and 3D manufacturing solutions tailored for high precision industrial applications.'
+    description: 'Explore custom 3D printing and personalized manufacturing solutions tailored for high precision creations.'
   },
   about: {
     title: 'About Us | NEXRA 3D',
-    description: 'Discover NEXRA 3D (VL Technologies Pvt Ltd) - pioneering industrial additive manufacturing, rapid prototyping, and engineering innovation in India.'
+    description: 'Discover NEXRA 3D - creating handcrafted, precision personalized 3D printed lamps, gifts, and decor across India.'
   },
   contact: {
     title: 'Contact Us | NEXRA 3D',
-    description: 'Get in touch with NEXRA 3D for industrial quotes, technical support, 3D printing inquiries, and enterprise solutions.'
+    description: 'Get in touch with NEXRA 3D for personalized gifts, custom printing orders, and customer support.'
   },
   'privacy-policy': {
     title: 'Privacy Policy | NEXRA 3D',

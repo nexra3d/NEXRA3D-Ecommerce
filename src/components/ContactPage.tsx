@@ -26,23 +26,23 @@ interface ContactPageProps {
 const DEFAULT_FAQS: FAQ[] = [
   {
     id: 'faq-1',
-    question: 'What CAD file formats do you accept for quotation?',
-    answer: 'We accept standard 3D CAD geometry formats including .STL, .STEP (.STP), .IGES (.IGS), .OBJ, .3MF, and native SolidWorks files. For 2D engineering drawings, we support .PDF and .DXF.'
+    question: 'How do I submit photos for custom lithophane moon lamps or frames?',
+    answer: 'You can upload high-resolution JPEG, PNG, or WEBP photos directly on the product customization page during order placement or attach your image reference using the inquiry form.'
   },
   {
     id: 'faq-2',
-    question: 'What is your standard lead time for prototyping orders?',
-    answer: 'Standard lead times for SLA, SLS, and FDM prototyping range from 24 to 48 hours for dispatch across India. Complex post-processing or metallic DMLS parts typically take 3 to 5 business days.'
+    question: 'What is the delivery timeline for custom 3D printed orders?',
+    answer: 'Customized items are typically printed and hand-finished within 24 to 48 hours, followed by express door-to-door delivery across India taking 2 to 4 business days.'
   },
   {
     id: 'faq-3',
-    question: 'Do you sign Non-Disclosure Agreements (NDAs)?',
-    answer: 'Yes, absolutely. We prioritize your intellectual property. You can download our standard mutual NDA or upload your proprietary NDA document before submitting CAD files.'
+    question: 'Can I request custom sizes, colors, or divine idols not listed on the website?',
+    answer: 'Yes! We frequently design and 3D print bespoke sizes, specific Hindu deity idols, custom keychains, and anime figurines upon request. Send us your requirements via this form.'
   },
   {
     id: 'faq-4',
-    question: 'What dimensional tolerances can NEXRA 3D achieve?',
-    answer: 'Our SLA photopolymer printers achieve layer resolutions of 25 to 50 microns with dimensional tolerances of ±0.05mm. SLS nylon parts achieve ±0.1mm tolerances.'
+    question: 'Do you accept corporate bulk orders for customized gifts?',
+    answer: 'Yes, we provide bulk manufacturing with branded packaging and personalized text/logos for corporate gifting, wedding favors, and special celebrations.'
   }
 ];
 
