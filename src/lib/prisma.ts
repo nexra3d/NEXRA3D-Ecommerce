@@ -32,212 +32,10 @@ const isPlaceholderDbUrl =
 
 const hasDatabaseUrl = !isPlaceholderDbUrl;
 
-let dbSchemaEnsured = false;
-let dbSchemaPromise: Promise<void> | null = null;
-
-export function ensureDbSchema() {
-  if (dbSchemaEnsured || !hasDatabaseUrl || !rawPrisma || typeof rawPrisma.$executeRawUnsafe !== 'function') {
-    return Promise.resolve();
-  }
-
-  if (!dbSchemaPromise) {
-    dbSchemaPromise = (async () => {
-      const ddlStatements = [
-        `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "weight" DOUBLE PRECISION;`,
-        `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "length" DOUBLE PRECISION;`,
-        `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "width" DOUBLE PRECISION;`,
-        `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "height" DOUBLE PRECISION;`,
-        `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "requiresCustomization" BOOLEAN NOT NULL DEFAULT false;`,
-        `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "requiresImageUpload" BOOLEAN NOT NULL DEFAULT false;`,
-        `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "minimumImageUploads" INTEGER NOT NULL DEFAULT 1;`,
-        `ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "maximumImageUploads" INTEGER NOT NULL DEFAULT 5;`,
-        `ALTER TABLE "cart_items" ADD COLUMN IF NOT EXISTS "customizationText" TEXT;`,
-        `ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "customizationText" TEXT;`,
-
-        `CREATE TABLE IF NOT EXISTS "cart_item_customization_images" (
-          "id" TEXT NOT NULL,
-          "cartItemId" TEXT NOT NULL,
-          "imageUrl" TEXT NOT NULL,
-          "publicId" TEXT,
-          "sortOrder" INTEGER NOT NULL DEFAULT 0,
-          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          CONSTRAINT "cart_item_customization_images_pkey" PRIMARY KEY ("id")
-        );`,
-
-        `CREATE TABLE IF NOT EXISTS "order_item_customization_images" (
-          "id" TEXT NOT NULL,
-          "orderItemId" TEXT NOT NULL,
-          "imageUrl" TEXT NOT NULL,
-          "publicId" TEXT,
-          "sortOrder" INTEGER NOT NULL DEFAULT 0,
-          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          CONSTRAINT "order_item_customization_images_pkey" PRIMARY KEY ("id")
-        );`,
-
-        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shippingProvider" TEXT;`,
-        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "awbNumber" TEXT;`,
-        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingNumber" TEXT;`,
-        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shipmentId" TEXT;`,
-        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "estimatedDelivery" TIMESTAMP(3);`,
-        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "shipmentStatus" TEXT;`,
-        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "pickupRequested" BOOLEAN DEFAULT false;`,
-        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "labelUrl" TEXT;`,
-        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingUrl" TEXT;`,
-        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "manifestUrl" TEXT;`,
-        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "lastTrackingUpdate" TIMESTAMP(3);`,
-        `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "trackingHistory" JSONB;`,
-
-        `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "colour" TEXT;`,
-        `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "wattage" TEXT;`,
-        `ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "attributes" JSONB;`,
-
-        `ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "skuSnapshot" TEXT;`,
-        `ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "selectedColour" TEXT;`,
-        `ALTER TABLE "order_items" ADD COLUMN IF NOT EXISTS "selectedWattage" TEXT;`,
-
-        `ALTER TABLE "cart_items" ADD COLUMN IF NOT EXISTS "selectedColour" TEXT;`,
-        `ALTER TABLE "cart_items" ADD COLUMN IF NOT EXISTS "selectedWattage" TEXT;`,
-
-        `CREATE TABLE IF NOT EXISTS "product_images" (
-          "id" TEXT NOT NULL,
-          "productId" TEXT NOT NULL,
-          "url" TEXT NOT NULL,
-          "publicId" TEXT,
-          "altText" TEXT,
-          "sortOrder" INTEGER NOT NULL DEFAULT 0,
-          "isPrimary" BOOLEAN NOT NULL DEFAULT false,
-          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          CONSTRAINT "product_images_pkey" PRIMARY KEY ("id")
-        );`,
-
-        `CREATE TABLE IF NOT EXISTS "reviews" (
-          "id" TEXT NOT NULL,
-          "productId" TEXT NOT NULL,
-          "userId" TEXT,
-          "userName" TEXT NOT NULL,
-          "userEmail" TEXT,
-          "rating" INTEGER NOT NULL,
-          "title" TEXT,
-          "comment" TEXT NOT NULL,
-          "verified" BOOLEAN NOT NULL DEFAULT true,
-          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          CONSTRAINT "reviews_pkey" PRIMARY KEY ("id")
-        );`,
-
-        `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "emailVerified" BOOLEAN DEFAULT false;`,
-        `UPDATE "users" SET "emailVerified" = true WHERE "emailVerified" IS NULL;`,
-        `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "marketingOptIn" BOOLEAN DEFAULT false;`,
-        `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "analyticsOptIn" BOOLEAN DEFAULT false;`,
-        `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "isAnonymized" BOOLEAN DEFAULT false;`,
-        `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "anonymizedAt" TIMESTAMP(3);`,
-
-        `CREATE TABLE IF NOT EXISTS "consent_records" (
-          "id" TEXT NOT NULL,
-          "userId" TEXT,
-          "email" TEXT,
-          "purpose" TEXT NOT NULL,
-          "status" TEXT NOT NULL DEFAULT 'GRANTED',
-          "noticeVersion" TEXT NOT NULL DEFAULT 'v1.0',
-          "consentVersion" TEXT NOT NULL DEFAULT 'v1.0',
-          "consentedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          "withdrawnAt" TIMESTAMP(3),
-          "source" TEXT NOT NULL DEFAULT 'WEB_APP',
-          "consentText" TEXT,
-          "ipAddress" TEXT,
-          "userAgent" TEXT,
-          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          CONSTRAINT "consent_records_pkey" PRIMARY KEY ("id")
-        );`,
-
-        `CREATE TABLE IF NOT EXISTS "customer_uploads" (
-          "id" TEXT NOT NULL,
-          "userId" TEXT,
-          "orderId" TEXT,
-          "cartItemId" TEXT,
-          "fileUrl" TEXT NOT NULL,
-          "publicId" TEXT,
-          "originalFilename" TEXT NOT NULL,
-          "mimeType" TEXT NOT NULL,
-          "fileSize" INTEGER NOT NULL,
-          "purpose" TEXT NOT NULL DEFAULT 'LITHOPHANE_PERSONALIZATION',
-          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          "expiresAt" TIMESTAMP(3),
-          "deletedAt" TIMESTAMP(3),
-          CONSTRAINT "customer_uploads_pkey" PRIMARY KEY ("id")
-        );`,
-
-        `CREATE TABLE IF NOT EXISTS "privacy_requests" (
-          "id" TEXT NOT NULL,
-          "userId" TEXT,
-          "email" TEXT NOT NULL,
-          "name" TEXT,
-          "requestType" TEXT NOT NULL,
-          "description" TEXT NOT NULL,
-          "status" TEXT NOT NULL DEFAULT 'PENDING',
-          "adminNotes" TEXT,
-          "resolvedAt" TIMESTAMP(3),
-          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          CONSTRAINT "privacy_requests_pkey" PRIMARY KEY ("id")
-        );`,
-
-        `CREATE TABLE IF NOT EXISTS "security_events" (
-          "id" TEXT NOT NULL,
-          "eventType" TEXT NOT NULL,
-          "severity" TEXT NOT NULL DEFAULT 'LOW',
-          "description" TEXT NOT NULL,
-          "userId" TEXT,
-          "ipAddress" TEXT,
-          "userAgent" TEXT,
-          "metadata" JSONB,
-          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          CONSTRAINT "security_events_pkey" PRIMARY KEY ("id")
-        );`,
-
-        `CREATE TABLE IF NOT EXISTS "email_verification_otps" (
-          "id" TEXT NOT NULL,
-          "email" TEXT NOT NULL,
-          "otpHash" TEXT NOT NULL,
-          "expiresAt" TIMESTAMP(3) NOT NULL,
-          "attempts" INTEGER NOT NULL DEFAULT 0,
-          "usedAt" TIMESTAMP(3),
-          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          CONSTRAINT "email_verification_otps_pkey" PRIMARY KEY ("id")
-        );`,
-
-        `CREATE TABLE IF NOT EXISTS "product_lamp_options" (
-          "id" TEXT NOT NULL,
-          "product_id" TEXT NOT NULL,
-          "option_type" TEXT NOT NULL,
-          "option_value" TEXT NOT NULL,
-          "price_delta" DECIMAL(10,2) NOT NULL DEFAULT 0,
-          "is_active" BOOLEAN NOT NULL DEFAULT true,
-          "sort_order" INTEGER NOT NULL DEFAULT 0,
-          "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          CONSTRAINT "product_lamp_options_pkey" PRIMARY KEY ("id")
-        );`
-      ];
-
-      for (const statement of ddlStatements) {
-        try {
-          await rawPrisma.$executeRawUnsafe(statement);
-        } catch (err: any) {
-          console.warn('[Prisma Schema Sync] Note during DDL statement:', err?.message || err);
-        }
-      }
-      dbSchemaEnsured = true;
-      console.log('[Prisma Schema Sync] Successfully executed DDL statements for PostgreSQL schema.');
-    })().catch((err) => {
-      console.warn('[Prisma Schema Sync] Error during ensureDbSchema:', err);
-      dbSchemaPromise = null;
-    });
-  }
-
-  return dbSchemaPromise;
+// Schema synchronization is safely managed through Prisma migrations.
+// Runtime API requests and serverless cold starts must not execute DDL / ALTER TABLE statements.
+export function ensureDbSchema(): Promise<void> {
+  return Promise.resolve();
 }
 
 function createModelProxy(modelName: string | symbol) {
@@ -259,8 +57,6 @@ function createModelProxy(modelName: string | symbol) {
           }
           return null;
         }
-
-        await ensureDbSchema();
 
         const rawModel = (rawPrisma as any)[modelName];
         if (!rawModel || typeof rawModel[prop] !== 'function') {
@@ -340,7 +136,6 @@ export const prisma = new Proxy(rawPrisma, {
           }
           return null;
         }
-        await ensureDbSchema();
         if (typeof cbOrArray === 'function') {
           return rawPrisma.$transaction(async (rawTx: any) => {
             return cbOrArray(rawTx);

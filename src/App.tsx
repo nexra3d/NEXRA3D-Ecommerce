@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Navbar } from './components/Navbar';
 import { HeroBanner } from './components/HeroBanner';
 import { ProductGrid } from './components/ProductGrid';
@@ -198,11 +198,26 @@ export default function App() {
   const [accountSubSection, setAccountSubSection] = useState<'overview' | 'profile' | 'password' | 'orders' | 'wishlist' | 'addresses' | 'privacy'>('overview');
 
 
+  // Synchronous cache retrieval for instant frame-0 rendering
+  const getInitialCachedProducts = (): Product[] => {
+    try {
+      if (typeof window === 'undefined') return [];
+      const cached = sessionStorage.getItem('nexra_default_products');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
+  };
+
+  const initialProducts = getInitialCachedProducts();
+
   // Global App State
   const [user, setUser] = useState<User | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [allProducts, setAllProducts] = useState<Product[]>(initialProducts);
   const [services, setServices] = useState<Service[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
 
@@ -218,7 +233,39 @@ export default function App() {
   const [emails, setEmails] = useState<EmailNotification[]>([]);
 
   // Loading States
-  const [isProductsLoading, setIsProductsLoading] = useState(true);
+  const [isProductsLoading, setIsProductsLoading] = useState(initialProducts.length === 0);
+
+  // Client-side cache for instant filter switching & revalidation
+  const productCacheRef = useRef<Map<string, { data: Product[]; timestamp: number }>>(new Map());
+
+  // Invalidation function to wipe client caches when product mutations occur
+  const invalidateClientProductCache = useCallback(() => {
+    productCacheRef.current.clear();
+    try {
+      sessionStorage.removeItem('nexra_default_products');
+    } catch {}
+  }, []);
+
+  // Serialization queue for cart mutations to prevent race conditions during rapid clicks
+  const cartMutationQueueRef = useRef<Promise<any>>(Promise.resolve());
+
+  // Resilient mutation queue runner: catches prior errors to avoid stalling subsequent mutations
+  const enqueueCartMutation = useCallback(<T,>(mutationFn: () => Promise<T>): Promise<T> => {
+    return new Promise<T>((resolve, reject) => {
+      cartMutationQueueRef.current = cartMutationQueueRef.current
+        .catch(() => {
+          // Absorb error from earlier rejected task so subsequent user mutations execute normally
+        })
+        .then(async () => {
+          try {
+            const res = await mutationFn();
+            resolve(res);
+          } catch (err) {
+            reject(err);
+          }
+        });
+    });
+  }, []);
 
   // Filter State
   const [filters, setFilters] = useState<ProductFilterState>(() => {
@@ -410,9 +457,12 @@ export default function App() {
   };
 
   // Fetch all products for admin catalog and global store counts
-  const fetchAllProducts = async () => {
+  const fetchAllProducts = async (forceAdmin = false) => {
     try {
-      const data = await safeFetchJson('/api/products?limit=500&includeInactive=true');
+      const url = forceAdmin
+        ? '/api/products?limit=500&includeInactive=true'
+        : '/api/products?limit=500';
+      const data = await safeFetchJson(url);
       if (Array.isArray(data)) {
         setAllProducts(data);
       } else if (data && Array.isArray(data.products)) {
@@ -441,39 +491,35 @@ export default function App() {
     }
   };
 
-  // Central refresh for user-specific data
+  // Central refresh for user-specific data (parallelized)
   const refreshUserData = async () => {
-    await fetchCart();
-    await fetchWishlist();
-    await fetchSavedAddresses();
-    await fetchOrders();
+    await Promise.allSettled([
+      fetchCart(),
+      fetchWishlist(),
+      fetchSavedAddresses(),
+      fetchOrders()
+    ]);
   };
 
-  // Fetch initial data on boot
+  // Fetch initial data on boot (parallelized)
   const fetchData = async () => {
     try {
       await checkSession();
 
-      // 1. Fetch Categories
-      const catData = await safeFetchJson('/api/categories');
-      setCategories(Array.isArray(catData) ? catData : []);
+      // Parallelize independent catalog & reference requests
+      const [catData, srvData, coupData, emlData] = await Promise.all([
+        safeFetchJson('/api/categories'),
+        safeFetchJson('/api/services'),
+        safeFetchJson('/api/coupons'),
+        safeFetchJson('/api/emails')
+      ]);
 
-      // 1a. Fetch All Products
-      await fetchAllProducts();
+      if (Array.isArray(catData)) setCategories(catData);
+      if (Array.isArray(srvData)) setServices(srvData);
+      if (Array.isArray(coupData)) setCoupons(coupData);
+      if (Array.isArray(emlData)) setEmails(emlData);
 
-      // 1b. Fetch Services
-      const srvData = await safeFetchJson('/api/services');
-      setServices(Array.isArray(srvData) ? srvData : []);
-
-      // 2. Fetch Coupons
-      const coupData = await safeFetchJson('/api/coupons');
-      setCoupons(Array.isArray(coupData) ? coupData : []);
-
-      // 3. Fetch Emails
-      const emlData = await safeFetchJson('/api/emails');
-      setEmails(Array.isArray(emlData) ? emlData : []);
-
-      // 4. Fetch User Data
+      // Refresh user-specific data
       await refreshUserData();
     } catch (err) {
       console.error('Error initializing app state:', err);
@@ -515,41 +561,67 @@ export default function App() {
     setCurrentView('admin');
     if (user?.role === 'ADMIN') {
       setIsAdminOpen(true);
+      fetchAllProducts(true);
     } else {
       setIsAdminOpen(false);
     }
   };
 
-  // Fetch Products whenever filters change
+  // Fetch Products whenever filters change (with Stale-While-Revalidate caching)
   const fetchFilteredProducts = async () => {
-    setIsProductsLoading(true);
-    try {
-      const queryParams = new URLSearchParams();
-      queryParams.append('limit', '500');
-      if (filters.categoryId) queryParams.append('category', filters.categoryId);
-      if (filters.subcategoryId) queryParams.append('subcategory', filters.subcategoryId);
-      if (filters.searchQuery) queryParams.append('search', filters.searchQuery);
-      if (filters.minPrice) queryParams.append('minPrice', filters.minPrice.toString());
-      if (filters.maxPrice) queryParams.append('maxPrice', filters.maxPrice.toString());
-      if (filters.sortBy) queryParams.append('sortBy', filters.sortBy);
-      if (filters.inStockOnly) queryParams.append('inStock', 'true');
-      if (filters.onSaleOnly) queryParams.append('onSale', 'true');
-      if (filters.brands && filters.brands.length > 0) {
-        queryParams.append('brands', filters.brands.join(','));
-      }
+    const queryParams = new URLSearchParams();
+    queryParams.append('limit', '500');
+    if (filters.categoryId) queryParams.append('category', filters.categoryId);
+    if (filters.subcategoryId) queryParams.append('subcategory', filters.subcategoryId);
+    if (filters.searchQuery) queryParams.append('search', filters.searchQuery);
+    if (filters.minPrice) queryParams.append('minPrice', filters.minPrice.toString());
+    if (filters.maxPrice) queryParams.append('maxPrice', filters.maxPrice.toString());
+    if (filters.sortBy) queryParams.append('sortBy', filters.sortBy);
+    if (filters.inStockOnly) queryParams.append('inStock', 'true');
+    if (filters.onSaleOnly) queryParams.append('onSale', 'true');
+    if (filters.brands && filters.brands.length > 0) {
+      queryParams.append('brands', filters.brands.join(','));
+    }
 
-      const res = await apiFetch(`/api/products?${queryParams.toString()}`);
+    const cacheKey = queryParams.toString();
+    const cachedEntry = productCacheRef.current.get(cacheKey);
+
+    // Stale-While-Revalidate: If we have cached products for this query, display immediately!
+    if (cachedEntry && cachedEntry.data.length > 0) {
+      setProducts(cachedEntry.data);
+      setIsProductsLoading(false);
+    } else if (products.length === 0) {
+      // Only show skeleton loader if no products are currently visible on screen
+      setIsProductsLoading(true);
+    }
+
+    try {
+      const res = await apiFetch(`/api/products?${cacheKey}`);
       const data = await res.json();
-      if (Array.isArray(data)) {
-        setProducts(data);
-      } else if (data && Array.isArray(data.products)) {
-        setProducts(data.products);
-      } else {
-        setProducts([]);
+      const productList = Array.isArray(data) ? data : (data && Array.isArray(data.products) ? data.products : []);
+
+      // Always update visible products with fresh revalidated server data
+      setProducts(productList);
+      productCacheRef.current.set(cacheKey, { data: productList, timestamp: Date.now() });
+
+      if (productList.length > 0) {
+        setAllProducts((prev) => (prev.length === 0 ? productList : prev));
+        // Save default catalog in sessionStorage for instant startup on subsequent reloads
+        try {
+          if (!filters.categoryId && !filters.searchQuery) {
+            sessionStorage.setItem('nexra_default_products', JSON.stringify(productList.slice(0, 50)));
+          }
+        } catch {}
+      } else if (!filters.categoryId && !filters.searchQuery) {
+        try {
+          sessionStorage.removeItem('nexra_default_products');
+        } catch {}
       }
     } catch (err) {
       console.error('Error fetching products:', err);
-      setProducts([]);
+      if (!cachedEntry && products.length === 0) {
+        setProducts([]);
+      }
     } finally {
       setIsProductsLoading(false);
     }
@@ -563,8 +635,18 @@ export default function App() {
       clearStoredAuth();
     };
 
+    const handleProductsUpdated = () => {
+      invalidateClientProductCache();
+      fetchFilteredProducts();
+      fetchAllProducts(true);
+    };
+
     window.addEventListener('auth_unauthorized', handleUnauthorized);
-    return () => window.removeEventListener('auth_unauthorized', handleUnauthorized);
+    window.addEventListener('products_updated', handleProductsUpdated);
+    return () => {
+      window.removeEventListener('auth_unauthorized', handleUnauthorized);
+      window.removeEventListener('products_updated', handleProductsUpdated);
+    };
   }, []);
 
   // React to user login / logout state changes
@@ -762,7 +844,7 @@ export default function App() {
     }
   };
 
-  // Cart Actions
+  // Cart Actions (with Optimistic UI and Rollback)
   const handleAddToCart = async (
     productOrId: Product | string,
     variantIdOrQty?: string | number,
@@ -790,32 +872,114 @@ export default function App() {
     }
 
     const trimmedCustomization = (customizationText || '').trim();
+    const hasCustomImages = Array.isArray(customizationImages) && customizationImages.length > 0;
 
-    try {
-      const res = await apiFetch('/api/cart/items', {
-        method: 'POST',
-        body: JSON.stringify({
-          productId: prodId,
-          variantId: actualVariantId,
-          quantity: actualQty,
-          customizationText: trimmedCustomization,
-          selectedColour,
-          selectedWattage,
-          customizationImages: customizationImages || []
-        })
+    // Retrieve product details for instantaneous optimistic rendering
+    const prodObj = typeof productOrId === 'object'
+      ? productOrId
+      : (products.find((p) => p.id === prodId) || allProducts.find((p) => p.id === prodId));
+
+    // SNAPSHOT PREVIOUS STATE FOR AUTOMATIC ROLLBACK
+    const prevCartItems = [...cartItems];
+    const prevCartData = cartData ? { ...cartData } : null;
+
+    // Check if matching item already exists in current local cart
+    const existingIndex = prevCartItems.findIndex((item) => {
+      if (hasCustomImages) return false;
+      const idMatch = item.productId === prodId || item.product?.id === prodId;
+      const varMatch = (item.variantId || null) === (actualVariantId || null);
+      const colMatch = (item.selectedColour || null) === (selectedColour || null);
+      const watMatch = (item.selectedWattage || null) === (selectedWattage || null);
+      const custMatch = (item.customizationText || null) === (trimmedCustomization || null);
+      return idMatch && varMatch && colMatch && watMatch && custMatch;
+    });
+
+    let optimisticItems: CartItem[];
+    if (existingIndex >= 0) {
+      optimisticItems = prevCartItems.map((item, idx) => {
+        if (idx === existingIndex) {
+          return {
+            ...item,
+            quantity: item.quantity + actualQty
+          };
+        }
+        return item;
       });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Failed to add item to cart');
-        throw new Error(data.error || 'Failed to add item to cart');
-      }
-      setCartData(data);
-      setCartItems(formatCartItems(data?.items));
-      showToast('Item added to Shopping Cart!');
-    } catch (err: any) {
-      console.error('Add to cart error:', err);
-      throw err;
+    } else {
+      const price = prodObj?.price ?? 0;
+      const mrp = prodObj?.mrp ?? price;
+      const stock = prodObj?.stockQuantity ?? prodObj?.stock ?? 100;
+      const img = prodObj?.imageUrl || (prodObj?.images && prodObj.images[0]) || '';
+      const optimisticItem: CartItem = {
+        id: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        productId: prodId,
+        product: {
+          id: prodId,
+          title: prodObj?.name || prodObj?.title || 'Product',
+          brand: prodObj?.category?.name || prodObj?.brand || 'Brand',
+          price,
+          salePrice: price,
+          mrp,
+          stock,
+          stockQuantity: stock,
+          slug: prodObj?.slug || '',
+          sku: prodObj?.sku || '',
+          categoryId: prodObj?.categoryId || '',
+          images: Array.isArray(prodObj?.images) && prodObj.images.length > 0 ? prodObj.images : [img],
+          imageUrl: img
+        },
+        quantity: actualQty,
+        variantId: actualVariantId,
+        selectedColour: selectedColour || null,
+        selectedWattage: selectedWattage || null,
+        customizationText: trimmedCustomization || null,
+        taxPercentage: Number(prodObj?.taxPercentage ?? 0)
+      };
+      optimisticItems = [optimisticItem, ...prevCartItems];
     }
+
+    // 1. INSTANT UI UPDATE (<1ms feedback)
+    setCartItems(optimisticItems);
+    const optimisticSubtotal = optimisticItems.reduce((sum, item) => sum + ((item.product?.price || 0) * item.quantity), 0);
+    setCartData((prev: any) => ({
+      ...(prev || {}),
+      items: optimisticItems,
+      totalItems: optimisticItems.reduce((acc, item) => acc + item.quantity, 0),
+      subtotal: optimisticSubtotal,
+      totalAmount: optimisticSubtotal
+    }));
+
+    showToast('Item added to Shopping Cart!');
+
+    // 2. BACKGROUND PERSISTENCE WITH SERIALIZED QUEUE
+    return enqueueCartMutation(async () => {
+      try {
+        const res = await apiFetch('/api/cart/items', {
+          method: 'POST',
+          body: JSON.stringify({
+            productId: prodId,
+            variantId: actualVariantId,
+            quantity: actualQty,
+            customizationText: trimmedCustomization,
+            selectedColour,
+            selectedWattage,
+            customizationImages: customizationImages || []
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to add item to cart');
+        }
+        setCartData(data);
+        setCartItems(formatCartItems(data?.items));
+      } catch (err: any) {
+        console.error('Add to cart background sync failed, rolling back:', err);
+        setCartItems(prevCartItems);
+        setCartData(prevCartData);
+        showToast(err.message || 'Failed to add item to cart');
+        throw err;
+      }
+    });
   };
 
   const handleUpdateCartQuantity = async (itemIdOrProductId: string, quantity: number) => {
@@ -825,22 +989,53 @@ export default function App() {
       if (matched) targetItemId = matched.id;
     }
 
-    try {
-      const res = await apiFetch(`/api/cart/items/${targetItemId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ quantity })
+    // SNAPSHOT PREVIOUS STATE FOR ROLLBACK
+    const prevCartItems = [...cartItems];
+    const prevCartData = cartData ? { ...cartData } : null;
+
+    // INSTANT OPTIMISTIC UPDATE
+    let optimisticItems: CartItem[];
+    if (quantity <= 0) {
+      optimisticItems = prevCartItems.filter((i) => i.id !== targetItemId && i.productId !== itemIdOrProductId);
+    } else {
+      optimisticItems = prevCartItems.map((i) => {
+        if (i.id === targetItemId || i.productId === itemIdOrProductId) {
+          return { ...i, quantity };
+        }
+        return i;
       });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Failed to update item quantity');
-        throw new Error(data.error || 'Failed to update item quantity');
-      }
-      setCartData(data);
-      setCartItems(formatCartItems(data?.items));
-    } catch (err: any) {
-      console.error('Update cart quantity error:', err);
-      throw err;
     }
+
+    setCartItems(optimisticItems);
+    const optimisticSubtotal = optimisticItems.reduce((sum, item) => sum + ((item.product?.price || 0) * item.quantity), 0);
+    setCartData((prev: any) => ({
+      ...(prev || {}),
+      items: optimisticItems,
+      totalItems: optimisticItems.reduce((acc, item) => acc + item.quantity, 0),
+      subtotal: optimisticSubtotal,
+      totalAmount: optimisticSubtotal
+    }));
+
+    return enqueueCartMutation(async () => {
+      try {
+        const res = await apiFetch(`/api/cart/items/${targetItemId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ quantity })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to update item quantity');
+        }
+        setCartData(data);
+        setCartItems(formatCartItems(data?.items));
+      } catch (err: any) {
+        console.error('Update cart quantity background sync failed, rolling back:', err);
+        setCartItems(prevCartItems);
+        setCartData(prevCartData);
+        showToast(err.message || 'Failed to update item quantity');
+        throw err;
+      }
+    });
   };
 
   const handleRemoveCartItem = async (itemIdOrProductId: string) => {
@@ -850,20 +1045,41 @@ export default function App() {
       if (matched) targetItemId = matched.id;
     }
 
-    try {
-      const res = await apiFetch(`/api/cart/items/${targetItemId}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Failed to remove item');
-        throw new Error(data.error || 'Failed to remove item');
+    // SNAPSHOT PREVIOUS STATE FOR ROLLBACK
+    const prevCartItems = [...cartItems];
+    const prevCartData = cartData ? { ...cartData } : null;
+
+    // INSTANT OPTIMISTIC UPDATE
+    const optimisticItems = prevCartItems.filter((i) => i.id !== targetItemId && i.productId !== itemIdOrProductId);
+    setCartItems(optimisticItems);
+    const optimisticSubtotal = optimisticItems.reduce((sum, item) => sum + ((item.product?.price || 0) * item.quantity), 0);
+    setCartData((prev: any) => ({
+      ...(prev || {}),
+      items: optimisticItems,
+      totalItems: optimisticItems.reduce((acc, item) => acc + item.quantity, 0),
+      subtotal: optimisticSubtotal,
+      totalAmount: optimisticSubtotal
+    }));
+
+    showToast('Item removed from Cart');
+
+    return enqueueCartMutation(async () => {
+      try {
+        const res = await apiFetch(`/api/cart/items/${targetItemId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to remove item');
+        }
+        setCartData(data);
+        setCartItems(formatCartItems(data?.items));
+      } catch (err: any) {
+        console.error('Remove cart item background sync failed, rolling back:', err);
+        setCartItems(prevCartItems);
+        setCartData(prevCartData);
+        showToast(err.message || 'Failed to remove item');
+        throw err;
       }
-      setCartData(data);
-      setCartItems(formatCartItems(data?.items));
-      showToast('Item removed from Cart');
-    } catch (err: any) {
-      console.error('Remove cart item error:', err);
-      throw err;
-    }
+    });
   };
 
   const handleClearCart = async () => {
@@ -1513,8 +1729,9 @@ export default function App() {
           orders={userOrders}
           coupons={coupons}
           onRefreshData={() => {
+            invalidateClientProductCache();
             fetchData();
-            fetchAllProducts();
+            fetchAllProducts(true);
             fetchFilteredProducts();
           }}
         />

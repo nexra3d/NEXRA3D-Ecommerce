@@ -45,11 +45,26 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     return '';
   };
 
-  const primaryImg =
+  const optimizeThumbnailUrl = (url: string): string => {
+    if (!url) return '';
+    if (url.includes('res.cloudinary.com') && url.includes('/upload/')) {
+      if (!url.includes('/upload/f_auto') && !url.includes('/upload/w_')) {
+        return url.replace('/upload/', '/upload/f_auto,q_auto,w_600/');
+      }
+    }
+    if (url.includes('images.unsplash.com') && !url.includes('w=')) {
+      return `${url}${url.includes('?') ? '&' : '?'}w=600&q=80&auto=format`;
+    }
+    return url;
+  };
+
+  const rawPrimaryImg =
     getImageUrl(product.imageUrl) ||
     getImageUrl(product.images?.[0]) ||
     getImageUrl(product.productImages?.[0]) ||
     'https://images.unsplash.com/photo-1527977966376-1c8408f9f108?auto=format&fit=crop&q=80&w=800';
+
+  const primaryImg = optimizeThumbnailUrl(rawPrimaryImg);
 
   const categoryName = product.category?.name || product.brand || 'AeroCore';
   const productName = product.name || product.title || 'Product';
@@ -63,6 +78,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             src={primaryImg}
             alt={productName}
             loading="lazy"
+            decoding="async"
             className="w-full h-full object-contain group-hover:scale-108 transition-transform duration-500"
           />
 
