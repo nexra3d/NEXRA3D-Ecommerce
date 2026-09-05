@@ -681,6 +681,26 @@ async function seedInitialDatabase() {
       }
     }
 
+    // Seed Coupons into Database
+    for (const coup of INITIAL_COUPONS) {
+      const existing = await prisma.coupon.findFirst({ where: { code: coup.code } });
+      if (!existing) {
+        const cAny = coup as any;
+        await prisma.coupon.create({
+          data: {
+            code: coup.code,
+            type: (coup.discountType as any) || 'PERCENTAGE',
+            discountValue: coup.discountValue as any,
+            minOrderAmount: coup.minOrderAmount as any,
+            maxDiscount: (coup.maxDiscount || null) as any,
+            startDate: cAny.validFrom ? new Date(cAny.validFrom) : null,
+            endDate: cAny.validUntil ? new Date(cAny.validUntil) : null,
+            isActive: coup.isActive ?? true
+          }
+        });
+      }
+    }
+
     console.log('✅ Database seeded with initial records cleanly.');
   } catch (err) {
     console.warn('Database seed warning:', err);
@@ -2239,12 +2259,14 @@ app.put('/api/addresses/:id/default', requireAuthMiddleware, async (req: Authent
 
 // GET ALL PRODUCTS (Protected by Anti-Scraping Rate Limiter)
 app.get('/api/products', antiScrapingRateLimiter.middleware(), async (req: Request, res: Response) => {
-  const { category, search, featured, bestSeller, newArrival, active, limit, offset } = req.query;
+  const { category, search, featured, bestSeller, newArrival, active, includeInactive, limit, offset } = req.query;
 
   try {
     const whereClause: any = {};
 
-    if (active !== undefined) {
+    if (includeInactive === 'true') {
+      // Do not restrict isActive
+    } else if (active !== undefined) {
       whereClause.isActive = active === 'true';
     } else {
       whereClause.isActive = true;
@@ -4157,11 +4179,18 @@ app.post('/api/webhooks/razorpay', async (req: Request, res: Response) => {
 });
 
 // Coupons
-app.get('/api/coupons', (req: Request, res: Response) => {
-  res.json(INITIAL_COUPONS);
+app.get('/api/coupons', async (req: Request, res: Response) => {
+  try {
+    const coupons = await prisma.coupon.findMany({
+      where: { isActive: true }
+    });
+    return res.json(coupons);
+  } catch (err) {
+    return res.json([]);
+  }
 });
 
-app.post('/api/coupons/validate', (req: Request, res: Response) => {
+app.post('/api/coupons/validate', async (req: Request, res: Response) => {
   const parseResult = couponApplySchema.safeParse({
     code: req.body.code,
     orderTotal: req.body.cartAmount ?? req.body.orderTotal ?? 0
@@ -4172,22 +4201,33 @@ app.post('/api/coupons/validate', (req: Request, res: Response) => {
   }
 
   const { code, orderTotal } = parseResult.data;
-  const coupon = INITIAL_COUPONS.find((c) => c.code.toUpperCase() === code.toUpperCase());
+  let coupon: any = null;
+  try {
+    coupon = await prisma.coupon.findFirst({
+      where: {
+        code: { equals: code.toUpperCase() },
+        isActive: true
+      }
+    });
+  } catch (err) {
+    console.error('Error finding coupon in db:', err);
+  }
 
   if (!coupon) {
     return res.status(400).json({ error: 'Invalid or expired coupon code' });
   }
 
-  if (orderTotal < coupon.minOrderAmount) {
+  if (orderTotal < (Number(coupon.minOrderAmount) || 0)) {
     return res.status(400).json({ error: `Minimum order amount of ₹${coupon.minOrderAmount} required to apply this coupon.` });
   }
 
   let discount = 0;
-  if (coupon.discountType === 'PERCENTAGE') {
-    discount = (orderTotal * coupon.discountValue) / 100;
-    if (coupon.maxDiscount) discount = Math.min(discount, coupon.maxDiscount);
+  const isPercentage = (coupon.type === 'PERCENTAGE' || coupon.discountType === 'PERCENTAGE');
+  if (isPercentage) {
+    discount = (orderTotal * Number(coupon.discountValue)) / 100;
+    if (coupon.maxDiscount) discount = Math.min(discount, Number(coupon.maxDiscount));
   } else {
-    discount = coupon.discountValue;
+    discount = Number(coupon.discountValue);
   }
 
   return res.json({
