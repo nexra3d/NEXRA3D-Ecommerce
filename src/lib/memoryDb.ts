@@ -5,7 +5,8 @@ import {
   INITIAL_SERVICES,
   INITIAL_FAQS,
   INITIAL_TESTIMONIALS,
-  INITIAL_BANNERS
+  INITIAL_BANNERS,
+  INITIAL_ORDERS
 } from '../data/mockData.js';
 
 function generateId(prefix = 'id'): string {
@@ -15,7 +16,6 @@ function generateId(prefix = 'id'): string {
 class MemoryStore {
   collections: Record<string, any[]> = {
     user: [],
-    emailVerificationOTP: [],
     address: [],
     category: [],
     product: [],
@@ -37,13 +37,7 @@ class MemoryStore {
     siteSetting: [],
     shipment: [],
     shipmentStatusHistory: [],
-    productLampOption: [],
-    cartItemCustomizationImage: [],
-    orderItemCustomizationImage: [],
-    consentRecord: [],
-    customerUpload: [],
-    privacyRequest: [],
-    securityEvent: []
+    customOrder: []
   };
 
   constructor() {
@@ -51,20 +45,20 @@ class MemoryStore {
   }
 
   seed() {
-    const defaultPasswordHash = bcrypt.hashSync('password123', 10);
-    const adminPasswordHash = bcrypt.hashSync('admin123', 10);
+    const adminPasswordHash = bcrypt.hashSync('Admin@Nexra2026!', 10);
+    const demoPasswordHash = bcrypt.hashSync('Varun@Nexra2026!', 10);
 
     this.collections.user = [
       {
         id: 'usr-admin',
         name: 'Admin User',
-        email: 'admin@3dprints.com',
+        email: 'admin@nexra3d.in',
         password: adminPasswordHash,
         role: 'ADMIN',
-        emailVerified: true,
+        isEmailVerified: true,
         phone: '9876543210',
-        company: '3D Printing Solutions',
-        gst: '29ABCDE1234F1Z5',
+        company: 'NEXRA 3D Technologies',
+        gst: '36ABCDE1234F1Z5',
         avatar: '',
         createdAt: new Date(),
         updatedAt: new Date()
@@ -73,9 +67,9 @@ class MemoryStore {
         id: 'usr-demo',
         name: 'Varun Manurani',
         email: 'varunmanurani@gmail.com',
-        password: defaultPasswordHash,
+        password: demoPasswordHash,
         role: 'CUSTOMER',
-        emailVerified: true,
+        isEmailVerified: true,
         phone: '9876543210',
         company: 'Personal',
         gst: '',
@@ -95,7 +89,7 @@ class MemoryStore {
         apartment: 'TNGOs Colony',
         city: 'Hyderabad',
         state: 'Telangana',
-        postalCode: '500032',
+        postalCode: '500046',
         country: 'India',
         isDefault: true,
         type: 'HOME',
@@ -137,10 +131,6 @@ class MemoryStore {
         isNewArrival: p.isNewArrival ?? false,
         isBestSeller: p.isBestSeller ?? false,
         categoryId: p.categoryId || 'cat-lamps',
-        requiresCustomization: Boolean(p.requiresCustomization),
-        requiresImageUpload: Boolean(p.requiresImageUpload),
-        minimumImageUploads: p.minimumImageUploads !== undefined && p.minimumImageUploads !== null ? Number(p.minimumImageUploads) : 1,
-        maximumImageUploads: p.maximumImageUploads !== undefined && p.maximumImageUploads !== null ? Number(p.maximumImageUploads) : 5,
         weight: p.weight ?? (p.specifications?.weight ? Number(p.specifications.weight) : 0.25),
         length: p.length ?? (p.specifications?.length ? Number(p.specifications.length) : 10),
         width: p.width ?? (p.specifications?.width ? Number(p.specifications.width) : 10),
@@ -188,150 +178,93 @@ class MemoryStore {
       }));
     }
 
-    this.collections.productLampOption = [
-      // Lamp A: Parametric Spiral LED Table Lamp
-      {
-        id: 'opt-spiral-col-1',
-        productId: 'prod-spiral-ambient-lamp',
-        optionType: 'COLOUR',
-        optionValue: 'Warm White',
-        priceDelta: 0,
-        sortOrder: 1,
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      {
-        id: 'opt-spiral-col-2',
-        productId: 'prod-spiral-ambient-lamp',
-        optionType: 'COLOUR',
-        optionValue: 'Cool White',
-        priceDelta: 0,
-        sortOrder: 2,
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      {
-        id: 'opt-spiral-wat-1',
-        productId: 'prod-spiral-ambient-lamp',
-        optionType: 'WATTAGE',
-        optionValue: '5W',
-        priceDelta: 0,
-        sortOrder: 1,
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      {
-        id: 'opt-spiral-wat-2',
-        productId: 'prod-spiral-ambient-lamp',
-        optionType: 'WATTAGE',
-        optionValue: '7W',
-        priceDelta: 100,
-        sortOrder: 2,
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      {
-        id: 'opt-spiral-wat-3',
-        productId: 'prod-spiral-ambient-lamp',
-        optionType: 'WATTAGE',
-        optionValue: '9W',
-        priceDelta: 150,
-        sortOrder: 3,
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      {
-        id: 'opt-spiral-wat-4',
-        productId: 'prod-spiral-ambient-lamp',
-        optionType: 'WATTAGE',
-        optionValue: '12W',
-        priceDelta: 200,
-        sortOrder: 4,
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
+    if (INITIAL_ORDERS && INITIAL_ORDERS.length > 0) {
+      this.collections.order = INITIAL_ORDERS.map((o: any) => {
+        const orderId = o.id || `ord-${Math.random().toString(36).substring(2, 7)}`;
+        const orderItems = (o.items || []).map((it: any) => ({
+          id: it.id || `oi-${Math.random().toString(36).substring(2, 7)}`,
+          orderId,
+          productId: it.productId,
+          variantId: it.variantId || null,
+          productTitle: it.productTitle || 'Product',
+          price: it.price || 0,
+          quantity: it.quantity || 1,
+          total: it.totalPrice || (it.price * it.quantity) || 0,
+          totalPrice: it.totalPrice || (it.price * it.quantity) || 0,
+          imageUrl: it.productImage || it.imageUrl || '',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }));
 
-      // Lamp B: Personalized 3D Printed Photo Lithophane Moon Lamp
+        this.collections.orderItem.push(...orderItems);
+
+        return {
+          id: orderId,
+          orderNumber: o.orderNumber,
+          userId: o.userId || 'usr-demo',
+          status: o.orderStatus || o.status || 'PENDING',
+          paymentStatus: o.paymentStatus || 'PAID',
+          paymentMethod: o.paymentMethod || 'RAZORPAY',
+          subtotal: o.subtotal || 0,
+          discountAmount: o.discountAmount || 0,
+          taxAmount: o.tax || o.taxAmount || 0,
+          shippingFee: o.shippingFee || 0,
+          totalAmount: o.totalAmount || 0,
+          shippingProvider: o.shippingProvider || (o.fulfillmentMethod === 'STORE_PICKUP' ? 'NEXRA Store' : 'Delhivery'),
+          couponCode: o.couponCode || null,
+          shippingAddress: o.shippingAddress || {},
+          awbNumber: o.awbNumber || null,
+          trackingNumber: o.trackingNumber || null,
+          courierName: o.courierName || null,
+          createdAt: o.createdAt ? new Date(o.createdAt) : new Date(),
+          updatedAt: new Date()
+        };
+      });
+    }
+
+    this.collections.customOrder = [
       {
-        id: 'opt-moon-col-1',
-        productId: 'prod-lithophane-moon-lamp',
-        optionType: 'COLOUR',
-        optionValue: 'Warm White',
-        priceDelta: 0,
-        sortOrder: 1,
-        isActive: true,
-        createdAt: new Date(),
+        id: 'co-sample-101',
+        customerName: 'Aditya Sharma',
+        phone: '9848022338',
+        email: 'aditya.sharma@aerotech.in',
+        description: 'Bespoke Carbon-Fiber Drone Arm Mounting Brackets (Set of 4), 100% Infill, Matte Black',
+        amount: 3450,
+        deliveryType: 'STORE_PICKUP',
+        notes: 'Customer will collect from Gachibowli store counter Saturday morning',
+        razorpayOrderId: 'order_CO_Sample101',
+        razorpayQrId: 'qr_CO_Sample101',
+        qrImageUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi%3A%2F%2Fpay%3Fpa%3Dnexra3d%40icici%26pn%3DNEXRA%25203D%26am%3D3450.00%26cu%3DINR%26tn%3DCustom%2520Order%2520101',
+        paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=3450.00&cu=INR&tn=Custom%20Order%20101',
+        paymentStatus: 'PAID',
+        createdAt: new Date(Date.now() - 3600000 * 5),
+        paidAt: new Date(Date.now() - 3600000 * 4),
+        expiresAt: new Date(Date.now() + 3600000 * 24),
         updatedAt: new Date()
       },
       {
-        id: 'opt-moon-col-2',
-        productId: 'prod-lithophane-moon-lamp',
-        optionType: 'COLOUR',
-        optionValue: 'Neutral White',
-        priceDelta: 0,
-        sortOrder: 2,
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      {
-        id: 'opt-moon-wat-1',
-        productId: 'prod-lithophane-moon-lamp',
-        optionType: 'WATTAGE',
-        optionValue: '2W',
-        priceDelta: 0,
-        sortOrder: 1,
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      {
-        id: 'opt-moon-wat-2',
-        productId: 'prod-lithophane-moon-lamp',
-        optionType: 'WATTAGE',
-        optionValue: '4W',
-        priceDelta: 30,
-        sortOrder: 2,
-        isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      {
-        id: 'opt-moon-wat-3',
-        productId: 'prod-lithophane-moon-lamp',
-        optionType: 'WATTAGE',
-        optionValue: '6W',
-        priceDelta: 80,
-        sortOrder: 3,
-        isActive: true,
-        createdAt: new Date(),
+        id: 'co-sample-102',
+        customerName: 'Kavita Reddy',
+        phone: '9123456789',
+        email: 'kavita.r@biomed.org',
+        description: 'High-Precision SLA Resin Dental Casting Prosthetic Mold, Clear Bio-Resin',
+        amount: 1850,
+        deliveryType: 'HOME_DELIVERY',
+        notes: 'Requires dispatch via express courier with fragile packaging tag',
+        razorpayOrderId: 'order_CO_Sample102',
+        razorpayQrId: 'qr_CO_Sample102',
+        qrImageUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi%3A%2F%2Fpay%3Fpa%3Dnexra3d%40icici%26pn%3DNEXRA%25203D%26am%3D1850.00%26cu%3DINR%26tn%3DCustom%2520Order%2520102',
+        paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=1850.00&cu=INR&tn=Custom%20Order%20102',
+        paymentStatus: 'AWAITING_PAYMENT',
+        createdAt: new Date(Date.now() - 600000),
+        paidAt: null,
+        expiresAt: new Date(Date.now() + 15 * 60000),
         updatedAt: new Date()
       }
     ];
   }
 
-  snapshot(): string {
-    return JSON.stringify(this.collections);
-  }
-
-  restore(snapshotStr: string) {
-    try {
-      this.collections = JSON.parse(snapshotStr);
-    } catch (e) {
-      console.error('Failed to restore memoryStore snapshot:', e);
-    }
-  }
-
   getStore(model: string): any[] {
-    if (!model || typeof model !== 'string') {
-      return [];
-    }
     const key = model.toLowerCase();
     const storeKey = Object.keys(this.collections).find((k) => k.toLowerCase() === key);
     if (!storeKey) {
@@ -391,37 +324,13 @@ class MemoryStore {
   attachIncludes(item: any, model: string, include: any): any {
     if (!item || !include) return item;
     const cloned = { ...item };
-    const modelLower = typeof model === 'string' ? model.toLowerCase() : '';
+    const modelLower = model.toLowerCase();
 
     if (include.addresses) {
       cloned.addresses = this.getStore('address').filter((a) => a.userId === item.id);
     }
     if (include.orders) {
-      const rawOrders = this.getStore('order').filter((o) => o.userId === item.id);
-      const orderIncludes = typeof include.orders === 'object' ? include.orders.include : null;
-      cloned.orders = rawOrders.map((o) => this.attachIncludes(o, 'order', orderIncludes));
-    }
-    if (include.cart) {
-      const c = this.getStore('cart').find((c) => c.userId === item.id) || null;
-      const cartIncludes = typeof include.cart === 'object' ? include.cart.include : null;
-      cloned.cart = c ? this.attachIncludes(c, 'cart', cartIncludes) : null;
-    }
-    if (include.wishlist) {
-      const w = this.getStore('wishlist').find((w) => w.userId === item.id) || null;
-      const wishlistIncludes = typeof include.wishlist === 'object' ? include.wishlist.include : null;
-      cloned.wishlist = w ? this.attachIncludes(w, 'wishlist', wishlistIncludes) : null;
-    }
-    if (include.reviews) {
-      cloned.reviews = this.getStore('review').filter((r) => r.userId === item.id);
-    }
-    if (include.consentRecords) {
-      cloned.consentRecords = this.getStore('consentRecord').filter((c) => c.userId === item.id || (item.email && c.email === item.email));
-    }
-    if (include.customerUploads) {
-      cloned.customerUploads = this.getStore('customerUpload').filter((u) => u.userId === item.id);
-    }
-    if (include.privacyRequests) {
-      cloned.privacyRequests = this.getStore('privacyRequest').filter((p) => p.userId === item.id || (item.email && p.email === item.email));
+      cloned.orders = this.getStore('order').filter((o) => o.userId === item.id);
     }
     if (include.category && item.categoryId) {
       const cat = this.getStore('category').find((c) => c.id === item.categoryId) || null;
@@ -432,13 +341,6 @@ class MemoryStore {
     }
     if (include.variants) {
       cloned.variants = this.getStore('productVariant').filter((v) => v.productId === item.id);
-    }
-    if (include.customizationImages) {
-      if (modelLower === 'cartitem') {
-        cloned.customizationImages = this.getStore('cartItemCustomizationImage').filter((ci) => ci.cartItemId === item.id);
-      } else if (modelLower === 'orderitem') {
-        cloned.customizationImages = this.getStore('orderItemCustomizationImage').filter((oi) => oi.orderItemId === item.id);
-      }
     }
     if (include.items) {
       let rawItems: any[] = [];
@@ -470,13 +372,6 @@ class MemoryStore {
         cloned.variant = this.getStore('productVariant').find((v) => v.id === item.variantId) || null;
       }
     }
-    if (include.payment) {
-      if (modelLower === 'order') {
-        cloned.payment = this.getStore('payment').find((p) => p.orderId === item.id) || null;
-      } else {
-        cloned.payments = this.getStore('payment').filter((p) => p.userId === item.id);
-      }
-    }
     if (include.shipment && modelLower === 'order') {
       const shp = this.getStore('shipment').find((s) => s.orderId === item.id) || null;
       if (shp) {
@@ -493,23 +388,6 @@ class MemoryStore {
     }
 
     return cloned;
-  }
-
-  private processDataRelations(data: any) {
-    if (!data || typeof data !== 'object') return data;
-    const processed = { ...data };
-    for (const key of Object.keys(processed)) {
-      const val = processed[key];
-      if (val && typeof val === 'object' && val.connect && typeof val.connect === 'object') {
-        const connectId = val.connect.id || val.connect.slug;
-        if (connectId) {
-          const foreignKeyField = key + 'Id';
-          processed[foreignKeyField] = connectId;
-        }
-        delete processed[key];
-      }
-    }
-    return processed;
   }
 
   createModelHandler(modelName: string) {
@@ -549,7 +427,7 @@ class MemoryStore {
       },
 
       create: async (args: any = {}) => {
-        const data = this.processDataRelations(args.data || {});
+        const data = { ...(args.data || {}) };
         const id = data.id || generateId(modelName.toLowerCase());
 
         let nestedItemsToCreate: any[] = [];
@@ -564,12 +442,6 @@ class MemoryStore {
           delete data.statusHistory;
         }
 
-        let nestedPaymentToCreate: any = null;
-        if (data.payment && typeof data.payment === 'object' && data.payment.create) {
-          nestedPaymentToCreate = data.payment.create;
-          delete data.payment;
-        }
-
         const newItem = {
           id,
           ...data,
@@ -577,18 +449,6 @@ class MemoryStore {
           updatedAt: data.updatedAt || new Date()
         };
         store.push(newItem);
-
-        if (nestedPaymentToCreate && modelName.toLowerCase() === 'order') {
-          const paymentStore = this.getStore('payment');
-          const paymentItem = {
-            id: nestedPaymentToCreate.id || generateId('payment'),
-            orderId: id,
-            ...nestedPaymentToCreate,
-            createdAt: new Date(),
-            updatedAt: new Date()
-          };
-          paymentStore.push(paymentItem);
-        }
 
         if (nestedItemsToCreate.length > 0 && modelName.toLowerCase() === 'order') {
           const orderItemStore = this.getStore('orderItem');
@@ -621,33 +481,15 @@ class MemoryStore {
         return this.attachIncludes(newItem, modelName, args.include);
       },
 
-      createMany: async (args: any = {}) => {
-        const items = Array.isArray(args.data) ? args.data : [args.data];
-        let count = 0;
-        for (const itemData of items) {
-          const id = itemData.id || generateId(modelName.toLowerCase());
-          const newItem = {
-            id,
-            ...itemData,
-            createdAt: itemData.createdAt || new Date(),
-            updatedAt: itemData.updatedAt || new Date()
-          };
-          store.push(newItem);
-          count++;
-        }
-        return { count };
-      },
-
       update: async (args: any = {}) => {
         const itemIndex = store.findIndex((i) => this.matchWhere(i, args.where));
         if (itemIndex === -1) {
           throw new Error(`Record to update not found in memory db (${modelName})`);
         }
         const current = store[itemIndex];
-        const updateData = this.processDataRelations(args.data || {});
         const updated = {
           ...current,
-          ...updateData,
+          ...args.data,
           updatedAt: new Date()
         };
         store[itemIndex] = updated;
@@ -656,10 +498,9 @@ class MemoryStore {
 
       updateMany: async (args: any = {}) => {
         let count = 0;
-        const updateData = this.processDataRelations(args.data || {});
         store.forEach((item, idx) => {
           if (this.matchWhere(item, args.where)) {
-            store[idx] = { ...item, ...updateData, updatedAt: new Date() };
+            store[idx] = { ...item, ...args.data, updatedAt: new Date() };
             count++;
           }
         });

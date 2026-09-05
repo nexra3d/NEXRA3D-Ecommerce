@@ -4,7 +4,6 @@ import { registerSchema } from '../lib/validation';
 import { User } from '../types';
 import { setStoredAuth } from '../lib/api';
 import { signInWithGoogle, isSupabaseConfigured } from '../lib/supabase';
-import { OTPVerificationModal } from './OTPVerificationModal';
 
 interface RegisterPageProps {
   onRegisterSuccess: (user: User) => void;
@@ -25,10 +24,6 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-
-  // OTP Verification state
-  const [showOtpModal, setShowOtpModal] = useState(false);
-  const [registeredEmail, setRegisteredEmail] = useState('');
 
   const handleGoogleRegister = async () => {
     setErrorMsg('');
@@ -91,9 +86,6 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
 
       if (!res.ok) {
         setErrorMsg(data.error || data.message || 'Registration failed. Please check your inputs.');
-      } else if (data.requiresEmailVerification) {
-        setRegisteredEmail(data.email || email.toLowerCase().trim());
-        setShowOtpModal(true);
       } else {
         setStoredAuth(data.token, data.user);
         onRegisterSuccess(data.user);
@@ -236,14 +228,12 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
               </div>
             </div>
 
-            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-[11px] text-slate-500 space-y-2">
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-[11px] text-slate-500 space-y-1">
               <div className="flex items-center space-x-1.5 text-slate-700 font-semibold">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Privacy & Data Protection Notice (v1.0)</span>
+                <span>Default Account Type: CUSTOMER</span>
               </div>
-              <p>
-                By registering, you consent to processing your personal data for account creation and order execution in accordance with NEXRA 3D's Privacy Policy.
-              </p>
+              <p>Passwords are encrypted using bcrypt hashing before database storage.</p>
             </div>
 
             <button
@@ -252,11 +242,11 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm py-3.5 rounded-2xl transition-all cursor-pointer shadow-md shadow-indigo-100 flex items-center justify-center space-x-2 disabled:opacity-60"
             >
               {loading ? (
-                <span>Sending Verification Code...</span>
+                <span>Registering Account...</span>
               ) : (
                 <>
                   <UserPlus className="w-4 h-4" />
-                  <span>Create Account</span>
+                  <span>Complete Registration</span>
                 </>
               )}
             </button>
@@ -278,20 +268,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
           </div>
         </div>
       </div>
-
-      {/* OTP Verification Modal */}
-      <OTPVerificationModal
-        isOpen={showOtpModal}
-        email={registeredEmail}
-        onClose={() => setShowOtpModal(false)}
-        onSuccess={(user) => {
-          setShowOtpModal(false);
-          onRegisterSuccess(user);
-        }}
-        onBackToRegister={() => setShowOtpModal(false)}
-      />
     </div>
   );
 };
-
 

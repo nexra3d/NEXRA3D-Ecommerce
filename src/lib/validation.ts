@@ -1,26 +1,14 @@
 import { z } from 'zod';
 
-export function cleanNormalizeEmail(rawEmail: any): string {
-  if (!rawEmail || typeof rawEmail !== 'string') return '';
-  let cleaned = rawEmail.trim();
-  const mdMatch = cleaned.match(/\[([^\]]+)\]\((?:mailto:)?([^)]+)\)/i);
-  if (mdMatch) {
-    cleaned = mdMatch[1] || mdMatch[2];
-  }
-  cleaned = cleaned.replace(/^mailto:/i, '');
-  cleaned = cleaned.replace(/^[\s<\[]+|[\s>\]]+$/g, '');
-  const emailMatch = cleaned.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-  if (emailMatch) {
-    cleaned = emailMatch[0];
-  }
-  return cleaned.trim().toLowerCase();
-}
-
 export const registerSchema = z
   .object({
     name: z.string().trim().min(2, 'Full name must be at least 2 characters'),
-    email: z.preprocess((val) => cleanNormalizeEmail(val), z.string().email('Please enter a valid email address')),
-    password: z.string().min(3, 'Password must be at least 3 characters long'),
+    email: z.string().trim().toLowerCase().email('Please enter a valid email address'),
+    password: z
+      .string()
+      .min(8, 'Password must be at least 8 characters long')
+      .max(128, 'Password cannot exceed 128 characters')
+      .regex(/^(?=.*[A-Za-z])(?=.*\d)/, 'Password must contain at least one letter and one number'),
     confirmPassword: z.string().optional()
   })
   .refine((data) => !data.confirmPassword || data.password === data.confirmPassword, {
@@ -29,16 +17,41 @@ export const registerSchema = z
   });
 
 export const loginSchema = z.object({
-  email: z.preprocess((val) => cleanNormalizeEmail(val), z.string().email('Please enter a valid email address')),
-  password: z.string().min(1, 'Password is required')
+  email: z.string().trim().toLowerCase().email('Please enter a valid email address'),
+  password: z.string().min(1, 'Password is required').max(128, 'Password too long')
+});
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().trim().toLowerCase().email('Please enter a valid email address')
+});
+
+export const resetPasswordSchema = z
+  .object({
+    token: z.string().min(1, 'Reset token is required'),
+    password: z
+      .string()
+      .min(8, 'Password must be at least 8 characters long')
+      .max(128, 'Password cannot exceed 128 characters')
+      .regex(/^(?=.*[A-Za-z])(?=.*\d)/, 'Password must contain at least one letter and one number'),
+    confirmPassword: z.string().min(1, 'Please confirm your new password')
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword']
+  });
+
+export const verifyEmailSchema = z.object({
+  token: z.string().min(1, 'Verification token is required')
+});
+
+export const resendVerificationSchema = z.object({
+  email: z.string().trim().toLowerCase().email('Please enter a valid email address')
 });
 
 export const updateProfileSchema = z.object({
   name: z.string().trim().min(2, 'Full name must be at least 2 characters'),
-  email: z.preprocess((val) => cleanNormalizeEmail(val), z.string().email('Please enter a valid email address').optional().or(z.literal(''))),
+  email: z.string().trim().toLowerCase().email('Please enter a valid email address').optional().or(z.literal('')),
   phone: z.string().trim().optional().or(z.literal('')),
-  company: z.string().trim().optional().or(z.literal('')),
-  gst: z.string().trim().optional().or(z.literal('')),
   avatarUrl: z.string().trim().optional().or(z.literal('')),
   addressLine1: z.string().trim().optional().or(z.literal('')),
   addressLine2: z.string().trim().optional().or(z.literal('')),
@@ -66,6 +79,10 @@ export const changePasswordSchema = z
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
+export type ResendVerificationInput = z.infer<typeof resendVerificationSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
@@ -94,30 +111,20 @@ export const productCreateSchema = z.object({
   taxPercentage: z.coerce.number().min(0).max(100).default(0),
   stockQuantity: z.coerce.number().int().min(0, 'Stock quantity cannot be negative').default(0),
   lowStockThreshold: z.coerce.number().int().min(0).default(5),
-  weight: z.coerce.number().min(0, 'Weight must be non-negative').optional().nullable(),
-  length: z.coerce.number().min(0, 'Length must be non-negative').optional().nullable(),
-  width: z.coerce.number().min(0, 'Width must be non-negative').optional().nullable(),
-  height: z.coerce.number().min(0, 'Height must be non-negative').optional().nullable(),
+  weight: z.coerce.number().min(0).optional().nullable(),
+  length: z.coerce.number().min(0).optional().nullable(),
+  width: z.coerce.number().min(0).optional().nullable(),
+  height: z.coerce.number().min(0).optional().nullable(),
   specifications: z.record(z.string(), z.any()).optional().nullable(),
   imageUrl: z.string().trim().optional().nullable(),
   isActive: z.boolean().default(true),
   isFeatured: z.boolean().default(false),
   isNewArrival: z.boolean().default(false),
   isBestSeller: z.boolean().default(false),
-  requiresCustomization: z.boolean().default(false),
-  requiresImageUpload: z.boolean().default(false),
-  minimumImageUploads: z.coerce.number().int().min(1, 'Minimum uploads must be at least 1').default(1),
-  maximumImageUploads: z.coerce.number().int().min(1, 'Maximum uploads must be at least 1').max(20, 'Maximum uploads cannot exceed 20').default(5),
-  categoryId: z.string().min(1, 'Category selection is required'),
-  seoTitle: z.string().trim().optional().nullable(),
-  seoDescription: z.string().trim().optional().nullable(),
-  metaDescription: z.string().trim().optional().nullable()
+  categoryId: z.string().min(1, 'Category selection is required')
 }).refine((data) => (data.mrp !== undefined && data.mrp !== null ? data.mrp >= data.price : true), {
   message: 'MRP must be greater than or equal to selling price',
   path: ['mrp']
-}).refine((data) => data.maximumImageUploads >= data.minimumImageUploads, {
-  message: 'Maximum image uploads must be greater than or equal to minimum image uploads',
-  path: ['maximumImageUploads']
 });
 
 export const productUpdateSchema = z.object({
@@ -132,24 +139,17 @@ export const productUpdateSchema = z.object({
   taxPercentage: z.coerce.number().min(0).max(100).optional(),
   stockQuantity: z.coerce.number().int().min(0, 'Stock quantity cannot be negative').optional(),
   lowStockThreshold: z.coerce.number().int().min(0).optional(),
-  weight: z.coerce.number().min(0, 'Weight must be non-negative').optional().nullable(),
-  length: z.coerce.number().min(0, 'Length must be non-negative').optional().nullable(),
-  width: z.coerce.number().min(0, 'Width must be non-negative').optional().nullable(),
-  height: z.coerce.number().min(0, 'Height must be non-negative').optional().nullable(),
+  weight: z.coerce.number().min(0).optional().nullable(),
+  length: z.coerce.number().min(0).optional().nullable(),
+  width: z.coerce.number().min(0).optional().nullable(),
+  height: z.coerce.number().min(0).optional().nullable(),
   specifications: z.record(z.string(), z.any()).optional().nullable(),
   imageUrl: z.string().trim().optional().nullable(),
   isActive: z.boolean().optional(),
   isFeatured: z.boolean().optional(),
   isNewArrival: z.boolean().optional(),
   isBestSeller: z.boolean().optional(),
-  requiresCustomization: z.boolean().optional(),
-  requiresImageUpload: z.boolean().optional(),
-  minimumImageUploads: z.coerce.number().int().min(1).optional(),
-  maximumImageUploads: z.coerce.number().int().min(1).max(20).optional(),
-  categoryId: z.string().min(1).optional(),
-  seoTitle: z.string().trim().optional().nullable(),
-  seoDescription: z.string().trim().optional().nullable(),
-  metaDescription: z.string().trim().optional().nullable()
+  categoryId: z.string().min(1).optional()
 });
 
 export type CategoryCreateInput = z.infer<typeof categoryCreateSchema>;
@@ -265,4 +265,121 @@ export type ServiceCreateInput = z.infer<typeof serviceCreateSchema>;
 export type ServiceUpdateInput = z.infer<typeof serviceUpdateSchema>;
 export type QuoteRequestCreateInput = z.infer<typeof quoteRequestCreateSchema>;
 export type QuoteRequestUpdateInput = z.infer<typeof quoteRequestUpdateSchema>;
+
+// --- STAGE 7: ORDERS, ADDRESS & CHECKOUT VALIDATION SCHEMAS ---
+
+export const addressSchema = z.object({
+  fullName: z.string().trim().min(2, 'Full name must be at least 2 characters').max(100),
+  phone: z.string().trim().regex(/^[6-9]\d{9}$/, 'Please enter a valid 10-digit Indian phone number'),
+  addressLine1: z.string().trim().min(3, 'Address line 1 must be at least 3 characters').max(200),
+  addressLine2: z.string().trim().max(200).optional().nullable(),
+  city: z.string().trim().min(2, 'City name is required').max(100),
+  state: z.string().trim().min(2, 'State name is required').max(100),
+  postalCode: z.string().trim().regex(/^\d{6}$/, 'Postal code must be exactly 6 digits'),
+  country: z.string().trim().default('India'),
+  isDefault: z.boolean().default(false)
+});
+
+export const orderItemInputSchema = z.object({
+  productId: z.string().min(1, 'Product ID is required'),
+  variantId: z.string().trim().optional().nullable(),
+  productName: z.string().trim().min(1, 'Product name is required'),
+  quantity: z.coerce.number().int().min(1, 'Quantity must be at least 1'),
+  price: z.coerce.number().min(0, 'Item price cannot be negative'),
+  total: z.coerce.number().min(0, 'Item total cannot be negative')
+});
+
+export const orderCreateSchema = z.object({
+  items: z.array(orderItemInputSchema).min(1, 'Order must contain at least one item'),
+  shippingAddress: addressSchema,
+  billingAddress: addressSchema.optional().nullable(),
+  paymentMethod: z.enum(['COD', 'RAZORPAY', 'UPI', 'BANK_TRANSFER']).default('RAZORPAY'),
+  couponCode: z.string().trim().max(30).optional().nullable(),
+  customerNotes: z.string().trim().max(500).optional().nullable(),
+  shippingCarrier: z.string().trim().optional().nullable(),
+  shippingCost: z.coerce.number().min(0).default(0)
+});
+
+export const paymentVerificationSchema = z.object({
+  razorpay_order_id: z.string().trim().min(1, 'Razorpay Order ID is required'),
+  razorpay_payment_id: z.string().trim().min(1, 'Razorpay Payment ID is required'),
+  razorpay_signature: z.string().trim().min(1, 'Razorpay Signature is required'),
+  internalOrderId: z.string().trim().optional()
+});
+
+// --- STAGE 8: REVIEWS & RATINGS VALIDATION SCHEMAS ---
+
+export const reviewCreateSchema = z.object({
+  productId: z.string().min(1, 'Product ID is required'),
+  rating: z.coerce.number().int().min(1, 'Rating must be between 1 and 5').max(5, 'Rating cannot exceed 5'),
+  title: z.string().trim().max(120).optional().nullable(),
+  comment: z.string().trim().min(5, 'Review text must be at least 5 characters').max(1500, 'Review cannot exceed 1500 characters'),
+  reviewerName: z.string().trim().min(2, 'Name must be at least 2 characters').max(80).optional()
+});
+
+// --- STAGE 9: COUPONS & DISCOUNTS VALIDATION SCHEMAS ---
+
+export const couponCreateSchema = z.object({
+  code: z.string().trim().toUpperCase().min(3, 'Coupon code must be at least 3 characters').max(20).regex(/^[A-Z0-9_-]+$/, 'Coupon code can only contain alphanumeric characters, underscores, and dashes'),
+  discountType: z.enum(['PERCENTAGE', 'FIXED']).default('PERCENTAGE'),
+  discountValue: z.coerce.number().min(0.01, 'Discount value must be greater than 0'),
+  minOrderValue: z.coerce.number().min(0).default(0),
+  maxDiscountAmount: z.coerce.number().min(0).optional().nullable(),
+  usageLimit: z.coerce.number().int().min(1).optional().nullable(),
+  isActive: z.boolean().default(true),
+  expiresAt: z.string().datetime().optional().nullable()
+});
+
+export const couponApplySchema = z.object({
+  code: z.string().trim().toUpperCase().min(1, 'Coupon code is required'),
+  orderTotal: z.coerce.number().min(0, 'Order total must be non-negative')
+});
+
+// --- STAGE 10: CONTACT, INQUIRIES & NEWSLETTER ---
+
+export const contactMessageSchema = z.object({
+  name: z.string().trim().min(2, 'Name must be at least 2 characters').max(100),
+  email: z.string().trim().toLowerCase().email('Please enter a valid email address'),
+  phone: z.string().trim().max(20).optional().nullable(),
+  subject: z.string().trim().min(3, 'Subject must be at least 3 characters').max(150),
+  message: z.string().trim().min(10, 'Message must be at least 10 characters').max(2000)
+});
+
+export const newsletterSubscribeSchema = z.object({
+  email: z.string().trim().toLowerCase().email('Please enter a valid email address')
+});
+
+export const pincodeCheckSchema = z.object({
+  pincode: z.string().trim().regex(/^\d{6}$/, 'PIN code must be a valid 6-digit Indian postal code')
+});
+
+// --- STAGE 11: QUERY PARAMETER & PAGINATION VALIDATOR ---
+
+export const queryPaginationSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).optional(),
+  search: z.string().trim().max(100).optional(),
+  category: z.string().trim().max(80).optional(),
+  sortBy: z.enum(['createdAt', 'price', 'name', 'rating', 'sales']).default('createdAt'),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+  featured: z.coerce.boolean().optional(),
+  active: z.coerce.boolean().optional()
+});
+
+// --- STAGE 12: CUSTOM ORDER & RAZORPAY QR SCHEMAS ---
+
+export const customOrderCreateSchema = z.object({
+  customerName: z.string().trim().min(2, 'Customer name must be at least 2 characters').max(100, 'Customer name is too long'),
+  phone: z.string().trim().regex(/^[6-9]\d{9}$/, 'Please enter a valid 10-digit Indian mobile number (e.g. 9876543210)'),
+  email: z.string().trim().toLowerCase().email('Please enter a valid email address').optional().or(z.literal('')).nullable(),
+  description: z.string().trim().max(1000, 'Description cannot exceed 1000 characters').optional().or(z.literal('')).nullable(),
+  amount: z.coerce.number().min(1, 'Custom amount must be at least ₹1').max(1000000, 'Custom amount cannot exceed ₹10,00,000'),
+  deliveryType: z.enum(['STORE_PICKUP', 'HOME_DELIVERY']).default('STORE_PICKUP'),
+  notes: z.string().trim().max(500, 'Notes cannot exceed 500 characters').optional().or(z.literal('')).nullable()
+});
+
+export type CustomOrderCreateInput = z.infer<typeof customOrderCreateSchema>;
+
+
 

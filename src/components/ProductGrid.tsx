@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SlidersHorizontal, X, ArrowUpDown, Check, Filter } from 'lucide-react';
 import { Product, Category, ProductFilterState } from '../types';
+import { INITIAL_CATEGORIES } from '../data/mockData';
 import { ProductCard } from './ProductCard';
 
 interface ProductGridProps {
@@ -30,7 +31,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
 
   const safeProducts = Array.isArray(products) ? products : [];
   const safeWishlistIds = Array.isArray(wishlistProductIds) ? wishlistProductIds : [];
-  const displayCategories = Array.isArray(categories) ? categories : [];
+  const displayCategories = (Array.isArray(categories) && categories.length > 0) ? categories : INITIAL_CATEGORIES;
 
   // Collect all unique brands from catalog
   const availableBrands = Array.from(new Set(safeProducts.map((p) => p.brand))) as string[];

@@ -38,8 +38,47 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
 
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAnalyzingAi, setIsAnalyzingAi] = useState(false);
+  const [aiAnalysisResult, setAiAnalysisResult] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  // Trigger AI Manufacturing Feasibility Analysis (Rate Limited & Protected)
+  const handleRunAiAnalysis = async () => {
+    if (!projectDescription || projectDescription.trim().length < 10) {
+      setErrorMessage('Please enter at least 10 characters in the project description to run AI analysis.');
+      return;
+    }
+    setErrorMessage(null);
+    setIsAnalyzingAi(true);
+    try {
+      const selectedSrv = services.find((s) => s.id === serviceId);
+      const res = await fetch('/api/ai/analyze-quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectName: company ? `${company} Project` : 'Custom Component',
+          projectDescription: projectDescription.trim(),
+          materialPreference: materialPreference.trim() || undefined,
+          quantity: Number(quantity) || 1,
+          industry: selectedSrv?.name || undefined
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMessage(data.error || 'AI Analysis currently unavailable. Please try again later.');
+        return;
+      }
+      if (data.analysis) {
+        setAiAnalysisResult(data.analysis);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Error communicating with AI analysis engine.');
+    } finally {
+      setIsAnalyzingAi(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -145,32 +184,29 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[92vh] sm:max-h-[88vh] flex flex-col my-auto overflow-hidden border border-slate-200 relative">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200 relative">
         {/* Header Bar */}
-        <div className="bg-slate-950 text-white p-5 sm:p-7 relative border-b border-slate-800 shrink-0">
+        <div className="bg-slate-900 text-white p-6 sm:p-8 relative">
           <button
             onClick={onClose}
-            className="absolute top-4 sm:top-5 right-4 sm:right-5 text-slate-400 hover:text-white p-2 rounded-full hover:bg-slate-800/80 transition-all cursor-pointer z-10"
+            className="absolute top-6 right-6 text-slate-400 hover:text-white p-1 rounded-full hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
-          <div className="flex items-center gap-2 text-cyan-400 text-xs font-black uppercase tracking-wider mb-2 pr-8">
-            <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse shrink-0" />
-            <span className="bg-cyan-500/15 border border-cyan-400/30 px-3 py-0.5 rounded-full text-cyan-300 text-[11px] font-bold">
-              NEXRA 3D On-Demand Manufacturing
-            </span>
+          <div className="flex items-center gap-2 text-cyan-400 text-xs font-bold uppercase tracking-wider mb-2">
+            <Sparkles className="w-4 h-4" /> NEXRA 3D On-Demand Manufacturing
           </div>
-          <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
             Request an Engineering CAD Quote
           </h2>
-          <p className="text-slate-300 text-xs sm:text-sm mt-1 leading-relaxed max-w-xl">
+          <p className="text-slate-300 text-xs sm:text-sm mt-1 leading-relaxed">
             Upload your CAD geometry, select material parameters, and receive a formal manufacturing price quote within 2 to 4 hours.
           </p>
         </div>
 
         {/* Content Body */}
-        <div className="p-5 sm:p-8 overflow-y-auto flex-1 min-h-0">
+        <div className="p-6 sm:p-8 max-h-[80vh] overflow-y-auto">
           {isSuccess ? (
             <div className="text-center py-8 space-y-4">
               <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
@@ -200,12 +236,12 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
 
               {/* Personal & Contact Information */}
               <div className="space-y-4">
-                <div className="flex items-center space-x-2 text-xs font-black text-cyan-800 uppercase tracking-wider bg-cyan-50 border border-cyan-200/80 px-3 py-1 rounded-lg w-fit">
-                  <span>1. Contact Information</span>
-                </div>
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  1. Contact Information
+                </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-slate-800 font-bold mb-1 text-xs">
+                    <label className="block text-slate-700 font-bold mb-1">
                       Full Name <span className="text-rose-500">*</span>
                     </label>
                     <input
@@ -214,12 +250,12 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="e.g. Rahul Sharma"
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:bg-white transition-all"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:bg-white"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-800 font-bold mb-1 text-xs">
+                    <label className="block text-slate-700 font-bold mb-1">
                       Email Address <span className="text-rose-500">*</span>
                     </label>
                     <input
@@ -228,46 +264,46 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="e.g. rahul@company.com"
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:bg-white transition-all"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:bg-white"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-800 font-bold mb-1 text-xs">Phone Number</label>
+                    <label className="block text-slate-700 font-bold mb-1">Phone Number</label>
                     <input
                       type="tel"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="+91 98765 43210"
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:bg-white transition-all"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:bg-white"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-800 font-bold mb-1 text-xs">Company / Organization</label>
+                    <label className="block text-slate-700 font-bold mb-1">Company / Organization</label>
                     <input
                       type="text"
                       value={company}
                       onChange={(e) => setCompany(e.target.value)}
                       placeholder="e.g. Apex Robotics Pvt Ltd"
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:bg-white transition-all"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:bg-white"
                     />
                   </div>
                 </div>
               </div>
 
               {/* Service & Technical Parameters */}
-              <div className="space-y-4 pt-3 border-t border-slate-100">
-                <div className="flex items-center space-x-2 text-xs font-black text-cyan-800 uppercase tracking-wider bg-cyan-50 border border-cyan-200/80 px-3 py-1 rounded-lg w-fit">
-                  <span>2. Manufacturing Specifications</span>
-                </div>
+              <div className="space-y-4 pt-2 border-t border-slate-100">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  2. Manufacturing Specifications
+                </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-slate-800 font-bold mb-1 text-xs">Select Service</label>
+                    <label className="block text-slate-700 font-bold mb-1">Select Service</label>
                     <select
                       value={serviceId}
                       onChange={(e) => setServiceId(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:bg-white transition-all"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:bg-white"
                     >
                       <option value="">General 3D Printing Inquiry</option>
                       {services.map((s) => (
@@ -279,80 +315,135 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-slate-800 font-bold mb-1 text-xs">Estimated Quantity</label>
+                    <label className="block text-slate-700 font-bold mb-1">Estimated Quantity</label>
                     <input
                       type="number"
                       min="1"
                       value={quantity}
                       onChange={(e) => setQuantity(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:bg-white transition-all"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:bg-white"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-800 font-bold mb-1 text-xs">Material Preference</label>
+                    <label className="block text-slate-700 font-bold mb-1">Material Preference</label>
                     <input
                       type="text"
                       value={materialPreference}
                       onChange={(e) => setMaterialPreference(e.target.value)}
                       placeholder="e.g. High-Temp Resin, Carbon Fiber Nylon, Biocompatible Clear"
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:bg-white transition-all"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:bg-white"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-800 font-bold mb-1 text-xs">Target Delivery Date</label>
+                    <label className="block text-slate-700 font-bold mb-1">Target Delivery Date</label>
                     <input
                       type="date"
                       value={deliveryDate}
                       onChange={(e) => setDeliveryDate(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:bg-white transition-all"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:bg-white"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-slate-800 font-bold mb-1 text-xs">
-                    Project Description & Requirements <span className="text-rose-500">*</span>
-                  </label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-slate-700 font-bold">
+                      Project Description & Requirements <span className="text-rose-500">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleRunAiAnalysis}
+                      disabled={isAnalyzingAi || !projectDescription || projectDescription.trim().length < 10}
+                      className="text-xs font-bold text-cyan-600 hover:text-cyan-700 disabled:opacity-40 flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Sparkles className={`w-3.5 h-3.5 ${isAnalyzingAi ? 'animate-spin' : ''}`} />
+                      <span>{isAnalyzingAi ? 'Analyzing Feasibility...' : 'AI DFM & Material Advisor'}</span>
+                    </button>
+                  </div>
                   <textarea
                     rows={3}
                     required
                     value={projectDescription}
                     onChange={(e) => setProjectDescription(e.target.value)}
                     placeholder="Describe functional usage, dimensional tolerances, surface finish requirements, or color preference..."
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:bg-white transition-all"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-slate-900 focus:outline-hidden focus:border-cyan-500 focus:bg-white"
                   />
                 </div>
+
+                {/* AI Feasibility Advisor Card */}
+                {aiAnalysisResult && (
+                  <div className="bg-slate-900 text-white rounded-2xl p-4 space-y-3 shadow-lg border border-cyan-500/30 animate-in fade-in duration-300">
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-cyan-400" />
+                        <span className="font-extrabold text-xs tracking-wide text-cyan-300 uppercase">
+                          AI DFM & Engineering Feasibility Assessment
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                        Feasibility Score: {aiAnalysisResult.feasibilityScore}/100
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      {aiAnalysisResult.summary}
+                    </p>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono text-[11px]">
+                      <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
+                        <span className="text-[10px] text-slate-400 block font-sans">Technology:</span>
+                        <strong className="text-cyan-300">{aiAnalysisResult.recommendedProcess}</strong>
+                      </div>
+                      <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
+                        <span className="text-[10px] text-slate-400 block font-sans">Material:</span>
+                        <strong className="text-white">{aiAnalysisResult.recommendedMaterial}</strong>
+                      </div>
+                      <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
+                        <span className="text-[10px] text-slate-400 block font-sans">Tolerance:</span>
+                        <strong className="text-white">{aiAnalysisResult.estimatedTolerance}</strong>
+                      </div>
+                      <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
+                        <span className="text-[10px] text-slate-400 block font-sans">Lead Time:</span>
+                        <strong className="text-white">{aiAnalysisResult.estimatedLeadTimeDays} Days</strong>
+                      </div>
+                    </div>
+
+                    {aiAnalysisResult.costSavingTips && (
+                      <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800">
+                        💡 <strong className="text-slate-200">Engineering Tip:</strong> {aiAnalysisResult.costSavingTips}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* CAD File Upload Section */}
-              <div className="space-y-3 pt-3 border-t border-slate-100">
-                <div className="flex items-center space-x-2 text-xs font-black text-cyan-800 uppercase tracking-wider bg-cyan-50 border border-cyan-200/80 px-3 py-1 rounded-lg w-fit">
-                  <span>3. CAD File / Drawing Attachment (Optional)</span>
-                </div>
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  3. CAD File / Drawing Attachment (Optional)
+                </h4>
 
-                <div className="border-2 border-dashed border-slate-300 hover:border-cyan-500 hover:bg-cyan-50/30 rounded-2xl p-5 text-center transition-all bg-slate-50 relative group cursor-pointer">
+                <div className="border-2 border-dashed border-slate-300 hover:border-cyan-500 rounded-2xl p-4 text-center transition-colors bg-slate-50 relative">
                   <input
                     type="file"
                     accept=".stl,.step,.stp,.iges,.igs,.obj,.3mf,.png,.jpg,.jpeg,.pdf"
                     onChange={handleFileUpload}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   />
-                  <div className="space-y-1.5">
-                    <div className="w-10 h-10 bg-cyan-100/80 text-cyan-700 rounded-2xl flex items-center justify-center mx-auto group-hover:scale-110 transition-transform">
-                      <Upload className="w-5 h-5" />
-                    </div>
-                    <p className="text-slate-900 font-extrabold text-xs">
+                  <div className="space-y-1">
+                    <Upload className="w-8 h-8 text-cyan-600 mx-auto" />
+                    <p className="text-slate-800 font-bold text-xs">
                       {fileName ? `Selected: ${fileName}` : 'Click or drag CAD files (STL, STEP, IGES, 3MF, PDF, Images)'}
                     </p>
-                    <p className="text-slate-500 text-[11px]">Up to 100MB per file. Strictly confidential under mutual NDA.</p>
+                    <p className="text-slate-400 text-[11px]">Up to 100MB per file. Strictly confidential under mutual NDA.</p>
                   </div>
                 </div>
 
                 {isUploading && (
-                  <p className="text-cyan-600 text-xs font-bold flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 animate-ping" /> Uploading file attachment...
+                  <p className="text-cyan-600 text-xs font-medium flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-cyan-500 animate-ping" /> Uploading file attachment...
                   </p>
                 )}
 
@@ -377,7 +468,7 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
 
               {/* Confidentiality Notice & Submit Button */}
               <div className="pt-4 border-t border-slate-100 space-y-4">
-                <div className="flex items-center gap-2 text-slate-500 text-[11px] bg-slate-50 border border-slate-200 p-2.5 rounded-xl">
+                <div className="flex items-center gap-2 text-slate-500 text-[11px]">
                   <ShieldCheck className="w-4 h-4 text-cyan-600 shrink-0" />
                   <span>All uploaded CAD geometry is processed under strict confidentiality and standard Non-Disclosure protocols.</span>
                 </div>
@@ -386,14 +477,14 @@ export const QuoteRequestModal: React.FC<QuoteRequestModalProps> = ({
                   <button
                     type="button"
                     onClick={onClose}
-                    className="px-5 py-3 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer text-xs"
+                    className="px-5 py-2.5 rounded-xl border border-slate-200 font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={isSubmitting || isUploading}
-                    className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black px-7 py-3 rounded-xl transition-all shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 flex items-center gap-2 cursor-pointer text-xs disabled:opacity-50 transform hover:-translate-y-0.5"
+                    className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-6 py-2.5 rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {isSubmitting ? (
                       'Submitting Quote...'

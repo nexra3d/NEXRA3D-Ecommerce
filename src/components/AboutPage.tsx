@@ -2,15 +2,15 @@ import React from 'react';
 import {
   Sparkles,
   ShieldCheck,
-  Heart,
+  Cpu,
   Layers,
   Award,
   Users,
   CheckCircle2,
   ArrowRight,
-  Gift,
+  Printer,
   Compass,
-  Palette
+  Factory
 } from 'lucide-react';
 
 interface AboutPageProps {
@@ -38,27 +38,27 @@ export const AboutPage: React.FC<AboutPageProps> = ({
         <div className="max-w-7xl mx-auto relative z-10">
           <div className="max-w-3xl">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 mb-4">
-              <Sparkles className="w-3.5 h-3.5" /> NEXRA 3D — Custom 3D Printed Creations
+              <Sparkles className="w-3.5 h-3.5" /> NEXRA 3D — Industrial Additive Manufacturing
             </span>
             <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-white mb-6">
-              Transforming Ideas into Personalized 3D Printed Art
+              Pioneering Industrial 3D Printing & Additive Manufacturing
             </h1>
             <p className="text-lg text-slate-300 leading-relaxed mb-8">
-              NEXRA 3D is India's premier destination for custom 3D-printed products, personalized photo lithophane lamps, divine idols, anime collectibles, bespoke keychains, and tailored gifts crafted with ultra-fine precision.
+              NEXRA 3D is a premier industrial 3D printing, rapid prototyping, and precision custom manufacturing platform. We bridge the gap between initial CAD concepts and end-use production parts with micron-level accuracy.
             </p>
 
             <div className="flex flex-wrap items-center gap-4">
               <button
-                onClick={handleProducts}
+                onClick={onRequestQuoteClick}
                 className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-6 py-3.5 rounded-xl transition-all shadow-lg shadow-cyan-500/25 cursor-pointer"
               >
-                Browse Shop Catalog
+                Request Instant CAD Quote
               </button>
               <button
-                onClick={handleServices}
+                onClick={onNavigateServices}
                 className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-6 py-3.5 rounded-xl border border-slate-700 transition-colors cursor-pointer"
               >
-                Custom 3D Printing Services
+                Explore Services
               </button>
             </div>
           </div>
@@ -71,21 +71,21 @@ export const AboutPage: React.FC<AboutPageProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
             <div className="w-12 h-12 rounded-xl bg-cyan-500/10 text-cyan-600 flex items-center justify-center font-bold">
-              <Gift className="w-6 h-6" />
+              <Compass className="w-6 h-6" />
             </div>
-            <h3 className="text-xl font-bold text-slate-900">Customized For You</h3>
+            <h3 className="text-xl font-bold text-slate-900">Our Mission</h3>
             <p className="text-slate-600 text-sm leading-relaxed">
-              Every memory deserves a tangible keepsake. We turn your cherished photos, names, and concepts into personalized 3D lithophane lamps and bespoke gifts.
+              To empower engineers, architects, surgeons, and designers with seamless access to industrial-grade 3D printers, biocompatible resins, and rapid custom manufacturing services without capital overhead.
             </p>
           </div>
 
           <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
             <div className="w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold">
-              <Palette className="w-6 h-6" />
+              <Printer className="w-6 h-6" />
             </div>
-            <h3 className="text-xl font-bold text-slate-900">Artisan Finish & Detail</h3>
+            <h3 className="text-xl font-bold text-slate-900">Our Vision</h3>
             <p className="text-slate-600 text-sm leading-relaxed">
-              From intricate divine temple idols to collectible anime figurines, every creation is printed with ultra-high resolution and meticulously hand-finished.
+              To establish NEXRA 3D as the benchmark for on-demand digital manufacturing across Asia-Pacific, supporting distributed production, zero inventory waste, and agile prototyping.
             </p>
           </div>
 
@@ -95,7 +95,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({
             </div>
             <h3 className="text-xl font-bold text-slate-900">Quality Guarantee</h3>
             <p className="text-slate-600 text-sm leading-relaxed">
-              We use premium eco-friendly materials and durable lighting components to ensure your custom pieces stay vibrant and lasting for years to come.
+              Every component manufactured in our facility undergoes rigorous CMM dimensional inspection, density testing, and surface finish validation to meet tight engineering tolerances.
             </p>
           </div>
         </div>
@@ -107,92 +107,92 @@ export const AboutPage: React.FC<AboutPageProps> = ({
               Why Choose NEXRA 3D
             </span>
             <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
-              Precision 3D Craftsmanship Delivered to Your Door
+              State-of-the-Art Additive Manufacturing Infrastructure
             </h2>
             <p className="text-slate-600 text-sm leading-relaxed">
-              At NEXRA 3D, we combine cutting-edge additive technology with creative design to produce bespoke home decor, spiritual statues, and personalized gifting experiences.
+              At NEXRA 3D, we operate advanced 4K SLA photopolymer resin systems, high-temperature dual-extruder FDM machines, and SLS powder bed fusion technology. Our cleanroom facilities produce precision industrial tooling, aerospace-grade carbon fiber components, and architectural masterplans.
             </p>
 
             <div className="space-y-3 pt-2">
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="w-5 h-5 text-cyan-600 shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="font-bold text-slate-900 text-sm">Ultra-Fine Resolution</h4>
-                  <p className="text-slate-500 text-xs">Micron-accurate detail brings out every contour in photo lithophanes and intricate sculptures.</p>
+                  <h4 className="font-bold text-slate-900 text-sm">0.02mm Layer Repeatability</h4>
+                  <p className="text-slate-500 text-xs">Micron-accurate feature resolution for intricate snap-fits and bezel assemblies.</p>
                 </div>
               </div>
 
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="w-5 h-5 text-cyan-600 shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="font-bold text-slate-900 text-sm">Safe & Fast Delivery Across India</h4>
-                  <p className="text-slate-500 text-xs">Secured shock-proof packaging with end-to-end order tracking via top courier networks.</p>
+                  <h4 className="font-bold text-slate-900 text-sm">Rapid Turnaround (24 - 48 Hours)</h4>
+                  <p className="text-slate-500 text-xs">Fast DFM automated quote generation and express courier delivery across India.</p>
                 </div>
               </div>
 
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="w-5 h-5 text-cyan-600 shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="font-bold text-slate-900 text-sm">100% Satisfaction & Custom Previews</h4>
-                  <p className="text-slate-500 text-xs">Direct photo upload assistance and live previews for all personalized and engraved items.</p>
+                  <h4 className="font-bold text-slate-900 text-sm">Engineering Materials Portfolio</h4>
+                  <p className="text-slate-500 text-xs">High-temp resins, carbon fiber filled Nylon, PEEK, TPU, and zero-ash castable resins.</p>
                 </div>
               </div>
             </div>
           </div>
 
           <div className="relative">
-            <div className="aspect-[4/3] min-h-[250px] w-full rounded-2xl overflow-hidden shadow-xl border border-slate-200 group">
+            <div className="aspect-4/3 rounded-2xl overflow-hidden shadow-xl border border-slate-200 group">
               <img
-                src="https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&q=80&w=1200"
-                alt="Personalized 3D Printed Lithophane Moon Lamp"
+                src="https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=1200"
+                alt="Bambu Lab High-Speed 3D Printers - NEXRA Industrial Printing Facility"
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 referrerPolicy="no-referrer"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent pointer-events-none" />
               <div className="absolute top-4 left-4 bg-slate-900/90 text-white px-3.5 py-1.5 rounded-xl border border-slate-700/80 text-xs font-extrabold flex items-center gap-2 backdrop-blur-xs shadow-lg">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>Handcrafted & Precision 3D Printed</span>
+                <span>Bambu Lab X1-Carbon High-Speed Print Farm</span>
               </div>
             </div>
             <div className="absolute -bottom-6 -left-6 bg-slate-900 text-white p-6 rounded-2xl shadow-xl hidden sm:block border border-slate-800 max-w-xs">
               <div className="text-3xl font-black text-cyan-400">10,000+</div>
-              <p className="text-xs text-slate-300 mt-1">Custom 3D printed products and gifts delivered to happy customers nationwide.</p>
+              <p className="text-xs text-slate-300 mt-1">Precision prototypes and production components delivered nationwide.</p>
             </div>
           </div>
         </div>
 
-        {/* Categories / Highlights */}
+        {/* Industrial Application Capabilities */}
         <div className="space-y-8">
           <div className="text-center max-w-2xl mx-auto space-y-2">
-            <h2 className="text-3xl font-bold text-slate-900">What We Create</h2>
+            <h2 className="text-3xl font-bold text-slate-900">Industries Served</h2>
             <p className="text-slate-600 text-sm">
-              Discover our diverse collections of personalized, decorative, and spiritual 3D printed items.
+              NEXRA 3D provides specialized additive manufacturing solutions tailored for high-stakes industries.
             </p>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 text-center space-y-2 hover:border-cyan-500 transition-colors">
-              <div className="text-3xl font-bold text-cyan-600">Lamps</div>
-              <h4 className="font-bold text-slate-900 text-sm">Lithophane Lamps</h4>
-              <p className="text-slate-500 text-xs">Moon lamps, cylinder lamps, and customized night lights.</p>
+              <div className="text-3xl font-bold text-cyan-600">Aero</div>
+              <h4 className="font-bold text-slate-900 text-sm">Aerospace & Defense</h4>
+              <p className="text-slate-500 text-xs">Lightweight carbon fiber ducting and structural components.</p>
             </div>
 
             <div className="bg-white p-6 rounded-2xl border border-slate-200 text-center space-y-2 hover:border-cyan-500 transition-colors">
-              <div className="text-3xl font-bold text-indigo-600">Idols</div>
-              <h4 className="font-bold text-slate-900 text-sm">Divine & Spiritual Idols</h4>
-              <p className="text-slate-500 text-xs">Exquisite temple statues with metallic and marble finishes.</p>
+              <div className="text-3xl font-bold text-indigo-600">Tool</div>
+              <h4 className="font-bold text-slate-900 text-sm">Industrial Tooling</h4>
+              <p className="text-slate-500 text-xs">Custom assembly jigs, CMM fixtures & inspection gauges.</p>
             </div>
 
             <div className="bg-white p-6 rounded-2xl border border-slate-200 text-center space-y-2 hover:border-cyan-500 transition-colors">
-              <div className="text-3xl font-bold text-emerald-600">Gifts</div>
-              <h4 className="font-bold text-slate-900 text-sm">Personalized Gifts</h4>
-              <p className="text-slate-500 text-xs">Custom keychains, photo frames, and anniversary keepsakes.</p>
+              <div className="text-3xl font-bold text-emerald-600">Auto</div>
+              <h4 className="font-bold text-slate-900 text-sm">Automotive Engineering</h4>
+              <p className="text-slate-500 text-xs">Functional intake manifolds, housings, and custom jigs.</p>
             </div>
 
             <div className="bg-white p-6 rounded-2xl border border-slate-200 text-center space-y-2 hover:border-cyan-500 transition-colors">
-              <div className="text-3xl font-bold text-amber-600">Decor</div>
-              <h4 className="font-bold text-slate-900 text-sm">Home & Office Decor</h4>
-              <p className="text-slate-500 text-xs">Parametric wall clocks, planters, and modern tabletop art.</p>
+              <div className="text-3xl font-bold text-amber-600">Arch</div>
+              <h4 className="font-bold text-slate-900 text-sm">Architecture & BIM</h4>
+              <p className="text-slate-500 text-xs">High-detail masterplan physical models & facades.</p>
             </div>
           </div>
         </div>
@@ -200,22 +200,22 @@ export const AboutPage: React.FC<AboutPageProps> = ({
         {/* Call to Action Banner */}
         <div className="bg-slate-900 text-white rounded-3xl p-8 sm:p-12 text-center space-y-6 relative overflow-hidden">
           <div className="max-w-2xl mx-auto space-y-3 relative z-10">
-            <h2 className="text-3xl font-extrabold tracking-tight">Have a Custom 3D Printing Idea?</h2>
+            <h2 className="text-3xl font-extrabold tracking-tight">Ready to Bring Your CAD Geometry to Life?</h2>
             <p className="text-slate-300 text-sm">
-              Whether you want a personalized gift, custom figure, or batch manufacturing for your business, we are ready to print.
+              Submit your project files today or shop our e-commerce store for 3D printers, engineering resins, and replacement components.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
               <button
-                onClick={handleProducts}
+                onClick={onRequestQuoteClick}
                 className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-8 py-3.5 rounded-xl transition-all shadow-lg shadow-cyan-500/25 cursor-pointer"
               >
-                Shop Popular Products
+                Request a Quote
               </button>
               <button
-                onClick={handleServices}
+                onClick={onNavigateProducts}
                 className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-8 py-3.5 rounded-xl border border-slate-700 transition-colors cursor-pointer"
               >
-                Custom Printing Inquiry
+                Browse Shop Catalog
               </button>
             </div>
           </div>

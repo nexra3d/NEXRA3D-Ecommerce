@@ -1,16 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Lock, Eye, EyeOff, CheckCircle2, AlertCircle, KeyRound, ArrowRight } from 'lucide-react';
-import { updateSupabasePassword, isSupabaseConfigured } from '../lib/supabase';
+import { apiFetch, setStoredAuth } from '../lib/api';
+import { User } from '../types';
 
 interface ResetPasswordPageProps {
   onNavigateLogin: () => void;
   onNavigateHome: () => void;
+  onLoginSuccess?: (user: User) => void;
 }
 
 export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
   onNavigateLogin,
-  onNavigateHome
+  onNavigateHome,
+  onLoginSuccess
 }) => {
+  const [token, setToken] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -18,12 +22,25 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [success, setSuccess] = useState(false);
 
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const queryToken = urlParams.get('token');
+    if (queryToken) {
+      setToken(queryToken);
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
-    if (password.length < 6) {
-      setErrorMsg('Password must be at least 6 characters long.');
+    if (!token.trim()) {
+      setErrorMsg('Password reset token is missing. Please use the link sent to your email.');
+      return;
+    }
+
+    if (password.length < 8) {
+      setErrorMsg('Password must be at least 8 characters long.');
       return;
     }
 
@@ -35,18 +52,31 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
     setLoading(true);
 
     try {
-      if (!isSupabaseConfigured) {
-        setLoading(false);
-        setSuccess(true);
-        return;
-      }
+      const res = await apiFetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: token.trim(),
+          password
+        })
+      });
+      const data = await res.json();
+      setLoading(false);
 
-      await updateSupabasePassword(password);
+      if (!res.ok) {
+        setErrorMsg(data.error || data.message || 'Failed to reset password.');
+      } else {
+        setSuccess(true);
+        if (data.token && data.user) {
+          setStoredAuth(data.token, data.user);
+          if (onLoginSuccess) {
+            onLoginSuccess(data.user);
+          }
+        }
+      }
+    } catch {
       setLoading(false);
-      setSuccess(true);
-    } catch (err: any) {
-      setLoading(false);
-      setErrorMsg(err?.message || 'Failed to reset password. Please ensure you clicked a valid recovery link.');
+      setErrorMsg('Network error. Please try again.');
     }
   };
 
@@ -69,7 +99,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
           </div>
           <h1 className="text-2xl font-black tracking-tight">Set New Password</h1>
           <p className="text-xs text-slate-300 mt-1">
-            Choose a strong, secure new password for your NEXRA3D account.
+            Choose a strong, secure new password for your NEXRA 3D account.
           </p>
         </div>
 
@@ -99,12 +129,28 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
                 onClick={onNavigateLogin}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-3 rounded-xl transition-all cursor-pointer shadow-md shadow-emerald-100 flex items-center justify-center gap-2"
               >
-                <span>Proceed to Login</span>
+                <span>Proceed to Sign In</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
+              {!token && (
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-700 mb-1.5">
+                    Reset Token
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Enter recovery token from email"
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-xs text-slate-800 font-mono focus:outline-hidden focus:border-indigo-500"
+                  />
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-extrabold text-slate-700 mb-1.5">
                   New Password
@@ -114,15 +160,15 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    placeholder="At least 8 chars with upper, lower, & number"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Min 6 characters"
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl pl-10 pr-10 py-3 text-xs text-slate-900 font-medium transition-all focus:outline-hidden"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-10 py-3 text-xs text-slate-800 focus:outline-hidden focus:border-indigo-500"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -138,27 +184,28 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    placeholder="Re-enter your new password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Re-enter new password"
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl pl-10 pr-4 py-3 text-xs text-slate-900 font-medium transition-all focus:outline-hidden"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-3.5 py-3 text-xs text-slate-800 focus:outline-hidden focus:border-indigo-500"
                   />
                 </div>
+              </div>
+
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-[11px] text-slate-500 space-y-1">
+                <p className="font-bold text-slate-700">Password Security Standards:</p>
+                <p>• Minimum 8 characters long</p>
+                <p>• Include uppercase & lowercase letters</p>
+                <p>• Include at least one number</p>
               </div>
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm py-3.5 rounded-2xl transition-all cursor-pointer shadow-md shadow-indigo-100 flex items-center justify-center space-x-2 disabled:opacity-60"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs py-3.5 rounded-xl transition-all cursor-pointer shadow-md shadow-indigo-100 flex items-center justify-center space-x-2 disabled:opacity-60"
               >
-                {loading ? (
-                  <span>Updating Password...</span>
-                ) : (
-                  <>
-                    <span>Reset Password</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
+                <span>{loading ? 'Updating Password...' : 'Save New Password'}</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
             </form>
           )}

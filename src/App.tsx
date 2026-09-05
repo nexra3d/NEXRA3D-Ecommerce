@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { HeroBanner } from './components/HeroBanner';
 import { ProductGrid } from './components/ProductGrid';
@@ -11,7 +11,6 @@ import { WishlistModal } from './components/WishlistModal';
 import { AuthModal } from './components/AuthModal';
 import { EmailInboxModal } from './components/EmailInboxModal';
 import { AdminDashboard } from './components/AdminDashboard';
-import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoginPage } from './components/LoginPage';
 import { RegisterPage } from './components/RegisterPage';
 import { AccountDashboard } from './components/AccountDashboard';
@@ -26,13 +25,14 @@ import { AerospacePage } from './components/AerospacePage';
 import { QuoteRequestModal } from './components/QuoteRequestModal';
 import { Footer } from './components/Footer';
 import { WhatsAppFloatingButton } from './components/WhatsAppFloatingButton';
-import { InstagramPopup } from './components/InstagramPopup';
 
 import { AdminLoginPage } from './components/AdminLoginPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
+import { VerifyEmailPage } from './components/VerifyEmailPage';
+import { INITIAL_CATEGORIES } from './data/mockData';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
-import { ShieldCheck, ArrowRight } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 import { apiFetch, getStoredToken, getStoredUser, clearStoredAuth, setStoredAuth } from './lib/api';
 import {
   Product,
@@ -47,10 +47,6 @@ import {
   Service
 } from './types';
 
-import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
-import { CookieConsentBanner } from './components/CookieConsentBanner';
-import { useSEO } from './hooks/useSEO';
-
 type ViewType =
   | 'home'
   | 'shop'
@@ -59,87 +55,16 @@ type ViewType =
   | 'service-detail'
   | 'about'
   | 'contact'
-  | 'privacy-policy'
   | 'login'
   | 'register'
   | 'forgot-password'
   | 'reset-password'
+  | 'verify-email'
   | 'account'
   | 'unauthorized'
   | 'cart'
   | 'wishlist'
   | 'admin';
-
-const VIEW_METADATA: Record<ViewType, { title: string; description: string }> = {
-  home: {
-    title: 'NEXRA 3D | Custom 3D Printed Products, Lithophane Lamps & Personalized Gifts',
-    description: 'India’s premier store for custom 3D printed lithophane moon lamps, personalized keychains, divine idols, anime collectibles, and bespoke gifts.'
-  },
-  shop: {
-    title: 'Shop Custom 3D Printed Products & Gifts | NEXRA 3D',
-    description: 'Browse our complete catalog of personalized lithophane lamps, customized gifts, divine idols, home decor, and anime collectibles.'
-  },
-  aerospace: {
-    title: 'Custom 3D Printing | NEXRA 3D',
-    description: 'Custom 3D printing, lightweight high-performance polymers, and precision rapid prototyping.'
-  },
-  services: {
-    title: 'Custom 3D Printing & Prototyping Services | NEXRA 3D',
-    description: 'End-to-end 3D printing, custom design personalization, photo lithophane carving, and on-demand rapid prototyping services.'
-  },
-  'service-detail': {
-    title: 'Service Details | NEXRA 3D',
-    description: 'Explore custom 3D printing and personalized manufacturing solutions tailored for high precision creations.'
-  },
-  about: {
-    title: 'About Us | NEXRA 3D',
-    description: 'Discover NEXRA 3D - creating handcrafted, precision personalized 3D printed lamps, gifts, and decor across India.'
-  },
-  contact: {
-    title: 'Contact Us | NEXRA 3D',
-    description: 'Get in touch with NEXRA 3D for personalized gifts, custom printing orders, and customer support.'
-  },
-  'privacy-policy': {
-    title: 'Privacy Policy | NEXRA 3D',
-    description: 'Learn how NEXRA 3D protects your privacy, personal data, CAD files, and intellectual property.'
-  },
-  login: {
-    title: 'Customer Login | NEXRA 3D',
-    description: 'Sign in to your NEXRA 3D customer account to track orders, manage custom quotes, and view saved items.'
-  },
-  register: {
-    title: 'Create Account | NEXRA 3D',
-    description: 'Join NEXRA 3D for personalized custom 3D printing quotes, instant order tracking, and exclusive discounts.'
-  },
-  'forgot-password': {
-    title: 'Forgot Password | NEXRA 3D',
-    description: 'Recover and reset your NEXRA 3D account password securely.'
-  },
-  'reset-password': {
-    title: 'Reset Password | NEXRA 3D',
-    description: 'Set a new secure password for your NEXRA 3D account.'
-  },
-  account: {
-    title: 'My Account | NEXRA 3D',
-    description: 'Manage your profile, shipping addresses, live order history, and account settings.'
-  },
-  unauthorized: {
-    title: 'Access Denied | NEXRA 3D',
-    description: 'You do not have permission to view this restricted page.'
-  },
-  cart: {
-    title: 'Shopping Cart | NEXRA 3D',
-    description: 'Review your selected 3D printers, filaments, custom lamps, and proceed to secure checkout.'
-  },
-  wishlist: {
-    title: 'My Wishlist | NEXRA 3D',
-    description: 'View and manage your saved products and favorite 3D printing equipment.'
-  },
-  admin: {
-    title: 'Admin Portal | NEXRA 3D',
-    description: 'NEXRA 3D store administration, catalog management, customer orders, and live shipping analytics.'
-  }
-};
 
 const viewToPathMap: Record<ViewType, string> = {
   home: '/',
@@ -149,11 +74,11 @@ const viewToPathMap: Record<ViewType, string> = {
   'service-detail': '/services',
   about: '/about',
   contact: '/contact',
-  'privacy-policy': '/privacy-policy',
   login: '/login',
   register: '/register',
   'forgot-password': '/forgot-password',
   'reset-password': '/reset-password',
+  'verify-email': '/verify-email',
   account: '/account',
   unauthorized: '/unauthorized',
   cart: '/cart',
@@ -177,15 +102,21 @@ const getViewFromPath = (pathname: string, hash: string = ''): ViewType => {
   if (cleanPath === '/services') return 'services';
   if (cleanPath === '/about') return 'about';
   if (cleanPath === '/contact') return 'contact';
-  if (cleanPath === '/privacy-policy' || cleanPath === '/privacy') return 'privacy-policy';
   if (cleanPath === '/login') return 'login';
   if (cleanPath === '/register') return 'register';
   if (cleanPath === '/forgot-password') return 'forgot-password';
   if (cleanPath === '/reset-password') return 'reset-password';
+  if (cleanPath === '/verify-email') return 'verify-email';
   if (cleanPath === '/account') return 'account';
   if (cleanPath === '/unauthorized') return 'unauthorized';
   if (cleanPath === '/cart') return 'cart';
   if (cleanPath === '/wishlist') return 'wishlist';
+
+  // Fallback to saved view if path is home
+  const savedView = localStorage.getItem('nexra_current_view') as ViewType;
+  if (savedView && viewToPathMap[savedView] && cleanPath === '/') {
+    return savedView;
+  }
 
   return 'home';
 };
@@ -195,29 +126,14 @@ export default function App() {
   const [currentView, setCurrentView] = useState<ViewType>(() =>
     getViewFromPath(window.location.pathname, window.location.hash)
   );
-  const [accountSubSection, setAccountSubSection] = useState<'overview' | 'profile' | 'password' | 'orders' | 'wishlist' | 'addresses' | 'privacy'>('overview');
+  const [accountSubSection, setAccountSubSection] = useState<'overview' | 'profile' | 'password' | 'orders' | 'wishlist' | 'addresses'>('overview');
 
-
-  // Synchronous cache retrieval for instant frame-0 rendering
-  const getInitialCachedProducts = (): Product[] => {
-    try {
-      if (typeof window === 'undefined') return [];
-      const cached = sessionStorage.getItem('nexra_default_products');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return [];
-  };
-
-  const initialProducts = getInitialCachedProducts();
 
   // Global App State
   const [user, setUser] = useState<User | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [products, setProducts] = useState<Product[]>(initialProducts);
-  const [allProducts, setAllProducts] = useState<Product[]>(initialProducts);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
 
@@ -233,39 +149,7 @@ export default function App() {
   const [emails, setEmails] = useState<EmailNotification[]>([]);
 
   // Loading States
-  const [isProductsLoading, setIsProductsLoading] = useState(initialProducts.length === 0);
-
-  // Client-side cache for instant filter switching & revalidation
-  const productCacheRef = useRef<Map<string, { data: Product[]; timestamp: number }>>(new Map());
-
-  // Invalidation function to wipe client caches when product mutations occur
-  const invalidateClientProductCache = useCallback(() => {
-    productCacheRef.current.clear();
-    try {
-      sessionStorage.removeItem('nexra_default_products');
-    } catch {}
-  }, []);
-
-  // Serialization queue for cart mutations to prevent race conditions during rapid clicks
-  const cartMutationQueueRef = useRef<Promise<any>>(Promise.resolve());
-
-  // Resilient mutation queue runner: catches prior errors to avoid stalling subsequent mutations
-  const enqueueCartMutation = useCallback(<T,>(mutationFn: () => Promise<T>): Promise<T> => {
-    return new Promise<T>((resolve, reject) => {
-      cartMutationQueueRef.current = cartMutationQueueRef.current
-        .catch(() => {
-          // Absorb error from earlier rejected task so subsequent user mutations execute normally
-        })
-        .then(async () => {
-          try {
-            const res = await mutationFn();
-            resolve(res);
-          } catch (err) {
-            reject(err);
-          }
-        });
-    });
-  }, []);
+  const [isProductsLoading, setIsProductsLoading] = useState(true);
 
   // Filter State
   const [filters, setFilters] = useState<ProductFilterState>(() => {
@@ -287,7 +171,6 @@ export default function App() {
   });
 
   // Modal / Drawer Toggles
-  const [isInstagramPopupOpen, setIsInstagramPopupOpen] = useState(true);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -303,19 +186,6 @@ export default function App() {
   // Selected Item Details Modals
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
-
-  // Dynamic Page Title & SEO synchronization for all views & active items
-  const activeMeta = VIEW_METADATA[currentView] || VIEW_METADATA.home;
-  const activeTitle =
-    currentView === 'service-detail' && selectedService
-      ? `${selectedService.name || selectedService.seoTitle || 'Service Details'} | NEXRA 3D`
-      : activeMeta.title;
-
-  useSEO({
-    title: quickViewProduct ? `${quickViewProduct.name || quickViewProduct.title} | NEXRA 3D` : activeTitle,
-    description: quickViewProduct?.shortDescription || quickViewProduct?.description || activeMeta.description,
-    image: quickViewProduct?.imageUrl || quickViewProduct?.images?.[0]
-  });
 
   // Coupon state
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
@@ -389,9 +259,6 @@ export default function App() {
         quantity: i.quantity,
         variantId: i.variantId,
         variant: i.variant,
-        selectedColour: i.selectedColour || i.variant?.colour || null,
-        selectedWattage: i.selectedWattage || i.variant?.wattage || null,
-        customizationText: i.customizationText || null,
         taxPercentage: Number(i.taxPercentage ?? p.taxPercentage ?? 0)
       };
     });
@@ -457,12 +324,9 @@ export default function App() {
   };
 
   // Fetch all products for admin catalog and global store counts
-  const fetchAllProducts = async (forceAdmin = false) => {
+  const fetchAllProducts = async () => {
     try {
-      const url = forceAdmin
-        ? '/api/products?limit=500&includeInactive=true'
-        : '/api/products?limit=500';
-      const data = await safeFetchJson(url);
+      const data = await safeFetchJson('/api/products?limit=500&includeInactive=true');
       if (Array.isArray(data)) {
         setAllProducts(data);
       } else if (data && Array.isArray(data.products)) {
@@ -491,35 +355,39 @@ export default function App() {
     }
   };
 
-  // Central refresh for user-specific data (parallelized)
+  // Central refresh for user-specific data
   const refreshUserData = async () => {
-    await Promise.allSettled([
-      fetchCart(),
-      fetchWishlist(),
-      fetchSavedAddresses(),
-      fetchOrders()
-    ]);
+    await fetchCart();
+    await fetchWishlist();
+    await fetchSavedAddresses();
+    await fetchOrders();
   };
 
-  // Fetch initial data on boot (parallelized)
+  // Fetch initial data on boot
   const fetchData = async () => {
     try {
       await checkSession();
 
-      // Parallelize independent catalog & reference requests
-      const [catData, srvData, coupData, emlData] = await Promise.all([
-        safeFetchJson('/api/categories'),
-        safeFetchJson('/api/services'),
-        safeFetchJson('/api/coupons'),
-        safeFetchJson('/api/emails')
-      ]);
+      // 1. Fetch Categories
+      const catData = await safeFetchJson('/api/categories');
+      setCategories(Array.isArray(catData) && catData.length > 0 ? catData : INITIAL_CATEGORIES);
 
-      if (Array.isArray(catData)) setCategories(catData);
-      if (Array.isArray(srvData)) setServices(srvData);
-      if (Array.isArray(coupData)) setCoupons(coupData);
-      if (Array.isArray(emlData)) setEmails(emlData);
+      // 1a. Fetch All Products
+      await fetchAllProducts();
 
-      // Refresh user-specific data
+      // 1b. Fetch Services
+      const srvData = await safeFetchJson('/api/services');
+      setServices(Array.isArray(srvData) ? srvData : []);
+
+      // 2. Fetch Coupons
+      const coupData = await safeFetchJson('/api/coupons');
+      setCoupons(Array.isArray(coupData) ? coupData : []);
+
+      // 3. Fetch Emails
+      const emlData = await safeFetchJson('/api/emails');
+      setEmails(Array.isArray(emlData) ? emlData : []);
+
+      // 4. Fetch User Data
       await refreshUserData();
     } catch (err) {
       console.error('Error initializing app state:', err);
@@ -561,67 +429,41 @@ export default function App() {
     setCurrentView('admin');
     if (user?.role === 'ADMIN') {
       setIsAdminOpen(true);
-      fetchAllProducts(true);
     } else {
       setIsAdminOpen(false);
     }
   };
 
-  // Fetch Products whenever filters change (with Stale-While-Revalidate caching)
+  // Fetch Products whenever filters change
   const fetchFilteredProducts = async () => {
-    const queryParams = new URLSearchParams();
-    queryParams.append('limit', '500');
-    if (filters.categoryId) queryParams.append('category', filters.categoryId);
-    if (filters.subcategoryId) queryParams.append('subcategory', filters.subcategoryId);
-    if (filters.searchQuery) queryParams.append('search', filters.searchQuery);
-    if (filters.minPrice) queryParams.append('minPrice', filters.minPrice.toString());
-    if (filters.maxPrice) queryParams.append('maxPrice', filters.maxPrice.toString());
-    if (filters.sortBy) queryParams.append('sortBy', filters.sortBy);
-    if (filters.inStockOnly) queryParams.append('inStock', 'true');
-    if (filters.onSaleOnly) queryParams.append('onSale', 'true');
-    if (filters.brands && filters.brands.length > 0) {
-      queryParams.append('brands', filters.brands.join(','));
-    }
-
-    const cacheKey = queryParams.toString();
-    const cachedEntry = productCacheRef.current.get(cacheKey);
-
-    // Stale-While-Revalidate: If we have cached products for this query, display immediately!
-    if (cachedEntry && cachedEntry.data.length > 0) {
-      setProducts(cachedEntry.data);
-      setIsProductsLoading(false);
-    } else if (products.length === 0) {
-      // Only show skeleton loader if no products are currently visible on screen
-      setIsProductsLoading(true);
-    }
-
+    setIsProductsLoading(true);
     try {
-      const res = await apiFetch(`/api/products?${cacheKey}`);
+      const queryParams = new URLSearchParams();
+      queryParams.append('limit', '500');
+      if (filters.categoryId) queryParams.append('category', filters.categoryId);
+      if (filters.subcategoryId) queryParams.append('subcategory', filters.subcategoryId);
+      if (filters.searchQuery) queryParams.append('search', filters.searchQuery);
+      if (filters.minPrice) queryParams.append('minPrice', filters.minPrice.toString());
+      if (filters.maxPrice) queryParams.append('maxPrice', filters.maxPrice.toString());
+      if (filters.sortBy) queryParams.append('sortBy', filters.sortBy);
+      if (filters.inStockOnly) queryParams.append('inStock', 'true');
+      if (filters.onSaleOnly) queryParams.append('onSale', 'true');
+      if (filters.brands && filters.brands.length > 0) {
+        queryParams.append('brands', filters.brands.join(','));
+      }
+
+      const res = await apiFetch(`/api/products?${queryParams.toString()}`);
       const data = await res.json();
-      const productList = Array.isArray(data) ? data : (data && Array.isArray(data.products) ? data.products : []);
-
-      // Always update visible products with fresh revalidated server data
-      setProducts(productList);
-      productCacheRef.current.set(cacheKey, { data: productList, timestamp: Date.now() });
-
-      if (productList.length > 0) {
-        setAllProducts((prev) => (prev.length === 0 ? productList : prev));
-        // Save default catalog in sessionStorage for instant startup on subsequent reloads
-        try {
-          if (!filters.categoryId && !filters.searchQuery) {
-            sessionStorage.setItem('nexra_default_products', JSON.stringify(productList.slice(0, 50)));
-          }
-        } catch {}
-      } else if (!filters.categoryId && !filters.searchQuery) {
-        try {
-          sessionStorage.removeItem('nexra_default_products');
-        } catch {}
+      if (Array.isArray(data)) {
+        setProducts(data);
+      } else if (data && Array.isArray(data.products)) {
+        setProducts(data.products);
+      } else {
+        setProducts([]);
       }
     } catch (err) {
       console.error('Error fetching products:', err);
-      if (!cachedEntry && products.length === 0) {
-        setProducts([]);
-      }
+      setProducts([]);
     } finally {
       setIsProductsLoading(false);
     }
@@ -635,18 +477,8 @@ export default function App() {
       clearStoredAuth();
     };
 
-    const handleProductsUpdated = () => {
-      invalidateClientProductCache();
-      fetchFilteredProducts();
-      fetchAllProducts(true);
-    };
-
     window.addEventListener('auth_unauthorized', handleUnauthorized);
-    window.addEventListener('products_updated', handleProductsUpdated);
-    return () => {
-      window.removeEventListener('auth_unauthorized', handleUnauthorized);
-      window.removeEventListener('products_updated', handleProductsUpdated);
-    };
+    return () => window.removeEventListener('auth_unauthorized', handleUnauthorized);
   }, []);
 
   // React to user login / logout state changes
@@ -844,16 +676,8 @@ export default function App() {
     }
   };
 
-  // Cart Actions (with Optimistic UI and Rollback)
-  const handleAddToCart = async (
-    productOrId: Product | string,
-    variantIdOrQty?: string | number,
-    quantity = 1,
-    customizationText?: string,
-    selectedColour?: string,
-    selectedWattage?: string,
-    customizationImages?: any[]
-  ) => {
+  // Cart Actions
+  const handleAddToCart = async (productOrId: Product | string, variantIdOrQty?: string | number, quantity = 1) => {
     if (!user) {
       setIsAuthOpen(true);
       showToast('Please log in or create an account to add items to cart');
@@ -871,115 +695,23 @@ export default function App() {
       actualQty = quantity;
     }
 
-    const trimmedCustomization = (customizationText || '').trim();
-    const hasCustomImages = Array.isArray(customizationImages) && customizationImages.length > 0;
-
-    // Retrieve product details for instantaneous optimistic rendering
-    const prodObj = typeof productOrId === 'object'
-      ? productOrId
-      : (products.find((p) => p.id === prodId) || allProducts.find((p) => p.id === prodId));
-
-    // SNAPSHOT PREVIOUS STATE FOR AUTOMATIC ROLLBACK
-    const prevCartItems = [...cartItems];
-    const prevCartData = cartData ? { ...cartData } : null;
-
-    // Check if matching item already exists in current local cart
-    const existingIndex = prevCartItems.findIndex((item) => {
-      if (hasCustomImages) return false;
-      const idMatch = item.productId === prodId || item.product?.id === prodId;
-      const varMatch = (item.variantId || null) === (actualVariantId || null);
-      const colMatch = (item.selectedColour || null) === (selectedColour || null);
-      const watMatch = (item.selectedWattage || null) === (selectedWattage || null);
-      const custMatch = (item.customizationText || null) === (trimmedCustomization || null);
-      return idMatch && varMatch && colMatch && watMatch && custMatch;
-    });
-
-    let optimisticItems: CartItem[];
-    if (existingIndex >= 0) {
-      optimisticItems = prevCartItems.map((item, idx) => {
-        if (idx === existingIndex) {
-          return {
-            ...item,
-            quantity: item.quantity + actualQty
-          };
-        }
-        return item;
+    try {
+      const res = await apiFetch('/api/cart/items', {
+        method: 'POST',
+        body: JSON.stringify({ productId: prodId, variantId: actualVariantId, quantity: actualQty })
       });
-    } else {
-      const price = prodObj?.price ?? 0;
-      const mrp = prodObj?.mrp ?? price;
-      const stock = prodObj?.stockQuantity ?? prodObj?.stock ?? 100;
-      const img = prodObj?.imageUrl || (prodObj?.images && prodObj.images[0]) || '';
-      const optimisticItem: CartItem = {
-        id: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        productId: prodId,
-        product: {
-          id: prodId,
-          title: prodObj?.name || prodObj?.title || 'Product',
-          brand: prodObj?.category?.name || prodObj?.brand || 'Brand',
-          price,
-          salePrice: price,
-          mrp,
-          stock,
-          stockQuantity: stock,
-          slug: prodObj?.slug || '',
-          sku: prodObj?.sku || '',
-          categoryId: prodObj?.categoryId || '',
-          images: Array.isArray(prodObj?.images) && prodObj.images.length > 0 ? prodObj.images : [img],
-          imageUrl: img
-        },
-        quantity: actualQty,
-        variantId: actualVariantId,
-        selectedColour: selectedColour || null,
-        selectedWattage: selectedWattage || null,
-        customizationText: trimmedCustomization || null,
-        taxPercentage: Number(prodObj?.taxPercentage ?? 0)
-      };
-      optimisticItems = [optimisticItem, ...prevCartItems];
-    }
-
-    // 1. INSTANT UI UPDATE (<1ms feedback)
-    setCartItems(optimisticItems);
-    const optimisticSubtotal = optimisticItems.reduce((sum, item) => sum + ((item.product?.price || 0) * item.quantity), 0);
-    setCartData((prev: any) => ({
-      ...(prev || {}),
-      items: optimisticItems,
-      totalItems: optimisticItems.reduce((acc, item) => acc + item.quantity, 0),
-      subtotal: optimisticSubtotal,
-      totalAmount: optimisticSubtotal
-    }));
-
-    showToast('Item added to Shopping Cart!');
-
-    // 2. BACKGROUND PERSISTENCE WITH SERIALIZED QUEUE
-    return enqueueCartMutation(async () => {
-      try {
-        const res = await apiFetch('/api/cart/items', {
-          method: 'POST',
-          body: JSON.stringify({
-            productId: prodId,
-            variantId: actualVariantId,
-            quantity: actualQty,
-            customizationText: trimmedCustomization,
-            selectedColour,
-            selectedWattage,
-            customizationImages: customizationImages || []
-          })
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error || 'Failed to add item to cart');
-        }
-        setCartData(data);
-        setCartItems(formatCartItems(data?.items));
-      } catch (err: any) {
-        console.error('Add to cart background sync failed, rolling back:', err);
-        setCartItems(prevCartItems);
-        setCartData(prevCartData);
-        showToast(err.message || 'Failed to add item to cart');
-        throw err;
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to add item to cart');
+        throw new Error(data.error || 'Failed to add item to cart');
       }
-    });
+      setCartData(data);
+      setCartItems(formatCartItems(data?.items));
+      showToast('Item added to Shopping Cart!');
+    } catch (err: any) {
+      console.error('Add to cart error:', err);
+      throw err;
+    }
   };
 
   const handleUpdateCartQuantity = async (itemIdOrProductId: string, quantity: number) => {
@@ -989,53 +721,22 @@ export default function App() {
       if (matched) targetItemId = matched.id;
     }
 
-    // SNAPSHOT PREVIOUS STATE FOR ROLLBACK
-    const prevCartItems = [...cartItems];
-    const prevCartData = cartData ? { ...cartData } : null;
-
-    // INSTANT OPTIMISTIC UPDATE
-    let optimisticItems: CartItem[];
-    if (quantity <= 0) {
-      optimisticItems = prevCartItems.filter((i) => i.id !== targetItemId && i.productId !== itemIdOrProductId);
-    } else {
-      optimisticItems = prevCartItems.map((i) => {
-        if (i.id === targetItemId || i.productId === itemIdOrProductId) {
-          return { ...i, quantity };
-        }
-        return i;
+    try {
+      const res = await apiFetch(`/api/cart/items/${targetItemId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ quantity })
       });
-    }
-
-    setCartItems(optimisticItems);
-    const optimisticSubtotal = optimisticItems.reduce((sum, item) => sum + ((item.product?.price || 0) * item.quantity), 0);
-    setCartData((prev: any) => ({
-      ...(prev || {}),
-      items: optimisticItems,
-      totalItems: optimisticItems.reduce((acc, item) => acc + item.quantity, 0),
-      subtotal: optimisticSubtotal,
-      totalAmount: optimisticSubtotal
-    }));
-
-    return enqueueCartMutation(async () => {
-      try {
-        const res = await apiFetch(`/api/cart/items/${targetItemId}`, {
-          method: 'PUT',
-          body: JSON.stringify({ quantity })
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error || 'Failed to update item quantity');
-        }
-        setCartData(data);
-        setCartItems(formatCartItems(data?.items));
-      } catch (err: any) {
-        console.error('Update cart quantity background sync failed, rolling back:', err);
-        setCartItems(prevCartItems);
-        setCartData(prevCartData);
-        showToast(err.message || 'Failed to update item quantity');
-        throw err;
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to update item quantity');
+        throw new Error(data.error || 'Failed to update item quantity');
       }
-    });
+      setCartData(data);
+      setCartItems(formatCartItems(data?.items));
+    } catch (err: any) {
+      console.error('Update cart quantity error:', err);
+      throw err;
+    }
   };
 
   const handleRemoveCartItem = async (itemIdOrProductId: string) => {
@@ -1045,41 +746,20 @@ export default function App() {
       if (matched) targetItemId = matched.id;
     }
 
-    // SNAPSHOT PREVIOUS STATE FOR ROLLBACK
-    const prevCartItems = [...cartItems];
-    const prevCartData = cartData ? { ...cartData } : null;
-
-    // INSTANT OPTIMISTIC UPDATE
-    const optimisticItems = prevCartItems.filter((i) => i.id !== targetItemId && i.productId !== itemIdOrProductId);
-    setCartItems(optimisticItems);
-    const optimisticSubtotal = optimisticItems.reduce((sum, item) => sum + ((item.product?.price || 0) * item.quantity), 0);
-    setCartData((prev: any) => ({
-      ...(prev || {}),
-      items: optimisticItems,
-      totalItems: optimisticItems.reduce((acc, item) => acc + item.quantity, 0),
-      subtotal: optimisticSubtotal,
-      totalAmount: optimisticSubtotal
-    }));
-
-    showToast('Item removed from Cart');
-
-    return enqueueCartMutation(async () => {
-      try {
-        const res = await apiFetch(`/api/cart/items/${targetItemId}`, { method: 'DELETE' });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error || 'Failed to remove item');
-        }
-        setCartData(data);
-        setCartItems(formatCartItems(data?.items));
-      } catch (err: any) {
-        console.error('Remove cart item background sync failed, rolling back:', err);
-        setCartItems(prevCartItems);
-        setCartData(prevCartData);
-        showToast(err.message || 'Failed to remove item');
-        throw err;
+    try {
+      const res = await apiFetch(`/api/cart/items/${targetItemId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to remove item');
+        throw new Error(data.error || 'Failed to remove item');
       }
-    });
+      setCartData(data);
+      setCartItems(formatCartItems(data?.items));
+      showToast('Item removed from Cart');
+    } catch (err: any) {
+      console.error('Remove cart item error:', err);
+      throw err;
+    }
   };
 
   const handleClearCart = async () => {
@@ -1228,46 +908,25 @@ export default function App() {
             console.error(err);
           }
         }}
-        onNavigateHome={() => {
-          setQuickViewProduct(null);
-          setCurrentView('home');
-        }}
+        onNavigateHome={() => setCurrentView('home')}
         onNavigateShop={() => {
-          setQuickViewProduct(null);
           setFilters({ ...filters, categoryId: undefined, subcategoryId: undefined });
           setCurrentView('shop');
         }}
-        onNavigateServices={() => {
-          setQuickViewProduct(null);
-          setCurrentView('services');
-        }}
+        onNavigateServices={() => setCurrentView('services')}
         onNavigateAerospace={() => {
-          setQuickViewProduct(null);
           setFilters({ ...filters, categoryId: 'cat-aerospace-drones', subcategoryId: undefined });
           setCurrentView('aerospace');
         }}
-        onNavigateAbout={() => {
-          setQuickViewProduct(null);
-          setCurrentView('about');
-        }}
-        onNavigateContact={() => {
-          setQuickViewProduct(null);
-          setCurrentView('contact');
-        }}
+        onNavigateAbout={() => setCurrentView('about')}
+        onNavigateContact={() => setCurrentView('contact')}
         onRequestQuoteClick={() => {
           setQuoteService(null);
           setIsQuoteModalOpen(true);
         }}
-        onNavigateLogin={() => {
-          setQuickViewProduct(null);
-          setCurrentView('login');
-        }}
-        onNavigateRegister={() => {
-          setQuickViewProduct(null);
-          setCurrentView('register');
-        }}
+        onNavigateLogin={() => setCurrentView('login')}
+        onNavigateRegister={() => setCurrentView('register')}
         onNavigateAccount={() => {
-          setQuickViewProduct(null);
           if (user) {
             setAccountSubSection('overview');
             setCurrentView('account');
@@ -1316,6 +975,24 @@ export default function App() {
         <ResetPasswordPage
           onNavigateLogin={() => setCurrentView('login')}
           onNavigateHome={() => setCurrentView('home')}
+          onLoginSuccess={(loggedUser) => {
+            setUser(loggedUser);
+            refreshUserData();
+            setCurrentView('home');
+            showToast(`Password updated! Welcome back, ${loggedUser.name}!`);
+          }}
+        />
+      )}
+
+      {currentView === 'verify-email' && (
+        <VerifyEmailPage
+          onNavigateLogin={() => setCurrentView('login')}
+          onNavigateHome={() => setCurrentView('home')}
+          onLoginSuccess={(verifiedUser) => {
+            setUser(verifiedUser);
+            refreshUserData();
+            showToast('Email verified successfully!');
+          }}
         />
       )}
 
@@ -1452,20 +1129,6 @@ export default function App() {
         />
       )}
 
-      {currentView === 'privacy-policy' && (
-        <PrivacyPolicyPage
-          onNavigateHome={() => setCurrentView('home')}
-          onOpenPrivacyRequest={() => {
-            if (user) {
-              setAccountSubSection('privacy');
-              setCurrentView('account');
-            } else {
-              setCurrentView('login');
-            }
-          }}
-        />
-      )}
-
       {currentView === 'services' && (
         <ServicesPage
           services={services}
@@ -1555,38 +1218,16 @@ export default function App() {
 
       {/* Global Footer */}
       <Footer
-        onNavigateHome={() => {
-          setQuickViewProduct(null);
-          setCurrentView('home');
-        }}
-        onNavigateShop={() => {
-          setQuickViewProduct(null);
-          setCurrentView('shop');
-        }}
-        onNavigateServices={() => {
-          setQuickViewProduct(null);
-          setCurrentView('services');
-        }}
-        onNavigateAbout={() => {
-          setQuickViewProduct(null);
-          setCurrentView('about');
-        }}
-        onNavigateContact={() => {
-          setQuickViewProduct(null);
-          setCurrentView('contact');
-        }}
-        onNavigatePrivacyPolicy={() => {
-          setQuickViewProduct(null);
-          setCurrentView('privacy-policy');
-        }}
+        onNavigateHome={() => setCurrentView('home')}
+        onNavigateShop={() => setCurrentView('shop')}
+        onNavigateServices={() => setCurrentView('services')}
+        onNavigateAbout={() => setCurrentView('about')}
+        onNavigateContact={() => setCurrentView('contact')}
         onRequestQuoteClick={() => {
           setQuoteService(null);
           setIsQuoteModalOpen(true);
         }}
       />
-
-      {/* Privacy Cookie Consent Banner */}
-      <CookieConsentBanner onNavigatePrivacyPolicy={() => setCurrentView('privacy-policy')} />
 
       {/* MODALS & DRAWERS */}
 
@@ -1604,30 +1245,26 @@ export default function App() {
       {/* MODALS & DRAWERS */}
 
       {/* 1. Product Quick View Details Modal */}
-      {quickViewProduct && (
-        <ProductDetailsModal
-          product={quickViewProduct}
-          onClose={() => {
-            setQuickViewProduct(null);
-            if (typeof window !== 'undefined') {
-              const url = new URL(window.location.href);
-              url.searchParams.delete('product');
-              url.searchParams.delete('productId');
-              window.history.replaceState(null, '', url.pathname + (url.search ? url.search : ''));
-            }
-          }}
-          isWishlisted={wishlistProductIds.includes(quickViewProduct.id)}
-          onToggleWishlist={handleToggleWishlist}
-          onAddToCart={(p, variantId, qty, customizationText, selectedColour, selectedWattage, customizationImages) =>
-            handleAddToCart(p, variantId, qty || 1, customizationText, selectedColour, selectedWattage, customizationImages)
+      <ProductDetailsModal
+        product={quickViewProduct}
+        onClose={() => {
+          setQuickViewProduct(null);
+          if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('product');
+            url.searchParams.delete('productId');
+            window.history.replaceState(null, '', url.pathname + (url.search ? url.search : ''));
           }
-          onBuyNow={(p, customizationText, selectedColour, selectedWattage, variantId, customizationImages) => {
-            handleAddToCart(p, variantId, 1, customizationText, selectedColour, selectedWattage, customizationImages);
-            handleProceedToCheckout();
-          }}
-          onSelectRelatedProduct={(p) => setQuickViewProduct(p)}
-        />
-      )}
+        }}
+        isWishlisted={quickViewProduct ? wishlistProductIds.includes(quickViewProduct.id) : false}
+        onToggleWishlist={handleToggleWishlist}
+        onAddToCart={(p, qty) => handleAddToCart(p, qty)}
+        onBuyNow={(p) => {
+          handleAddToCart(p, 1);
+          handleProceedToCheckout();
+        }}
+        onSelectRelatedProduct={(p) => setQuickViewProduct(p)}
+      />
 
       {/* 2. Cart Drawer */}
       <CartDrawer
@@ -1653,8 +1290,6 @@ export default function App() {
         savedAddresses={savedAddresses}
         appliedCoupon={appliedCoupon}
         discountAmount={discountAmount}
-        onApplyCoupon={handleApplyCoupon}
-        onRemoveCoupon={handleRemoveCoupon}
         onAddNewAddress={handleAddNewAddress}
         onOrderCompleted={handleOrderCompleted}
         currentUser={user}
@@ -1720,27 +1355,18 @@ export default function App() {
       />
 
       {/* 9. Admin Dashboard */}
-      <ErrorBoundary fallbackTitle="Unable to load Admin Dashboard">
-        <AdminDashboard
-          isOpen={isAdminOpen}
-          onClose={() => setIsAdminOpen(false)}
-          products={allProducts.length > 0 ? allProducts : products}
-          categories={categories}
-          orders={userOrders}
-          coupons={coupons}
-          onRefreshData={() => {
-            invalidateClientProductCache();
-            fetchData();
-            fetchAllProducts(true);
-            fetchFilteredProducts();
-          }}
-        />
-      </ErrorBoundary>
-
-      {/* Instagram Promotional Popup on Website Open */}
-      <InstagramPopup
-        isOpen={isInstagramPopupOpen}
-        onClose={() => setIsInstagramPopupOpen(false)}
+      <AdminDashboard
+        isOpen={isAdminOpen}
+        onClose={() => setIsAdminOpen(false)}
+        products={allProducts.length > 0 ? allProducts : products}
+        categories={categories}
+        orders={userOrders}
+        coupons={coupons}
+        onRefreshData={() => {
+          fetchData();
+          fetchAllProducts();
+          fetchFilteredProducts();
+        }}
       />
 
       {/* Floating WhatsApp Quick Contact Button */}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NexraLogo } from './NexraLogo';
+import { INITIAL_CATEGORIES } from '../data/mockData';
 import {
   ShoppingBag,
   Heart,
@@ -107,7 +108,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   });
 
-  const popularSearches = ['Lithophane Moon Lamp', 'Personalized Keychain', 'Lord Ganesha Idol', 'Custom Photo Frame', 'Anime Figures', 'Parametric Wall Clock'];
+  const popularSearches = ['Bambu Lab X1C', 'Photopolymer SLA Resin', 'PLA Filament', 'CAD On-Demand Quote', 'Aerospace Structural Parts', 'Industrial SLS'];
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -140,11 +141,11 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   };
 
-  const safeCategories = Array.isArray(categories) ? categories : [];
+  const safeCategories = (Array.isArray(categories) && categories.length > 0) ? categories : INITIAL_CATEGORIES;
 
   // Filter main categories for Mega Menu
   const mainCategories = safeCategories.filter(c =>
-    ['lamps', 'key-chains', 'idols', 'home-decor', 'anime-figures', 'clocks', 'customized'].includes(c.slug)
+    ['lamps', 'key-chains', 'idols', 'home-decor', 'anime-figures', 'clocks', 'customized', '3d-printers', 'photopolymer-resins', '3d-printing-filaments'].includes(c.slug)
   );
 
   const displayCategories = mainCategories.length > 0 ? mainCategories : safeCategories;
@@ -157,20 +158,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center gap-4 text-slate-300">
             <span className="flex items-center gap-1.5">
               <MapPin className="w-3 h-3 text-cyan-400 shrink-0" />
-              <span>Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500032</span>
+              <span>Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500046</span>
             </span>
           </div>
           <div className="flex items-center gap-4">
-            <a
-              href="https://wa.me/918886149998?text=Hello%20NEXRA%203D%2C%20I%20have%20an%20inquiry%20regarding%203D%20printing%20services."
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-emerald-400 font-bold hover:text-emerald-300 transition-colors"
-            >
-              <WhatsAppIcon className="w-3.5 h-3.5 fill-[#25D366]" />
-              <span>+91 8886149998</span>
-            </a>
-            <span className="text-slate-700">|</span>
             <a
               href="https://wa.me/918886159998?text=Hello%20NEXRA%203D%2C%20I%20have%20an%20inquiry%20regarding%203D%20printing%20services."
               target="_blank"
@@ -179,6 +170,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <WhatsAppIcon className="w-3.5 h-3.5 fill-[#25D366]" />
               <span>+91 8886159998</span>
+            </a>
+            <span className="text-slate-700">|</span>
+            <a
+              href="https://wa.me/918886149998?text=Hello%20NEXRA%203D%2C%20I%20have%20an%20inquiry%20regarding%203D%20printing%20services."
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-emerald-400 font-bold hover:text-emerald-300 transition-colors"
+            >
+              <WhatsAppIcon className="w-3.5 h-3.5 fill-[#25D366]" />
+              <span>+91 8886149998</span>
             </a>
           </div>
         </div>
@@ -203,7 +204,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   }
                   if (e.key === 'Escape') setIsSearchExpanded(false);
                 }}
-                placeholder="Search 3D printed lamps, keychains, idols, decor, gifts, SKU, or items..."
+                placeholder="Search 3D printers, SLA resins, filaments, SKU (e.g. PRN-X1C), or services..."
                 className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 text-slate-900 text-sm sm:text-base rounded-xl px-4 py-2.5 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 font-medium"
               />
               {searchQuery && (
@@ -381,10 +382,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                             <Sparkles className="w-4 h-4" />
                           </div>
                           <h4 className="font-extrabold text-sm leading-snug">
-                            Custom 3D Printing
+                            Customized 3D Printing
                           </h4>
                           <p className="text-[11px] text-slate-300 leading-relaxed">
-                            Personalize lithophane lamps, idols, keychains, and photo frames with your custom photos and names.
+                            Have a custom design or CAD model? Upload your specs for instant manufacturing quote.
                           </p>
                         </div>
 
@@ -396,7 +397,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                           className="mt-4 w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold text-xs py-2 rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1"
                         >
                           <Send className="w-3 h-3" />
-                          <span>Custom Inquiry</span>
+                          <span>Get Instant Quote</span>
                         </button>
                       </div>
                     </div>
@@ -409,6 +410,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="px-3 py-2 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
               >
                 SERVICES
+              </button>
+
+              <button
+                onClick={() => {
+                  if (onNavigateAerospace) onNavigateAerospace();
+                  else onCategorySelect('cat-aerospace-drones');
+                }}
+                className="px-2.5 py-2 rounded-lg hover:bg-cyan-50 text-cyan-700 hover:text-cyan-900 transition-colors cursor-pointer flex items-center gap-1.5 font-extrabold"
+                title="Aerospace Additive Solutions"
+              >
+                <Plane className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
+                <span>AEROSPACE</span>
               </button>
 
               <button
@@ -618,6 +631,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100"
               >
                 SERVICES
+              </button>
+
+              <button
+                onClick={() => {
+                  if (onNavigateAerospace) onNavigateAerospace();
+                  else onCategorySelect('cat-aerospace-drones');
+                  setIsMobileMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-cyan-50 text-cyan-700 font-extrabold flex items-center gap-2"
+              >
+                <Plane className="w-4 h-4 text-cyan-600 shrink-0" />
+                <span>AEROSPACE</span>
               </button>
 
               <button

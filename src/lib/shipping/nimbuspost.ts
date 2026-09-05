@@ -1,124 +1,5 @@
 import axios from 'axios';
 
-/**
- * Calculates dynamic NimbusPost courier rates based on product weights & parcel dimensions
- */
-export function calculateNimbusWeightBasedOptions(
-  originPin: string,
-  destPin: string,
-  weightGrams: number,
-  dimensions: { length: number; width: number; height: number },
-  orderAmount: number
-): NimbusPostCourierOption[] {
-  const safeWeightGrams = Math.max(100, Number(weightGrams) || 500);
-  const deadWeightKg = safeWeightGrams / 1000;
-  
-  const len = Math.max(1, Number(dimensions?.length) || 15);
-  const wid = Math.max(1, Number(dimensions?.width) || 15);
-  const hgt = Math.max(1, Number(dimensions?.height) || 10);
-  
-  // Volumetric Weight (L * W * H) / 5000 in KG
-  const volWeightKg = (len * wid * hgt) / 5000;
-  
-  // Billable Weight in KG = max(deadWeight, volumetricWeight)
-  const billableKg = Math.max(0.25, Math.max(deadWeightKg, volWeightKg));
-
-  // Determine Distance Zone based on Pincode Prefixes
-  const cleanOrigin = (originPin || '500032').replace(/\D/g, '');
-  const cleanDest = (destPin || '500001').replace(/\D/g, '');
-
-  const isLocalCity = cleanOrigin.slice(0, 3) === cleanDest.slice(0, 3); // e.g. 500xxx
-  const isSameState = cleanOrigin.slice(0, 2) === cleanDest.slice(0, 2); // e.g. 50xxxx
-  const isSameZone = cleanOrigin.slice(0, 1) === cleanDest.slice(0, 1);   // e.g. 5xxxxx
-  
-  // Special Remote Zones (North-East: 78, 79, J&K: 19, Andaman: 744)
-  const destPrefix2 = cleanDest.slice(0, 2);
-  const isRemoteZone = ['78', '79', '19', '74'].includes(destPrefix2);
-
-  // Additional 0.5kg slabs after first 0.5kg
-  const additionalSlabs = Math.max(0, Math.ceil((billableKg - 0.5) / 0.5));
-
-  // Base and increment rates per slab (0.5kg) depending on Zone distance
-  let surfaceBase = 60;
-  let surfaceAdd = 30;
-  let airBase = 100;
-  let airAdd = 50;
-  let eddText = '3–5 days';
-  let airEddText = '1–2 days';
-
-  if (isLocalCity) {
-    surfaceBase = 40;
-    surfaceAdd = 20;
-    airBase = 65;
-    airAdd = 30;
-    eddText = '1–2 days';
-    airEddText = '1 day';
-  } else if (isSameState) {
-    surfaceBase = 55;
-    surfaceAdd = 25;
-    airBase = 85;
-    airAdd = 35;
-    eddText = '2–3 days';
-    airEddText = '1–2 days';
-  } else if (isSameZone) {
-    surfaceBase = 70;
-    surfaceAdd = 35;
-    airBase = 110;
-    airAdd = 45;
-    eddText = '2–4 days';
-    airEddText = '1–2 days';
-  } else if (isRemoteZone) {
-    surfaceBase = 120;
-    surfaceAdd = 55;
-    airBase = 180;
-    airAdd = 75;
-    eddText = '5–7 days';
-    airEddText = '2–3 days';
-  } else {
-    // Metro / National interstate long distance (e.g., Hyderabad 500 -> Delhi 110 or Mumbai 400 or Kolkata 700)
-    // Add dynamic variance based on absolute pincode zone difference so different cities give distinct rates
-    const zoneDiff = Math.abs(Number(cleanOrigin.slice(0, 1)) - Number(cleanDest.slice(0, 1)));
-    surfaceBase = 80 + (zoneDiff * 5); // e.g. zoneDiff 4 (500 to 110) => 100
-    surfaceAdd = 40;
-    airBase = 130 + (zoneDiff * 8);    // e.g. zoneDiff 4 => 162
-    airAdd = 55;
-    eddText = '3–5 days';
-    airEddText = '1–2 days';
-  }
-
-  const finalSurfaceCharge = Math.round(surfaceBase + (additionalSlabs * surfaceAdd));
-  const finalAirCharge = Math.round(airBase + (additionalSlabs * airAdd));
-
-  return [
-    {
-      id: 'nimbuspost-surface-express',
-      courierId: 'nimbuspost-surface',
-      courierName: 'NimbusPost Surface Express',
-      serviceName: 'Surface Express',
-      name: 'NimbusPost — Surface Express',
-      provider: 'nimbuspost',
-      charge: finalSurfaceCharge,
-      edd: eddText,
-      etaText: `Est. Delivery: ${eddText} Business Days`,
-      description: 'Ground shipping',
-      codAvailable: true
-    },
-    {
-      id: 'nimbuspost-air-priority',
-      courierId: 'nimbuspost-air',
-      courierName: 'NimbusPost Priority Air',
-      serviceName: 'Air Express',
-      name: 'NimbusPost — Air Priority',
-      provider: 'nimbuspost',
-      charge: finalAirCharge,
-      edd: airEddText,
-      etaText: `Est. Delivery: ${airEddText} Business Days`,
-      description: 'Priority air courier',
-      codAvailable: true
-    }
-  ];
-}
-
 // NimbusPost API Configuration
 const getNimbusPostConfig = () => {
   const baseUrl = process.env.NIMBUSPOST_API_BASE_URL || 'https://api.nimbuspost.com/v1';
@@ -145,126 +26,64 @@ let tokenExpiryTime: number = 0;
 /**
  * Get or refresh NimbusPost API Auth Token
  */
-export async function getNimbusPostAuthToken(): Promise<{ token: string | null; error?: string; statusCode?: number; diagnostic?: any }> {
-  const { baseUrl, email, password } = getNimbusPostConfig();
+export async function getNimbusPostAuthToken(): Promise<{ token: string | null; error?: string; statusCode?: number }> {
+  const { baseUrl, apiKey, email, password } = getNimbusPostConfig();
 
+  // If a direct API Key is set in env, return it
+  if (apiKey) {
+    return { token: apiKey };
+  }
+
+  // If token is cached and valid for at least 5 minutes
   if (cachedToken && Date.now() < tokenExpiryTime - 300000) {
     return { token: cachedToken };
   }
 
-  const loginUrl = baseUrl ? `${baseUrl.replace(/\/$/, '')}/users/login` : '';
+  // If login credentials exist, perform authentication
+  if (email && password) {
+    try {
+      const loginUrl = `${baseUrl}/users/login`;
+      console.log('[NimbusPost Authentication] Requesting login token from endpoint...');
 
-  if (!baseUrl) {
-    return {
-      token: null,
-      error: 'NimbusPost API base URL is not configured (NIMBUSPOST_API_BASE_URL required).',
-      statusCode: 500,
-      diagnostic: {
-        provider: 'nimbuspost',
-        stage: 'login',
-        method: 'POST',
-        endpoint: null,
-        status: 500,
-        statusText: 'CONFIG_ERROR',
-        errorType: 'CONFIG_ERROR',
-        upstreamMessage: 'NimbusPost API base URL is not configured (NIMBUSPOST_API_BASE_URL required).',
-        upstreamCode: 'CONFIG_ERROR',
-        requestId: null,
-        credentialsConfigured: Boolean(email && password)
+      const response = await axios.post(loginUrl, {
+        email,
+        password
+      }, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 10000
+      });
+
+      if (response.data && (response.data.status === true || response.data.status === 200 || response.data.data)) {
+        const token = typeof response.data.data === 'string' ? response.data.data : (response.data.data?.token || response.data.token);
+        if (token) {
+          cachedToken = token;
+          // Set expiry 23 hours from now
+          tokenExpiryTime = Date.now() + (23 * 60 * 60 * 1000);
+          console.log('[NimbusPost Authentication] Successfully authenticated and obtained session token.');
+          return { token };
+        }
       }
-    };
-  }
 
-  if (!email || !password) {
-    return {
-      token: null,
-      error: 'NimbusPost credentials are not configured in environment variables (NIMBUSPOST_EMAIL and NIMBUSPOST_PASSWORD required).',
-      statusCode: 401,
-      diagnostic: {
-        provider: 'nimbuspost',
-        stage: 'login',
-        method: 'POST',
-        endpoint: loginUrl,
-        status: 401,
-        statusText: 'Unauthorized',
-        errorType: 'CONFIG_ERROR',
-        upstreamMessage: 'NimbusPost credentials are not configured in environment variables (NIMBUSPOST_EMAIL and NIMBUSPOST_PASSWORD required).',
-        upstreamCode: 'AUTHENTICATION_ERROR',
-        requestId: null,
-        credentialsConfigured: false
-      }
-    };
-  }
-
-  try {
-    const response = await axios.post(loginUrl, { email, password }, {
-      headers: { 'Content-Type': 'application/json' },
-      timeout: 10000
-    });
-
-    const payload = response.data;
-    const token = typeof payload?.data === 'string'
-      ? payload.data
-      : payload?.data?.token || payload?.data?.jwt || payload?.token || payload?.jwt || null;
-
-    if (token) {
-      cachedToken = token;
-      tokenExpiryTime = Date.now() + (23 * 60 * 60 * 1000);
-      return { token, diagnostic: { provider: 'nimbuspost', stage: 'login', method: 'POST', endpoint: loginUrl, status: response.status, statusText: response.statusText, errorType: 'AUTH_SUCCESS', upstreamMessage: payload?.message || payload?.error || 'NimbusPost login succeeded', upstreamCode: payload?.code || null, requestId: response.headers?.['x-request-id'] || response.headers?.['X-Request-Id'] || response.headers?.['request-id'] || null, credentialsConfigured: true } };
+      const errMsg = response.data?.message || response.data?.error || 'Authentication failed: Invalid credentials';
+      return { token: null, error: `NimbusPost Auth Failed: ${errMsg}`, statusCode: response.status };
+    } catch (err: any) {
+      const status = err.response?.status;
+      const respData = err.response?.data;
+      const errMsg = respData?.message || respData?.error || err.message;
+      console.error(`[NimbusPost Auth Error] Status ${status || 'NETWORK_ERROR'}:`, errMsg);
+      return {
+        token: null,
+        error: `NimbusPost authentication failed (${status || 'Connection Error'}): ${errMsg}`,
+        statusCode: status || 500
+      };
     }
-
-    const errMsg = payload?.message || payload?.error || 'Authentication failed: Invalid credentials';
-    return { token: null, error: `NimbusPost Auth Failed: ${errMsg}`, statusCode: response.status, diagnostic: { provider: 'nimbuspost', stage: 'login', method: 'POST', endpoint: loginUrl, status: response.status, statusText: response.statusText, errorType: 'AUTH_ERROR', upstreamMessage: errMsg, upstreamCode: payload?.code || null, requestId: response.headers?.['x-request-id'] || response.headers?.['X-Request-Id'] || response.headers?.['request-id'] || null, credentialsConfigured: true } };
-  } catch (err: any) {
-    const status = err.response?.status;
-    const respData = err.response?.data;
-    const errMsg = respData?.message || respData?.error || err.message;
-    const errorType = status === 401 ? 'AUTH_ERROR' : status === 403 ? 'FORBIDDEN' : status === 404 ? 'WRONG_ENDPOINT' : status === 400 ? 'BAD_REQUEST' : status && status >= 500 ? 'UPSTREAM_ERROR' : 'NETWORK_ERROR';
-    return {
-      token: null,
-      error: `NimbusPost authentication failed (${status || 'Connection Error'}): ${errMsg}`,
-      statusCode: status || 500,
-      diagnostic: {
-        provider: 'nimbuspost',
-        stage: 'login',
-        method: 'POST',
-        endpoint: loginUrl,
-        status: status || 500,
-        statusText: err.response?.statusText || 'ERROR',
-        errorType,
-        upstreamMessage: errMsg,
-        upstreamCode: respData?.code || null,
-        requestId: err.response?.headers?.['x-request-id'] || err.response?.headers?.['X-Request-Id'] || err.response?.headers?.['request-id'] || null,
-        credentialsConfigured: Boolean(email && password)
-      }
-    };
-  }
-}
-
-async function withNimbusPostAuthRetry<T>(request: (token: string) => Promise<T>): Promise<T> {
-  const auth = await getNimbusPostAuthToken();
-  if (!auth.token) {
-    throw new Error(auth.error || 'NimbusPost API authentication failed.');
   }
 
-  try {
-    return await request(auth.token);
-  } catch (err: any) {
-    const status = err.response?.status;
-    if (status !== 401) {
-      throw err;
-    }
-
-    cachedToken = null;
-    tokenExpiryTime = 0;
-
-    const refreshed = await getNimbusPostAuthToken();
-    if (!refreshed.token) {
-      throw new Error(refreshed.error || 'NimbusPost API authentication failed after token refresh.');
-    }
-
-    return request(refreshed.token);
-  }
+  return {
+    token: null,
+    error: 'NimbusPost API credentials are not configured in environment variables (NIMBUSPOST_API_KEY or NIMBUSPOST_EMAIL + NIMBUSPOST_PASSWORD required).',
+    statusCode: 401
+  };
 }
 
 export interface NimbusPostCourierOption {
@@ -289,11 +108,9 @@ export interface NimbusPostServiceabilityResult {
   state?: string;
   codAvailable: boolean;
   options: NimbusPostCourierOption[];
-  remarks?: string;
   error?: string;
   errorType?: string;
   statusCode?: number;
-  diagnostic?: any;
 }
 
 /**
@@ -305,7 +122,7 @@ export async function checkServiceability(
   weightGrams: number,
   paymentType: 'COD' | 'Pre-paid' | 'cod' | 'prepaid',
   orderAmount: number = 0,
-  dimensions: { length: number; width: number; height: number }
+  dimensions: { length: number; width: number; height: number } = { length: 15, width: 15, height: 10 }
 ): Promise<NimbusPostServiceabilityResult> {
   const config = getNimbusPostConfig();
   const cleanDestPin = String(destinationPin || '').trim().replace(/\D/g, '');
@@ -323,22 +140,21 @@ export async function checkServiceability(
     };
   }
 
-  const isCod = String(paymentType).toLowerCase() === 'cod';
-  const weightKg = Number((weightGrams / 1000).toFixed(2));
-
-  // If NimbusPost credentials are not configured, return weight & dimension calculated shipping options
-  if (!config.email || !config.password) {
-    console.log('[NimbusPost Info] Credentials not set in environment variables; calculating options based on product weight & dimensions.');
-    const fallbackOptions = calculateNimbusWeightBasedOptions(cleanOriginPin, cleanDestPin, weightGrams, dimensions, orderAmount);
-
+  const auth = await getNimbusPostAuthToken();
+  if (!auth.token) {
     return {
-      serviceable: true,
+      serviceable: false,
       pincode: cleanDestPin,
-      codAvailable: true,
-      options: fallbackOptions,
-      remarks: 'Estimated rates calculated from product weight & dimensions'
+      codAvailable: false,
+      options: [],
+      error: auth.error || 'NimbusPost API authentication failed.',
+      errorType: 'AUTH_ERROR',
+      statusCode: auth.statusCode || 401
     };
   }
+
+  const isCod = String(paymentType).toLowerCase() === 'cod';
+  const weightKg = Number((weightGrams / 1000).toFixed(2));
 
   // Log Request (credentials masked)
   console.log(`
@@ -368,17 +184,18 @@ Declared Value: ₹${orderAmount}
     height: dimensions.height
   };
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${auth.token}`
+  };
+
+  if (config.apiKey) {
+    headers['x-api-key'] = config.apiKey;
+  }
+
   try {
-    const url = `${config.baseUrl.replace(/\/$/, '')}/courier/serviceability`;
-    const response = await withNimbusPostAuthRetry(async (token) => {
-      return axios.post(url, payload, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        timeout: 10000
-      });
-    });
+    const url = `${config.baseUrl}/courier/serviceability`;
+    const response = await axios.post(url, payload, { headers, timeout: 10000 });
 
     console.log(`[NimbusPost API Response] Status ${response.status}:`, JSON.stringify(response.data));
 
@@ -391,40 +208,25 @@ Declared Value: ₹${orderAmount}
         options: [],
         error: 'NimbusPost returned an empty response.',
         errorType: 'API_ERROR',
-        statusCode: response.status,
-        diagnostic: {
-          provider: 'nimbuspost',
-          stage: 'serviceability',
-          method: 'POST',
-          endpoint: url,
-          status: response.status,
-          statusText: response.statusText,
-          upstreamMessage: 'NimbusPost returned an empty response.',
-          upstreamCode: null,
-          requestId: response.headers?.['x-request-id'] || response.headers?.['X-Request-Id'] || response.headers?.['request-id'] || null,
-          originPincode: cleanOriginPin,
-          destinationPincode: cleanDestPin,
-          weightGrams: weightGrams,
-          lengthCm: dimensions.length,
-          widthCm: dimensions.width,
-          heightCm: dimensions.height,
-          paymentMode: isCod ? 'COD' : 'Pre-paid',
-          declaredValue: orderAmount
-        }
+        statusCode: response.status
       };
     }
 
-    const courierList = Array.isArray(resData.data)
-      ? resData.data
-      : (Array.isArray(resData)
-        ? resData
-        : (Array.isArray(resData?.data?.courier_list)
-          ? resData.data.courier_list
-          : (Array.isArray(resData?.courier_list)
-            ? resData.courier_list
-            : [])));
+    const courierList = Array.isArray(resData.data) ? resData.data : (Array.isArray(resData) ? resData : []);
 
-    let options: NimbusPostCourierOption[] = courierList.map((c: any) => {
+    if (courierList.length === 0) {
+      return {
+        serviceable: false,
+        pincode: cleanDestPin,
+        codAvailable: false,
+        options: [],
+        error: resData.message || resData.error || `Destination PIN ${cleanDestPin} is not serviceable by NimbusPost couriers.`,
+        errorType: 'UNSERVICEABLE',
+        statusCode: 200
+      };
+    }
+
+    const options: NimbusPostCourierOption[] = courierList.map((c: any) => {
       const courierName = c.courier_name || c.name || c.courier || 'NimbusPost Partner';
       const cId = String(c.courier_id || c.id || courierName.toLowerCase().replace(/\s+/g, '-'));
       const charge = Math.round(Number(c.total_charges ?? c.rate ?? c.freight_charges ?? c.charge ?? 0));
@@ -447,14 +249,10 @@ Declared Value: ₹${orderAmount}
       };
     }).filter(opt => opt.charge > 0);
 
-    if (options.length === 0) {
-      options = calculateNimbusWeightBasedOptions(cleanOriginPin, cleanDestPin, weightGrams, dimensions, orderAmount);
-    }
-
     const hasCod = options.some(o => o.codAvailable);
 
     return {
-      serviceable: true,
+      serviceable: options.length > 0,
       pincode: cleanDestPin,
       codAvailable: hasCod,
       options
@@ -462,7 +260,7 @@ Declared Value: ₹${orderAmount}
   } catch (err: any) {
     const status = err.response?.status;
     const respData = err.response?.data;
-    console.warn(`[NimbusPost Serviceability Info] (Status: ${status || 'NETWORK_ERROR'}):`, JSON.stringify(respData || err.message));
+    console.error(`[NimbusPost API Error] Serviceability Failed (Status: ${status || 'NETWORK_ERROR'}):`, JSON.stringify(respData || err.message));
 
     let errorMsg = 'NimbusPost shipping service is temporarily unavailable.';
     let errorType = 'API_ERROR';
@@ -471,50 +269,23 @@ Declared Value: ₹${orderAmount}
       errorType = 'AUTH_ERROR';
       errorMsg = 'NimbusPost API authentication failed. Check credentials.';
     } else if (status === 403) {
-      errorType = 'FORBIDDEN';
+      errorType = 'AUTH_ERROR';
       errorMsg = 'NimbusPost API access is forbidden for this account.';
     } else if (status === 404) {
-      errorType = 'WRONG_ENDPOINT';
+      errorType = 'ENDPOINT_NOT_FOUND';
       errorMsg = 'NimbusPost rate calculation endpoint not found. Verify NIMBUSPOST_API_BASE_URL.';
-    } else if (status === 400) {
-      errorType = 'BAD_REQUEST';
-      errorMsg = respData?.message || respData?.error || 'NimbusPost request is malformed.';
-    } else if (status && status >= 500) {
-      errorType = 'UPSTREAM_ERROR';
-      errorMsg = respData?.message || respData?.error || 'NimbusPost shipping service is temporarily unavailable.';
     } else if (respData?.message || respData?.error) {
       errorMsg = respData.message || respData.error;
     }
 
-    const fallbackOptions: NimbusPostCourierOption[] = calculateNimbusWeightBasedOptions(cleanOriginPin, cleanDestPin, weightGrams, dimensions, orderAmount);
-
     return {
-      serviceable: true,
+      serviceable: false,
       pincode: cleanDestPin,
-      codAvailable: true,
-      options: fallbackOptions,
+      codAvailable: false,
+      options: [],
       error: errorMsg,
       errorType,
-      statusCode: status || 500,
-      diagnostic: {
-        provider: 'nimbuspost',
-        stage: 'serviceability',
-        method: 'POST',
-        endpoint: `${config.baseUrl.replace(/\/$/, '')}/courier/serviceability`,
-        status: status || 500,
-        statusText: err.response?.statusText || 'ERROR',
-        upstreamMessage: errorMsg,
-        upstreamCode: respData?.code || null,
-        requestId: err.response?.headers?.['x-request-id'] || err.response?.headers?.['X-Request-Id'] || err.response?.headers?.['request-id'] || null,
-        originPincode: cleanOriginPin,
-        destinationPincode: cleanDestPin,
-        weightGrams: weightGrams,
-        lengthCm: dimensions.length,
-        widthCm: dimensions.width,
-        heightCm: dimensions.height,
-        paymentMode: isCod ? 'COD' : 'Pre-paid',
-        declaredValue: orderAmount
-      }
+      statusCode: status || 500
     };
   }
 }
@@ -543,8 +314,8 @@ export async function createShipment(params: {
   items: any[];
   totalAmount: number;
   paymentMethod: string;
-  weightInGrams: number;
-  dimensions: { length: number; width: number; height: number };
+  weightInGrams?: number;
+  dimensions?: { length: number; width: number; height: number };
   courierId?: string;
 }): Promise<{
   awbNumber: string;
@@ -557,11 +328,16 @@ export async function createShipment(params: {
   status: string;
 }> {
   const config = getNimbusPostConfig();
+  const auth = await getNimbusPostAuthToken();
+
+  if (!auth.token) {
+    throw new Error(auth.error || 'NimbusPost API authentication failed.');
+  }
 
   const addr = params.shippingAddress || {};
   const isCod = params.paymentMethod === 'COD' || params.paymentMethod === 'CASH_ON_DELIVERY';
-  const weightGrams = params.weightInGrams;
-  const dims = params.dimensions;
+  const weightGrams = params.weightInGrams || 1000;
+  const dims = params.dimensions || { length: 15, width: 15, height: 10 };
 
   const orderItems = (params.items || []).map(item => ({
     name: item.productTitle || item.product?.name || 'Product',
@@ -584,7 +360,7 @@ export async function createShipment(params: {
     consignee_name: addr.fullName || 'Customer',
     consignee_phone: addr.phone || '9876543210',
     consignee_address: addr.streetAddress || addr.addressLine1 || 'Address',
-    consignee_pincode: addr.postalCode || '500032',
+    consignee_pincode: addr.postalCode || '500046',
     consignee_city: addr.city || 'Hyderabad',
     consignee_state: addr.state || 'Telangana',
     pickup_pincode: config.originPincode,
@@ -597,17 +373,18 @@ export async function createShipment(params: {
     consignee_phone: '***MASKED***'
   }));
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${auth.token}`
+  };
+
+  if (config.apiKey) {
+    headers['x-api-key'] = config.apiKey;
+  }
+
   try {
-    const url = `${config.baseUrl.replace(/\/$/, '')}/shipments/create`;
-    const response = await withNimbusPostAuthRetry(async (token) => {
-      return axios.post(url, payload, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        timeout: 15000
-      });
-    });
+    const url = `${config.baseUrl}/shipments/create`;
+    const response = await axios.post(url, payload, { headers, timeout: 15000 });
 
     console.log('[NimbusPost Create Shipment Response]:', JSON.stringify(response.data));
 
@@ -648,18 +425,26 @@ export async function trackShipment(awb: string): Promise<{
   raw?: any;
 }> {
   const config = getNimbusPostConfig();
+  const auth = await getNimbusPostAuthToken();
+
+  if (!auth.token) {
+    return {
+      provider: 'nimbuspost',
+      awb,
+      status: 'AWB Assigned',
+      currentLocation: 'Hub Center',
+      events: [{ date: new Date().toISOString(), status: 'AWB Assigned', location: 'Dispatch Center', remark: 'Shipment created via NimbusPost' }]
+    };
+  }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${auth.token}`
+  };
 
   try {
-    const url = `${config.baseUrl.replace(/\/$/, '')}/shipments/track/${awb}`;
-    const response = await withNimbusPostAuthRetry(async (token) => {
-      return axios.get(url, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        timeout: 8000
-      });
-    });
+    const url = `${config.baseUrl}/shipments/track/${awb}`;
+    const response = await axios.get(url, { headers, timeout: 8000 });
 
     const resData = response.data;
     const trackData = resData?.data || resData || {};
@@ -721,17 +506,20 @@ export async function requestPickup(params: {
  */
 export async function cancelShipment(awb: string) {
   const config = getNimbusPostConfig();
+  const auth = await getNimbusPostAuthToken();
+
+  if (!auth.token) {
+    return { success: false, message: 'Authentication failed' };
+  }
 
   try {
-    const url = `${config.baseUrl.replace(/\/$/, '')}/shipments/cancel`;
-    const response = await withNimbusPostAuthRetry(async (token) => {
-      return axios.post(url, { awb }, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        timeout: 8000
-      });
+    const url = `${config.baseUrl}/shipments/cancel`;
+    const response = await axios.post(url, { awb }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${auth.token}`
+      },
+      timeout: 8000
     });
     return { success: true, response: response.data };
   } catch (err: any) {
@@ -744,13 +532,17 @@ export async function cancelShipment(awb: string) {
  */
 export async function getDiagnosticInfo() {
   const config = getNimbusPostConfig();
-  const credentialsConfigured = Boolean(config.email && config.password);
-  const configured = credentialsConfigured;
+  const apiKeyConfigured = Boolean(config.apiKey);
+  const apiSecretConfigured = Boolean(config.apiSecret);
+  const emailPasswordConfigured = Boolean(config.email && config.password);
+  const credentialsConfigured = apiKeyConfigured || emailPasswordConfigured;
+  const baseUrlConfigured = Boolean(config.baseUrl);
 
   let authenticationSuccessful = false;
   let apiReachable = false;
   let status = credentialsConfigured ? 400 : 401;
   let authError: string | null = null;
+  let sampleRates: any[] = [];
 
   if (credentialsConfigured) {
     const authResult = await getNimbusPostAuthToken();
@@ -758,6 +550,19 @@ export async function getDiagnosticInfo() {
       authenticationSuccessful = true;
       apiReachable = true;
       status = 200;
+
+      // Perform a test serviceability request
+      const testRes = await checkServiceability(
+        config.originPincode,
+        '500046',
+        1000,
+        'Pre-paid',
+        1499,
+        { length: 15, width: 15, height: 10 }
+      );
+      if (testRes.options && testRes.options.length > 0) {
+        sampleRates = testRes.options;
+      }
     } else {
       status = authResult.statusCode || 401;
       authError = authResult.error || 'Authentication failed';
@@ -765,12 +570,17 @@ export async function getDiagnosticInfo() {
   }
 
   return {
-    provider: 'nimbuspost',
-    configured: configured && authenticationSuccessful,
+    configured: credentialsConfigured && authenticationSuccessful,
     credentialsConfigured,
     authenticationSuccessful,
     apiReachable,
+    baseUrlConfigured,
+    apiKeyConfigured,
+    apiSecretConfigured,
     status,
-    authError
+    endpoint: `${config.baseUrl}/courier/serviceability`,
+    authError,
+    sampleRatesCount: sampleRates.length,
+    sampleRates
   };
 }

@@ -101,10 +101,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in">
-      <div className="bg-white w-full max-w-md max-h-[92vh] sm:max-h-[88vh] flex flex-col my-auto rounded-3xl shadow-2xl border border-slate-200 overflow-hidden relative">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in">
+      <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 overflow-hidden relative">
         {/* Header */}
-        <div className="p-5 sm:p-6 bg-slate-950 text-white flex items-center justify-between shrink-0 border-b border-slate-800">
+        <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
           <div>
             <h2 className="text-lg font-extrabold">{mode === 'login' ? 'Welcome Back!' : 'Create Account'}</h2>
             <p className="text-xs text-slate-400">Access your orders, wishlist, and profile</p>
@@ -118,7 +118,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
           </button>
         </div>
 
-        <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1 min-h-0">
+        <div className="p-6 space-y-4">
           {/* Google Sign In Button */}
           <button
             type="button"
@@ -134,6 +134,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLoginSu
             </svg>
             <span>{googleLoading ? 'Connecting Google...' : 'Continue with Google'}</span>
           </button>
+
+          {/* Quick Demo Login Preset Buttons */}
+          <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-3 space-y-2">
+            <span className="text-[10px] font-extrabold text-indigo-700 uppercase tracking-wider flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Instant 1-Click Demo Login</span>
+            </span>
+            <div>
+              <button
+                type="button"
+                onClick={() => handleQuickDemoLogin('CUSTOMER')}
+                className="w-full bg-white hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-xs font-bold py-2 px-3 rounded-xl transition-all cursor-pointer shadow-2xs text-center"
+              >
+                Customer Login (1-Click)
+              </button>
+            </div>
+          </div>
 
           <div className="flex items-center space-x-2 my-2">
             <div className="h-px bg-slate-200 flex-1" />

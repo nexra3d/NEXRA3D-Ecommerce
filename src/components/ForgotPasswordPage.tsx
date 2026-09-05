@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Mail, ArrowLeft, ArrowRight, AlertCircle, CheckCircle2, KeyRound } from 'lucide-react';
-import { sendForgotPasswordEmail, isSupabaseConfigured } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 
 interface ForgotPasswordPageProps {
   onNavigateLogin: () => void;
@@ -29,23 +29,24 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
     setLoading(true);
 
     try {
-      if (!isSupabaseConfigured) {
-        // Fallback / Guidance if Supabase environment variables are missing
-        setLoading(false);
-        setSuccessMsg(
-          `Password reset request received for ${email}. Note: Supabase project credentials (SUPABASE_URL, SUPABASE_ANON_KEY) must be configured in environment settings to dispatch the email link.`
-        );
-        return;
-      }
+      const res = await apiFetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase() })
+      });
+      const data = await res.json();
+      setLoading(false);
 
-      await sendForgotPasswordEmail(email);
+      if (!res.ok) {
+        setErrorMsg(data.error || data.message || 'Failed to dispatch password recovery link.');
+      } else {
+        setSuccessMsg(
+          data.message || `If an account exists for ${email}, a password reset link has been dispatched.`
+        );
+      }
+    } catch {
       setLoading(false);
-      setSuccessMsg(
-        `Password reset link has been sent to ${email}. Please check your inbox or spam folder and click the link to reset your password.`
-      );
-    } catch (err: any) {
-      setLoading(false);
-      setErrorMsg(err?.message || 'Failed to send password reset email. Please try again.');
+      setErrorMsg('Network connection error. Please check your connection and try again.');
     }
   };
 
@@ -68,7 +69,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
           </div>
           <h1 className="text-2xl font-black tracking-tight">Forgot Password?</h1>
           <p className="text-xs text-slate-300 mt-1">
-            Enter your account email address below and we'll send you a password reset link.
+            Enter your account email address below and we'll send you a secure password reset link.
           </p>
         </div>
 
@@ -86,7 +87,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
             <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold p-4 rounded-2xl flex items-start space-x-2 animate-in fade-in">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
               <div>
-                <p className="font-bold mb-1 text-emerald-900">Email Dispatched!</p>
+                <p className="font-bold mb-1 text-emerald-900">Recovery Link Sent!</p>
                 <p>{successMsg}</p>
               </div>
             </div>
@@ -103,10 +104,10 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
                   <input
                     type="email"
                     required
+                    placeholder="Enter your account email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@example.com"
-                    className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl pl-10 pr-4 py-3 text-xs text-slate-900 font-medium transition-all focus:outline-hidden"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-3.5 py-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-indigo-500"
                   />
                 </div>
               </div>
@@ -114,37 +115,21 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm py-3.5 rounded-2xl transition-all cursor-pointer shadow-md shadow-indigo-100 flex items-center justify-center space-x-2 disabled:opacity-60"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs py-3.5 rounded-xl transition-all cursor-pointer shadow-md shadow-indigo-100 flex items-center justify-center space-x-2 disabled:opacity-60"
               >
-                {loading ? (
-                  <span>Sending Reset Link...</span>
-                ) : (
-                  <>
-                    <span>Send Reset Email</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
+                <span>{loading ? 'Sending Request...' : 'Send Password Reset Link'}</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
             </form>
           )}
 
-          {/* Footer Back Link */}
-          <div className="text-center pt-2 border-t border-slate-100 flex items-center justify-between">
+          <div className="border-t border-slate-100 pt-4 text-center">
             <button
-              type="button"
               onClick={onNavigateLogin}
-              className="text-xs text-indigo-600 font-extrabold hover:underline cursor-pointer inline-flex items-center gap-1"
+              className="text-xs text-slate-500 hover:text-indigo-600 font-bold transition-colors inline-flex items-center gap-1 cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Back to Login</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onNavigateHome}
-              className="text-xs text-slate-500 hover:text-slate-800 font-semibold cursor-pointer"
-            >
-              Return Home
             </button>
           </div>
         </div>

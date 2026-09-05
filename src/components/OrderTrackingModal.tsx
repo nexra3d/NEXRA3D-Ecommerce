@@ -1,8 +1,9 @@
 import React from 'react';
-import { X, Package, Truck, CheckCircle2, Clock, MapPin, Printer, ExternalLink, ShieldCheck } from 'lucide-react';
+import { X, Package, Truck, CheckCircle2, Clock, MapPin, Printer, ExternalLink, ShieldCheck, Store, Navigation, Phone, AlertCircle } from 'lucide-react';
 import { Order, OrderStatus } from '../types';
 import { TrackingTimeline } from './shipping/TrackingTimeline';
 import { CourierCard } from './shipping/CourierCard';
+import { StorePickupCard } from './shipping/StorePickupCard';
 
 interface OrderTrackingModalProps {
   order: Order | null;
@@ -12,58 +13,49 @@ interface OrderTrackingModalProps {
 export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, onClose }) => {
   if (!order) return null;
 
-  const STATUS_STAGES: { status: OrderStatus; label: string }[] = [
-    { status: 'PENDING', label: 'Order Placed' },
-    { status: 'PROCESSING', label: 'Packed' },
-    { status: 'SHIPPED', label: 'In Transit' },
-    { status: 'OUT_FOR_DELIVERY', label: 'Out for Delivery' },
-    { status: 'DELIVERED', label: 'Delivered' }
-  ];
-
-  const getCurrentStageIndex = (status: OrderStatus) => {
-    switch (status) {
-      case 'PENDING':
-        return 0;
-      case 'PROCESSING':
-        return 1;
-      case 'SHIPPED':
-        return 2;
-      case 'OUT_FOR_DELIVERY':
-        return 3;
-      case 'DELIVERED':
-        return 4;
-      default:
-        return 0;
-    }
-  };
+  const isStorePickup =
+    order.fulfillmentMethod === 'STORE_PICKUP' ||
+    order.fulfillmentMethod === 'PICKUP' ||
+    (order.shippingAddress as any)?.fulfillmentMethod === 'STORE_PICKUP' ||
+    (order.shippingAddress as any)?.fulfillmentMethod === 'PICKUP' ||
+    (order.shippingAddress as any)?.type === 'PICKUP' ||
+    order.shippingProvider === 'NEXRA Store' ||
+    order.courierName === 'Store Pickup' ||
+    order.courierName === 'Pickup from Store' ||
+    (order.shippingProvider && (order.shippingProvider.toLowerCase().includes('store') || order.shippingProvider.toLowerCase().includes('pickup'))) ||
+    (order.courierName && (order.courierName.toLowerCase().includes('store') || order.courierName.toLowerCase().includes('pickup'))) ||
+    ((order.shippingAddress as any)?.streetAddress && (order.shippingAddress as any).streetAddress.toLowerCase().includes('pickup'));
 
   const activeStatus = order.orderStatus || order.status || 'PENDING';
-  const currentStageIdx = getCurrentStageIndex(activeStatus);
 
-  const activeShipments = order.shipments && order.shipments.length > 0
+  const activeShipments = (!isStorePickup && order.shipments && order.shipments.length > 0)
     ? order.shipments
-    : (order.shipment ? [order.shipment] : []);
+    : (!isStorePickup && order.shipment ? [order.shipment] : []);
 
-  const courierPartner = (activeShipments[0] as any)?.courier || activeShipments[0]?.provider || (order.shipment as any)?.courier || order.shipment?.provider || order.courierName || 'Awaiting Dispatch';
-  const awbTrackingNumber = (activeShipments[0] as any)?.awbNumber || activeShipments[0]?.trackingNumber || (order.shipment as any)?.awbNumber || order.shipment?.trackingNumber || order.trackingNumber || 'Awaiting Dispatch';
+  const courierPartner = activeShipments[0]?.courier || activeShipments[0]?.provider || order.shipment?.courier || order.shipment?.provider || order.courierName || 'Awaiting Dispatch';
+  const awbTrackingNumber = activeShipments[0]?.awbNumber || activeShipments[0]?.trackingNumber || order.shipment?.awbNumber || order.shipment?.trackingNumber || order.trackingNumber || 'Awaiting Dispatch';
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in">
       <div className="bg-white w-full max-w-3xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden relative">
-        {/* Header */}
+        {/* Modal Header */}
         <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold">
-              <Truck className="w-5 h-5" />
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shadow-sm ${
+              isStorePickup ? 'bg-indigo-600' : 'bg-indigo-600'
+            }`}>
+              {isStorePickup ? <Store className="w-5 h-5" /> : <Truck className="w-5 h-5" />}
             </div>
             <div>
               <h2 className="text-lg font-extrabold flex items-center gap-2">
-                <span>Order Tracking</span>
+                <span>{isStorePickup ? 'Store Pickup Order Tracking' : 'Courier Shipment Tracking'}</span>
                 <span className="font-mono text-xs bg-slate-800 px-2 py-0.5 rounded text-amber-400">
                   {order.orderNumber}
                 </span>
               </h2>
-              <p className="text-xs text-slate-400">Placed on {new Date(order.createdAt).toLocaleDateString()}</p>
+              <p className="text-xs text-slate-400">
+                Placed on {new Date(order.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })} • {isStorePickup ? 'NEXRA Store Pickup' : 'Home Delivery'}
+              </p>
             </div>
           </div>
 
@@ -85,29 +77,50 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
           </div>
         </div>
 
-        <div className="p-6 space-y-8 overflow-y-auto max-h-[80vh]">
-          {/* Delhivery Express Carrier Information */}
-          <CourierCard
-            provider={(order as any).shippingProvider || 'Delhivery'}
-            awbNumber={(order as any).awbNumber || awbTrackingNumber}
-            trackingNumber={order.trackingNumber || awbTrackingNumber}
-            trackingUrl={(order as any).trackingUrl}
-            labelUrl={(order as any).labelUrl}
-            manifestUrl={(order as any).manifestUrl}
-            estimatedDelivery={(order as any).estimatedDelivery ? new Date((order as any).estimatedDelivery).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : '3-5 Business Days'}
-            shipmentStatus={(order as any).shipmentStatus || ((order as any).awbNumber ? 'IN_TRANSIT' : 'CREATED')}
-            pickupRequested={(order as any).pickupRequested}
-          />
+        <div className="p-6 space-y-7 overflow-y-auto max-h-[80vh]">
+          {/* SECTION 1: STORE PICKUP CARD vs COURIER CARD */}
+          {isStorePickup ? (
+            <StorePickupCard
+              orderNumber={order.orderNumber}
+              orderStatus={activeStatus}
+              paymentStatus={order.paymentStatus}
+              storeName="NEXRA 3D Experience & Store Pickup"
+              storeAddress={(order.shippingAddress as any)?.streetAddress || 'Plot no 484, TNGOs Colony, Gachibowli'}
+              storeCity={(order.shippingAddress as any)?.city || 'Hyderabad, Telangana - 500046'}
+              storeTimings="Mon – Sat: 10:00 AM – 8:00 PM (Closed on Sundays)"
+              storePhone="+91 98765 43210"
+              pickupToken={order.orderNumber}
+            />
+          ) : (
+            <CourierCard
+              provider={order.shippingProvider || 'Delhivery'}
+              awbNumber={order.awbNumber || awbTrackingNumber}
+              trackingNumber={order.trackingNumber || awbTrackingNumber}
+              trackingUrl={order.trackingUrl}
+              labelUrl={order.labelUrl}
+              manifestUrl={order.manifestUrl}
+              estimatedDelivery={order.estimatedDelivery ? new Date(order.estimatedDelivery).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : '3-5 Business Days'}
+              shipmentStatus={order.shipmentStatus || (order.awbNumber ? 'IN_TRANSIT' : 'CREATED')}
+              pickupRequested={order.pickupRequested}
+            />
+          )}
 
-          {/* Delhivery Interactive Tracking Milestone Timeline */}
+          {/* SECTION 2: TIMELINE */}
           <TrackingTimeline
-            currentStatus={(order as any).shipmentStatus || order.orderStatus || order.status}
-            awbNumber={(order as any).awbNumber || awbTrackingNumber}
-            expectedDelivery={(order as any).estimatedDelivery ? new Date((order as any).estimatedDelivery).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' }) : '3-5 Business Days'}
-            trackingHistory={(order as any).trackingHistory || []}
+            fulfillmentMethod={isStorePickup ? 'STORE_PICKUP' : 'HOME_DELIVERY'}
+            isPickup={isStorePickup}
+            courierProvider={order.shippingProvider || 'Delhivery'}
+            currentStatus={activeStatus}
+            awbNumber={isStorePickup ? undefined : (order.awbNumber || awbTrackingNumber)}
+            expectedDelivery={
+              isStorePickup
+                ? 'Available for pickup during store operating hours'
+                : (order.estimatedDelivery ? new Date(order.estimatedDelivery).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' }) : '3-5 Business Days')
+            }
+            trackingHistory={isStorePickup ? [] : (order.trackingHistory || [])}
           />
 
-          {/* Courier & AWB & Payment Details Box */}
+          {/* SECTION 3: KEY ORDER & FULFILLMENT ATTRIBUTES */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-xs">
             <div>
               <span className="text-slate-500 font-medium block">Invoice Number</span>
@@ -115,39 +128,57 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
                 {order.invoiceNumber || `INV-${order.orderNumber}`}
               </strong>
             </div>
+
             <div>
               <span className="text-slate-500 font-medium block">Payment Status</span>
               <span className={`inline-block font-extrabold text-xs px-2 py-0.5 rounded mt-0.5 ${
-                order.paymentStatus === 'CAPTURED' || order.paymentStatus === 'SUCCESS' || (order.paymentStatus as string) === 'PAID'
+                order.paymentStatus === 'CAPTURED' || order.paymentStatus === 'SUCCESS' || order.paymentStatus === 'PAID'
                   ? 'bg-emerald-100 text-emerald-800'
+                  : order.paymentStatus === 'COD'
+                  ? 'bg-blue-100 text-blue-800'
                   : order.paymentStatus === 'FAILED'
                   ? 'bg-rose-100 text-rose-800'
                   : 'bg-amber-100 text-amber-800'
               }`}>
                 {order.paymentStatus}
               </span>
-              {((order as any).razorpayPaymentId || (order as any).paymentId) && (
-                <div className="mt-1 font-mono text-[11px] text-emerald-700 font-bold">
-                  ID: {(order as any).razorpayPaymentId || (order as any).paymentId}
+            </div>
+
+            {isStorePickup ? (
+              <>
+                <div>
+                  <span className="text-slate-500 font-medium block">Fulfillment Method</span>
+                  <strong className="text-indigo-600 font-semibold text-xs block mt-0.5 flex items-center gap-1">
+                    <Store className="w-3.5 h-3.5" /> Store Pickup (Gachibowli)
+                  </strong>
                 </div>
-              )}
-            </div>
-            <div>
-              <span className="text-slate-500 font-medium block">Courier Partner</span>
-              <strong className="text-slate-800 font-semibold text-xs block mt-0.5">
-                {courierPartner}
-              </strong>
-            </div>
-            <div>
-              <span className="text-slate-500 font-medium block">AWB / Tracking Number</span>
-              <strong className="text-indigo-600 font-mono text-xs block mt-0.5 truncate" title={awbTrackingNumber}>
-                {awbTrackingNumber}
-              </strong>
-            </div>
+                <div>
+                  <span className="text-slate-500 font-medium block">Pickup Hours</span>
+                  <strong className="text-slate-800 font-medium text-xs block mt-0.5">
+                    10:00 AM – 8:00 PM
+                  </strong>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <span className="text-slate-500 font-medium block">Courier Partner</span>
+                  <strong className="text-slate-800 font-semibold text-xs block mt-0.5">
+                    {courierPartner}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium block">AWB / Tracking Number</span>
+                  <strong className="text-indigo-600 font-mono text-xs block mt-0.5 truncate" title={awbTrackingNumber}>
+                    {awbTrackingNumber}
+                  </strong>
+                </div>
+              </>
+            )}
           </div>
 
-          {/* Active Shipments Detail Block */}
-          {activeShipments.length > 0 && (
+          {/* SECTION 4: ACTIVE COURIER SHIPMENTS (HOME DELIVERY ONLY) */}
+          {!isStorePickup && activeShipments.length > 0 && (
             <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 space-y-3">
               <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
                 <Truck className="w-4 h-4 text-indigo-600" />
@@ -200,7 +231,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
             <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3.5 rounded-2xl text-xs space-y-1">
               <span className="font-extrabold flex items-center gap-1">
                 <ShieldCheck className="w-4 h-4 text-rose-600" />
-                <span>Payment Failed: {order.paymentFailureReason}</span>
+                <span>Payment Notice: {order.paymentFailureReason}</span>
               </span>
               <p className="text-rose-600 text-[11px]">
                 Your items remain in your pending order. You can safely retry payment below.
@@ -208,25 +239,31 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
             </div>
           )}
 
-          {/* Timeline Tracking Events Stream */}
-          <div className="space-y-3">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Logistics Milestones</h3>
-            <div className="space-y-3 border-l-2 border-slate-200 pl-4 ml-2">
-              {(order.trackingEvents || []).map((evt, idx) => (
-                <div key={idx} className="relative space-y-0.5">
-                  <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-indigo-600 ring-4 ring-white" />
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-extrabold text-slate-900">{evt.title}</span>
-                    <span className="text-[10px] text-slate-400 font-mono">{evt.timestamp}</span>
+          {/* SECTION 5: MILESTONE EVENTS STREAM */}
+          {order.trackingEvents && order.trackingEvents.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                {isStorePickup ? 'Pickup Progress Activity' : 'Logistics Milestones'}
+              </h3>
+              <div className="space-y-3 border-l-2 border-slate-200 pl-4 ml-2">
+                {order.trackingEvents.map((evt, idx) => (
+                  <div key={idx} className="relative space-y-0.5">
+                    <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-indigo-600 ring-4 ring-white" />
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-extrabold text-slate-900">{evt.title}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">{evt.timestamp}</span>
+                    </div>
+                    <p className="text-xs text-slate-600">{evt.description}</p>
+                    {evt.location && (
+                      <span className="text-[10px] text-slate-400 font-medium">📍 {evt.location}</span>
+                    )}
                   </div>
-                  <p className="text-xs text-slate-600">{evt.description}</p>
-                  {evt.location && <span className="text-[10px] text-slate-400 font-medium">📍 {evt.location}</span>}
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Itemized Order Summary */}
+          {/* SECTION 6: ITEMIZED ORDER SUMMARY */}
           <div className="space-y-3 border-t border-slate-200 pt-4">
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Itemized Bill</h3>
             <div className="space-y-2">
@@ -249,36 +286,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
                       )}
                       <div>
                         <span className="font-bold text-slate-900 block">{itemTitle}</span>
-                        {item.customizationText && (
-                          <span className="inline-block text-[11px] font-extrabold text-indigo-800 bg-indigo-50 border border-indigo-200/80 rounded px-2 py-0.5 mt-0.5">
-                            Custom Name: {item.customizationText}
-                          </span>
-                        )}
-                        {((item as any).customizationImages || []).length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {((item as any).customizationImages || []).map((cImg: any, cIdx: number) => {
-                              const imgUrl = cImg.imageUrl || cImg.url;
-                              return (
-                                <a
-                                  key={cImg.id || cIdx}
-                                  href={imgUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="block w-7 h-7 rounded overflow-hidden border border-cyan-300 hover:border-cyan-500 hover:scale-105 transition-all"
-                                  title={`Custom photo #${cIdx + 1}`}
-                                >
-                                  <img src={imgUrl} alt={`Custom photo ${cIdx + 1}`} className="w-full h-full object-cover" />
-                                </a>
-                              );
-                            })}
-                          </div>
-                        )}
-                        {(item.selectedColour || item.selectedWattage) && (
-                          <span className="block text-[10px] text-slate-500 font-semibold mt-0.5">
-                            {[item.selectedColour && `Colour: ${item.selectedColour}`, item.selectedWattage && `Wattage: ${item.selectedWattage}`].filter(Boolean).join(' | ')}
-                          </span>
-                        )}
-                        <span className="text-[11px] text-slate-500 block">Qty: {itemQty} × ₹{itemPrice.toLocaleString('en-IN')}</span>
+                        <span className="text-[11px] text-slate-500">Qty: {itemQty} × ₹{itemPrice.toLocaleString('en-IN')}</span>
                       </div>
                     </div>
                     <span className="font-bold text-slate-900">₹{lineTotal.toLocaleString('en-IN')}</span>
@@ -287,7 +295,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
               })}
             </div>
 
-            <div className="bg-slate-50 p-3 rounded-xl text-xs space-y-1 pt-2">
+            <div className="bg-slate-50 p-3.5 rounded-xl text-xs space-y-1.5 pt-2">
               <div className="flex justify-between text-slate-600">
                 <span>Subtotal</span>
                 <span>₹{Number(order.subtotal || 0).toLocaleString('en-IN')}</span>
@@ -296,14 +304,18 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
                 <span>Tax (GST)</span>
                 <span>₹{Number(order.tax ?? (order as any).taxAmount ?? 0).toLocaleString('en-IN')}</span>
               </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Fulfillment Fee</span>
+                <span>{isStorePickup || Number(order.shippingFee || 0) === 0 ? <strong className="text-emerald-600">FREE (Pickup)</strong> : `₹${Number(order.shippingFee || 0).toLocaleString('en-IN')}`}</span>
+              </div>
               {Number(order.discountAmount || 0) > 0 && (
                 <div className="flex justify-between text-emerald-600 font-semibold">
                   <span>Discount</span>
                   <span>-₹{Number(order.discountAmount || 0).toLocaleString('en-IN')}</span>
                 </div>
               )}
-              <div className="flex justify-between font-black text-sm text-slate-900 pt-1 border-t border-slate-200">
-                <span>Total Paid</span>
+              <div className="flex justify-between font-black text-sm text-slate-900 pt-2 border-t border-slate-200">
+                <span>Total Amount</span>
                 <span className="text-indigo-600">₹{Number(order.totalAmount ?? (order as any).total ?? 0).toLocaleString('en-IN')}</span>
               </div>
             </div>
