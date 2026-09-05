@@ -30,7 +30,6 @@ import { AdminLoginPage } from './components/AdminLoginPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { VerifyEmailPage } from './components/VerifyEmailPage';
-import { INITIAL_CATEGORIES, INITIAL_PRODUCTS, INITIAL_ORDERS } from './data/mockData';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { ShieldCheck } from 'lucide-react';
 import { apiFetch, getStoredToken, getStoredUser, clearStoredAuth, setStoredAuth } from './lib/api';
@@ -131,9 +130,9 @@ export default function App() {
 
   // Global App State
   const [user, setUser] = useState<User | null>(null);
-  const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES as any);
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS as any);
-  const [allProducts, setAllProducts] = useState<Product[]>(INITIAL_PRODUCTS as any);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
 
@@ -144,7 +143,7 @@ export default function App() {
   const [wishlistProductIds, setWishlistProductIds] = useState<string[]>([]);
   const [isWishlistLoading, setIsWishlistLoading] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
-  const [userOrders, setUserOrders] = useState<Order[]>(INITIAL_ORDERS as any);
+  const [userOrders, setUserOrders] = useState<Order[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [emails, setEmails] = useState<EmailNotification[]>([]);
 
@@ -327,13 +326,12 @@ export default function App() {
   const fetchAllProducts = async () => {
     try {
       const data = await safeFetchJson('/api/products?limit=500&includeInactive=true');
-      if (Array.isArray(data)) {
-        setAllProducts(data);
-      } else if (data && Array.isArray(data.products)) {
-        setAllProducts(data.products);
-      }
+      const list = Array.isArray(data) ? data : (data && Array.isArray(data.products) ? data.products : []);
+      setAllProducts(list);
+      return list;
     } catch (err) {
-      console.error('Error fetching all products:', err);
+      console.error('Error fetching all products from database:', err);
+      return [];
     }
   };
 
@@ -368,12 +366,17 @@ export default function App() {
     try {
       await checkSession();
 
-      // 1. Fetch Categories
+      // 1. Fetch Categories from database/Prisma
       const catData = await safeFetchJson('/api/categories');
-      setCategories(Array.isArray(catData) && catData.length > 0 ? catData : INITIAL_CATEGORIES);
+      if (Array.isArray(catData)) {
+        setCategories(catData);
+      }
 
-      // 1a. Fetch All Products
-      await fetchAllProducts();
+      // 1a. Fetch All Products from database/Prisma
+      const fetchedProds = await fetchAllProducts();
+      if (Array.isArray(fetchedProds)) {
+        setProducts(fetchedProds);
+      }
 
       // 1b. Fetch Services
       const srvData = await safeFetchJson('/api/services');
@@ -389,6 +392,9 @@ export default function App() {
 
       // 4. Fetch User Data
       await refreshUserData();
+
+      // 5. Initial filtered products load
+      await fetchFilteredProducts();
     } catch (err) {
       console.error('Error initializing app state:', err);
     }
@@ -455,21 +461,21 @@ export default function App() {
       const res = await apiFetch(`/api/products?${queryParams.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setProducts(data);
           return;
-        } else if (data && Array.isArray(data.products) && data.products.length > 0) {
+        } else if (data && Array.isArray(data.products)) {
           setProducts(data.products);
           return;
         }
       }
 
-      // Robust fallback: Client-side filter on allProducts or INITIAL_PRODUCTS
-      const baseList = (allProducts && allProducts.length > 0) ? allProducts : (INITIAL_PRODUCTS as any);
+      // Fallback: Client-side filter on allProducts from database
+      const baseList = allProducts || [];
       let filtered = [...baseList];
 
       if (filters.categoryId) {
-        filtered = filtered.filter(p => p.categoryId === filters.categoryId || p.category?.slug === filters.categoryId);
+        filtered = filtered.filter(p => p.categoryId === filters.categoryId || p.category?.slug === filters.categoryId || p.category?.id === filters.categoryId);
       }
       if (filters.searchQuery) {
         const q = filters.searchQuery.toLowerCase().trim();
@@ -489,9 +495,8 @@ export default function App() {
       }
       setProducts(filtered);
     } catch (err) {
-      console.error('Error fetching products:', err);
-      const baseList = (allProducts && allProducts.length > 0) ? allProducts : (INITIAL_PRODUCTS as any);
-      setProducts(baseList);
+      console.error('Error fetching products from database:', err);
+      setProducts(allProducts || []);
     } finally {
       setIsProductsLoading(false);
     }

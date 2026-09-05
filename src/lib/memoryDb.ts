@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import bcrypt from 'bcryptjs';
 import {
   INITIAL_CATEGORIES,
@@ -8,6 +10,9 @@ import {
   INITIAL_BANNERS,
   INITIAL_ORDERS
 } from '../data/mockData.js';
+
+const DATA_STORE_DIR = path.join(process.cwd(), '.data_store');
+const DB_FILE_PATH = path.join(DATA_STORE_DIR, 'prisma_db.json');
 
 function generateId(prefix = 'id'): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
@@ -41,7 +46,38 @@ class MemoryStore {
   };
 
   constructor() {
-    this.seed();
+    const loaded = this.load();
+    if (!loaded) {
+      this.seed();
+      this.persist();
+    }
+  }
+
+  persist() {
+    try {
+      if (!fs.existsSync(DATA_STORE_DIR)) {
+        fs.mkdirSync(DATA_STORE_DIR, { recursive: true });
+      }
+      fs.writeFileSync(DB_FILE_PATH, JSON.stringify(this.collections, null, 2), 'utf-8');
+    } catch (err) {
+      console.error('Failed to persist database state to disk:', err);
+    }
+  }
+
+  load(): boolean {
+    try {
+      if (fs.existsSync(DB_FILE_PATH)) {
+        const raw = fs.readFileSync(DB_FILE_PATH, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          this.collections = { ...this.collections, ...parsed };
+          return true;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load database state from disk:', err);
+    }
+    return false;
   }
 
   seed() {
@@ -478,6 +514,7 @@ class MemoryStore {
           }
         }
 
+        this.persist();
         return this.attachIncludes(newItem, modelName, args.include);
       },
 
@@ -493,6 +530,7 @@ class MemoryStore {
           updatedAt: new Date()
         };
         store[itemIndex] = updated;
+        this.persist();
         return this.attachIncludes(updated, modelName, args.include);
       },
 
@@ -504,15 +542,17 @@ class MemoryStore {
             count++;
           }
         });
+        if (count > 0) this.persist();
         return { count };
       },
 
       upsert: async (args: any = {}) => {
+        let result: any;
         const existingIndex = store.findIndex((i) => this.matchWhere(i, args.where));
         if (existingIndex !== -1) {
           const updated = { ...store[existingIndex], ...args.update, updatedAt: new Date() };
           store[existingIndex] = updated;
-          return this.attachIncludes(updated, modelName, args.include);
+          result = this.attachIncludes(updated, modelName, args.include);
         } else {
           const newItem = {
             id: args.create?.id || generateId(modelName.toLowerCase()),
@@ -521,8 +561,10 @@ class MemoryStore {
             updatedAt: new Date()
           };
           store.push(newItem);
-          return this.attachIncludes(newItem, modelName, args.include);
+          result = this.attachIncludes(newItem, modelName, args.include);
         }
+        this.persist();
+        return result;
       },
 
       delete: async (args: any = {}) => {
@@ -531,6 +573,7 @@ class MemoryStore {
           throw new Error(`Record to delete not found in memory db (${modelName})`);
         }
         const [removed] = store.splice(itemIndex, 1);
+        this.persist();
         return removed;
       },
 
@@ -542,6 +585,7 @@ class MemoryStore {
             count++;
           }
         }
+        if (count > 0) this.persist();
         return { count };
       },
 
