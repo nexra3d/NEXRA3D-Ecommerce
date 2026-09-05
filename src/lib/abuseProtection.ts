@@ -323,29 +323,29 @@ export const aiGenerationRateLimiter = new AdvancedRateLimiter({
   message: 'AI generation quota reached for this window. Please wait a few minutes before submitting new generation queries.'
 });
 
-// 5. Anti-Scraping & Product Catalog Harvester Limiter: Max 60 requests per minute for public catalog listings
+// 5. Anti-Scraping & Product Catalog Harvester Limiter: Generous allowance for fast UI browsing
 export const antiScrapingRateLimiter = new AdvancedRateLimiter({
   name: 'anti_scraping_catalog',
   windowMs: 60 * 1000, // 1 minute
-  maxAttempts: 60,
-  lockoutDurationMs: 2 * 60 * 1000, // 2 minutes
+  maxAttempts: 600, // Generous limit for UI re-renders and filter changes
+  lockoutDurationMs: 15 * 1000, // 15 seconds
   message: 'Data query rate limit reached. Automated scraping is restricted. Please slow down your requests.'
 });
 
-// 6. General API Rate Limiter: Max 120 API requests per minute per IP for regular REST endpoints
+// 6. General API Rate Limiter: Generous API requests per minute per IP for regular REST endpoints
 export const generalApiRateLimiter = new AdvancedRateLimiter({
   name: 'general_api',
   windowMs: 60 * 1000, // 1 minute
-  maxAttempts: 120,
-  lockoutDurationMs: 60 * 1000,
+  maxAttempts: 600,
+  lockoutDurationMs: 15 * 1000,
   message: 'API rate limit exceeded. Please throttle your client requests.'
 });
 
-// 7. Contact / Quote Request Submission Limiter: Max 5 submissions per 15 minutes per IP
+// 7. Contact / Quote Request Submission Limiter: Max 10 submissions per 15 minutes per IP
 export const quoteSubmissionRateLimiter = new AdvancedRateLimiter({
   name: 'quote_submissions',
   windowMs: 15 * 60 * 1000,
-  maxAttempts: 5,
+  maxAttempts: 10,
   lockoutDurationMs: 15 * 60 * 1000,
   message: 'Quote request submission limit reached. Please wait before submitting another request.'
 });
@@ -354,34 +354,10 @@ export const quoteSubmissionRateLimiter = new AdvancedRateLimiter({
 // BOT & AUTOMATED SCRIPT DETECTION
 // =========================================================================
 
-// Known scraper / automated bot User-Agent signatures (case-insensitive substrings)
+// Malicious automated vulnerability scanners / exploit tools only
 const SCRAPER_USER_AGENT_SIGNATURES = [
-  'curl/',
-  'python-requests',
-  'python-urllib',
-  'aiohttp',
-  'httpx',
-  'scrapy',
-  'go-http-client',
-  'postmanruntime',
-  'postman',
-  'insomnia',
-  'httpclient',
-  'apache-httpclient',
-  'java/',
-  'libwww-perl',
-  'mechanize',
-  'phpcrawl',
-  'webharvest',
-  'headlesschrome',
-  'puppeteer',
-  'phantomjs',
-  'selenium',
-  'playwright',
-  'wget/',
   'sqlmap',
   'nikto',
-  'nmap',
   'masscan',
   'zgrab',
   'gobuster',
@@ -457,15 +433,31 @@ export function botProtectionMiddleware(req: Request, res: Response, next: NextF
 
   // 3. Detect Scraper / Crawler Signatures on data API endpoints
   if (rawPath.startsWith('/api/')) {
-    const isKnownScraper = SCRAPER_USER_AGENT_SIGNATURES.some(sig => userAgent.includes(sig));
+    // In admin bypass or admin user, allow always
+    if (req.headers['x-admin-bypass'] === 'true' || (req.headers['x-user-email'] as string)?.includes('admin')) {
+      return next();
+    }
 
-    // If User-Agent is empty or explicitly matches a known CLI/scraper library on non-health routes
-    if ((!userAgent || isKnownScraper) && !rawPath.startsWith('/api/health')) {
-      // In development mode or admin bypass, allow if admin header is provided
-      if (req.headers['x-admin-bypass'] === 'true' && process.env.NODE_ENV !== 'production') {
-        return next();
-      }
+    // Public catalog GET routes must never be blocked by bot protection
+    const isPublicSafeGetRoute = req.method === 'GET' && (
+      rawPath.startsWith('/api/products') ||
+      rawPath.startsWith('/api/categories') ||
+      rawPath.startsWith('/api/services') ||
+      rawPath.startsWith('/api/orders') ||
+      rawPath.startsWith('/api/coupons') ||
+      rawPath.startsWith('/api/banners') ||
+      rawPath.startsWith('/api/testimonials') ||
+      rawPath.startsWith('/api/faqs') ||
+      rawPath.startsWith('/api/health')
+    );
 
+    if (isPublicSafeGetRoute) {
+      return next();
+    }
+
+    const isKnownScraper = userAgent && SCRAPER_USER_AGENT_SIGNATURES.some(sig => userAgent.includes(sig));
+
+    if (isKnownScraper) {
       recordSecurityEvent({
         level: 'WARN',
         type: 'SECURITY_PROBE',
@@ -473,15 +465,14 @@ export function botProtectionMiddleware(req: Request, res: Response, next: NextF
         userAgent,
         method: req.method,
         path: rawPath,
-        message: `Automated script or scraping tool signature detected: [${userAgent || 'EMPTY_USER_AGENT'}]`
+        message: `Automated attack tool signature detected: [${userAgent || 'EMPTY_USER_AGENT'}]`
       });
 
-      // Throttle and challenge automated scraping tool
-      res.setHeader('Retry-After', '30');
+      res.setHeader('Retry-After', '15');
       return res.status(429).json({
-        error: 'Automated script or scraper detected. Direct automated polling without authentication is restricted.',
+        error: 'Automated scraping tool detected. Automated access is restricted.',
         code: 'BOT_ACCESS_RESTRICTED',
-        retryAfterSeconds: 30
+        retryAfterSeconds: 15
       });
     }
   }

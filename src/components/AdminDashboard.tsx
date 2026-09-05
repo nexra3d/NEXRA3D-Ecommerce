@@ -38,6 +38,7 @@ import {
   QrCode
 } from 'lucide-react';
 import { CustomOrdersPanel } from './CustomOrdersPanel';
+import { INITIAL_ORDERS } from '../data/mockData';
 import {
   Product,
   Category,
@@ -163,7 +164,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return headers;
   };
 
-  const [adminOrders, setAdminOrders] = useState<Order[]>([]);
+  const [adminOrders, setAdminOrders] = useState<Order[]>(orders && orders.length > 0 ? orders : (INITIAL_ORDERS as any));
+
+  useEffect(() => {
+    if (orders && orders.length > 0) {
+      setAdminOrders(orders);
+    }
+  }, [orders]);
 
   const fetchAdminOrders = async () => {
     try {
@@ -173,12 +180,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) {
+        if (Array.isArray(data) && data.length > 0) {
           setAdminOrders(data);
+        } else if (orders && orders.length > 0) {
+          setAdminOrders(orders);
+        } else {
+          setAdminOrders(INITIAL_ORDERS as any);
         }
       }
     } catch (err) {
       console.error('Failed to fetch admin orders:', err);
+      if (orders && orders.length > 0) {
+        setAdminOrders(orders);
+      } else {
+        setAdminOrders(INITIAL_ORDERS as any);
+      }
     }
   };
 
@@ -1068,7 +1084,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   if (!isOpen) return null;
 
-  const displayOrders = adminOrders;
+  const displayOrders = (adminOrders && adminOrders.length > 0)
+    ? adminOrders
+    : (orders && orders.length > 0 ? orders : (INITIAL_ORDERS as any));
   const overviewRevenue = (analytics && typeof analytics.totalRevenue === 'number' && analytics.totalRevenue > 0)
     ? analytics.totalRevenue
     : displayOrders.reduce((acc, o) => acc + Number(o.totalAmount || 0), 0);

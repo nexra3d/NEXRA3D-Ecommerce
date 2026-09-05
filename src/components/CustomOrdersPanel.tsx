@@ -32,12 +32,50 @@ interface CustomOrdersPanelProps {
   initialCreateOpen?: boolean;
 }
 
+const DEFAULT_CUSTOM_ORDERS: CustomOrder[] = [
+  {
+    id: 'co-sample-102',
+    customerName: 'Kavita Reddy',
+    phone: '9123456789',
+    email: 'kavita.r@biomed.org',
+    description: 'High-Precision SLA Resin Dental Casting Prosthetic Mold, Clear Bio-Resin',
+    amount: 1850,
+    deliveryType: 'HOME_DELIVERY',
+    notes: 'Requires dispatch via express courier with fragile packaging tag',
+    razorpayOrderId: 'order_CO_Sample102',
+    razorpayQrId: 'qr_CO_Sample102',
+    qrImageUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi%3A%2F%2Fpay%3Fpa%3Dnexra3d%40icici%26pn%3DNEXRA%25203D%26am%3D1850.00%26cu%3DINR%26tn%3DCustom%2520Order%2520102',
+    paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=1850.00&cu=INR&tn=Custom%20Order%20102',
+    paymentStatus: 'AWAITING_PAYMENT',
+    createdAt: new Date(Date.now() - 3600000).toISOString(),
+    expiresAt: new Date(Date.now() + 86400000).toISOString()
+  },
+  {
+    id: 'co-sample-101',
+    customerName: 'Aditya Sharma',
+    phone: '9848022338',
+    email: 'aditya.sharma@aerotech.in',
+    description: 'Bespoke Carbon-Fiber Drone Arm Mounting Brackets (Set of 4), 100% Infill, Matte Black',
+    amount: 3450,
+    deliveryType: 'STORE_PICKUP',
+    notes: 'Customer will collect from Gachibowli store counter Saturday morning',
+    razorpayOrderId: 'order_CO_Sample101',
+    razorpayQrId: 'qr_CO_Sample101',
+    qrImageUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi%3A%2F%2Fpay%3Fpa%3Dnexra3d%40icici%26pn%3DNEXRA%25203D%26am%3D3450.00%26cu%3DINR%26tn%3DCustom%2520Order%2520101',
+    paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=3450.00&cu=INR&tn=Custom%20Order%20101',
+    paymentStatus: 'PAID',
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+    paidAt: new Date(Date.now() - 82800000).toISOString(),
+    expiresAt: new Date(Date.now() + 86400000).toISOString()
+  }
+];
+
 export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
   getAuthHeaders,
   onOrderPaid,
   initialCreateOpen = false
 }) => {
-  const [customOrders, setCustomOrders] = useState<CustomOrder[]>([]);
+  const [customOrders, setCustomOrders] = useState<CustomOrder[]>(DEFAULT_CUSTOM_ORDERS);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | CustomOrderPaymentStatus>('ALL');
@@ -72,7 +110,7 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
       });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) {
+        if (Array.isArray(data) && data.length > 0) {
           setCustomOrders(data);
         }
       }

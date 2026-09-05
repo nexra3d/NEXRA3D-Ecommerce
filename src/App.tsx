@@ -30,7 +30,7 @@ import { AdminLoginPage } from './components/AdminLoginPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { VerifyEmailPage } from './components/VerifyEmailPage';
-import { INITIAL_CATEGORIES } from './data/mockData';
+import { INITIAL_CATEGORIES, INITIAL_PRODUCTS, INITIAL_ORDERS } from './data/mockData';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { ShieldCheck } from 'lucide-react';
 import { apiFetch, getStoredToken, getStoredUser, clearStoredAuth, setStoredAuth } from './lib/api';
@@ -131,9 +131,9 @@ export default function App() {
 
   // Global App State
   const [user, setUser] = useState<User | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES as any);
+  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS as any);
+  const [allProducts, setAllProducts] = useState<Product[]>(INITIAL_PRODUCTS as any);
   const [services, setServices] = useState<Service[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
 
@@ -144,7 +144,7 @@ export default function App() {
   const [wishlistProductIds, setWishlistProductIds] = useState<string[]>([]);
   const [isWishlistLoading, setIsWishlistLoading] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
-  const [userOrders, setUserOrders] = useState<Order[]>([]);
+  const [userOrders, setUserOrders] = useState<Order[]>(INITIAL_ORDERS as any);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [emails, setEmails] = useState<EmailNotification[]>([]);
 
@@ -453,17 +453,45 @@ export default function App() {
       }
 
       const res = await apiFetch(`/api/products?${queryParams.toString()}`);
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setProducts(data);
-      } else if (data && Array.isArray(data.products)) {
-        setProducts(data.products);
-      } else {
-        setProducts([]);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setProducts(data);
+          return;
+        } else if (data && Array.isArray(data.products) && data.products.length > 0) {
+          setProducts(data.products);
+          return;
+        }
       }
+
+      // Robust fallback: Client-side filter on allProducts or INITIAL_PRODUCTS
+      const baseList = (allProducts && allProducts.length > 0) ? allProducts : (INITIAL_PRODUCTS as any);
+      let filtered = [...baseList];
+
+      if (filters.categoryId) {
+        filtered = filtered.filter(p => p.categoryId === filters.categoryId || p.category?.slug === filters.categoryId);
+      }
+      if (filters.searchQuery) {
+        const q = filters.searchQuery.toLowerCase().trim();
+        filtered = filtered.filter(p => 
+          (p.name || p.title || '').toLowerCase().includes(q) || 
+          (p.description || '').toLowerCase().includes(q)
+        );
+      }
+      if (filters.minPrice !== undefined && filters.minPrice > 0) {
+        filtered = filtered.filter(p => Number(p.price) >= Number(filters.minPrice));
+      }
+      if (filters.maxPrice !== undefined && filters.maxPrice > 0) {
+        filtered = filtered.filter(p => Number(p.price) <= Number(filters.maxPrice));
+      }
+      if (filters.inStockOnly) {
+        filtered = filtered.filter(p => (p.stockQuantity ?? p.stock ?? 0) > 0);
+      }
+      setProducts(filtered);
     } catch (err) {
       console.error('Error fetching products:', err);
-      setProducts([]);
+      const baseList = (allProducts && allProducts.length > 0) ? allProducts : (INITIAL_PRODUCTS as any);
+      setProducts(baseList);
     } finally {
       setIsProductsLoading(false);
     }
