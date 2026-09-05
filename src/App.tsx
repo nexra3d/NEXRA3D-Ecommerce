@@ -34,6 +34,13 @@ import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { ShieldCheck } from 'lucide-react';
 import { apiFetch, getStoredToken, getStoredUser, clearStoredAuth, setStoredAuth } from './lib/api';
 import {
+  INITIAL_CATEGORIES,
+  INITIAL_PRODUCTS,
+  INITIAL_SERVICES,
+  INITIAL_COUPONS,
+  INITIAL_EMAILS
+} from './data/mockData';
+import {
   Product,
   Category,
   User,
@@ -130,10 +137,10 @@ export default function App() {
 
   // Global App State
   const [user, setUser] = useState<User | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [allProducts, setAllProducts] = useState<Product[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
+  const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
+  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [allProducts, setAllProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [services, setServices] = useState<Service[]>(INITIAL_SERVICES);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
 
   const [cartData, setCartData] = useState<any>(null);
@@ -144,8 +151,8 @@ export default function App() {
   const [isWishlistLoading, setIsWishlistLoading] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
   const [userOrders, setUserOrders] = useState<Order[]>([]);
-  const [coupons, setCoupons] = useState<Coupon[]>([]);
-  const [emails, setEmails] = useState<EmailNotification[]>([]);
+  const [coupons, setCoupons] = useState<Coupon[]>(INITIAL_COUPONS);
+  const [emails, setEmails] = useState<EmailNotification[]>(INITIAL_EMAILS);
 
   // Loading States
   const [isProductsLoading, setIsProductsLoading] = useState(true);
@@ -311,10 +318,6 @@ export default function App() {
     try {
       const res = await apiFetch(url, options);
       if (!res.ok) return null;
-      const contentType = res.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        return null;
-      }
       return await res.json();
     } catch (e) {
       console.error(`Fetch error for ${url}:`, e);
@@ -327,7 +330,9 @@ export default function App() {
     try {
       const data = await safeFetchJson('/api/products?limit=500&includeInactive=true');
       const list = Array.isArray(data) ? data : (data && Array.isArray(data.products) ? data.products : []);
-      setAllProducts(list);
+      if (list.length > 0) {
+        setAllProducts(list);
+      }
       return list;
     } catch (err) {
       console.error('Error fetching all products from database:', err);
@@ -368,27 +373,33 @@ export default function App() {
 
       // 1. Fetch Categories from database/Prisma
       const catData = await safeFetchJson('/api/categories');
-      if (Array.isArray(catData)) {
+      if (Array.isArray(catData) && catData.length > 0) {
         setCategories(catData);
       }
 
       // 1a. Fetch All Products from database/Prisma
       const fetchedProds = await fetchAllProducts();
-      if (Array.isArray(fetchedProds)) {
+      if (Array.isArray(fetchedProds) && fetchedProds.length > 0) {
         setProducts(fetchedProds);
       }
 
       // 1b. Fetch Services
       const srvData = await safeFetchJson('/api/services');
-      setServices(Array.isArray(srvData) ? srvData : []);
+      if (Array.isArray(srvData) && srvData.length > 0) {
+        setServices(srvData);
+      }
 
       // 2. Fetch Coupons
       const coupData = await safeFetchJson('/api/coupons');
-      setCoupons(Array.isArray(coupData) ? coupData : []);
+      if (Array.isArray(coupData) && coupData.length > 0) {
+        setCoupons(coupData);
+      }
 
       // 3. Fetch Emails
       const emlData = await safeFetchJson('/api/emails');
-      setEmails(Array.isArray(emlData) ? emlData : []);
+      if (Array.isArray(emlData) && emlData.length > 0) {
+        setEmails(emlData);
+      }
 
       // 4. Fetch User Data
       await refreshUserData();
@@ -461,27 +472,41 @@ export default function App() {
       const res = await apiFetch(`/api/products?${queryParams.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) {
-          setProducts(data);
-          return;
-        } else if (data && Array.isArray(data.products)) {
-          setProducts(data.products);
+        const prodsList = Array.isArray(data) ? data : (data && Array.isArray(data.products) ? data.products : null);
+        if (Array.isArray(prodsList)) {
+          let list = [...prodsList];
+          if (filters.sortBy === 'price-low' || filters.sortBy === 'price-low-high') {
+            list.sort((a, b) => Number(a.price) - Number(b.price));
+          } else if (filters.sortBy === 'price-high' || filters.sortBy === 'price-high-low') {
+            list.sort((a, b) => Number(b.price) - Number(a.price));
+          } else if (filters.sortBy === 'rating') {
+            list.sort((a, b) => (Number(b.rating) || 5) - (Number(a.rating) || 5));
+          } else if (filters.sortBy === 'newest') {
+            list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+          }
+          setProducts(list);
           return;
         }
       }
 
-      // Fallback: Client-side filter on allProducts from database
-      const baseList = allProducts || [];
+      // Fallback: Client-side filter on allProducts or initial database seed
+      const baseList = allProducts.length > 0 ? allProducts : INITIAL_PRODUCTS;
       let filtered = [...baseList];
 
       if (filters.categoryId) {
-        filtered = filtered.filter(p => p.categoryId === filters.categoryId || p.category?.slug === filters.categoryId || p.category?.id === filters.categoryId);
+        filtered = filtered.filter(p => 
+          p.categoryId === filters.categoryId || 
+          p.category?.slug === filters.categoryId || 
+          p.category?.id === filters.categoryId ||
+          p.category?.name?.toLowerCase() === filters.categoryId.toLowerCase()
+        );
       }
       if (filters.searchQuery) {
         const q = filters.searchQuery.toLowerCase().trim();
         filtered = filtered.filter(p => 
           (p.name || p.title || '').toLowerCase().includes(q) || 
-          (p.description || '').toLowerCase().includes(q)
+          (p.description || '').toLowerCase().includes(q) ||
+          (p.sku || '').toLowerCase().includes(q)
         );
       }
       if (filters.minPrice !== undefined && filters.minPrice > 0) {
@@ -493,10 +518,28 @@ export default function App() {
       if (filters.inStockOnly) {
         filtered = filtered.filter(p => (p.stockQuantity ?? p.stock ?? 0) > 0);
       }
+      if (filters.onSaleOnly) {
+        filtered = filtered.filter(p => (p.discountPercentage && p.discountPercentage > 0) || (p.mrp && p.mrp > p.price));
+      }
+      if (filters.brands && filters.brands.length > 0) {
+        filtered = filtered.filter(p => filters.brands?.includes(p.category?.name || p.brand || ''));
+      }
+
+      // Sort
+      if (filters.sortBy === 'price-low' || filters.sortBy === 'price-low-high') {
+        filtered.sort((a, b) => Number(a.price) - Number(b.price));
+      } else if (filters.sortBy === 'price-high' || filters.sortBy === 'price-high-low') {
+        filtered.sort((a, b) => Number(b.price) - Number(a.price));
+      } else if (filters.sortBy === 'rating') {
+        filtered.sort((a, b) => (Number(b.rating) || 5) - (Number(a.rating) || 5));
+      } else if (filters.sortBy === 'newest') {
+        filtered.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      }
+
       setProducts(filtered);
     } catch (err) {
       console.error('Error fetching products from database:', err);
-      setProducts(allProducts || []);
+      setProducts(allProducts.length > 0 ? allProducts : INITIAL_PRODUCTS);
     } finally {
       setIsProductsLoading(false);
     }
