@@ -2,10 +2,15 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import app from './app.js';
+import { ensureDbSchema } from './src/lib/prisma.js';
 
 const PORT = 3000;
 
 async function startServer() {
+  await ensureDbSchema().catch((e) => {
+    console.warn('[Startup] Database schema check notice:', e?.message || e);
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

@@ -32,10 +32,54 @@ const isPlaceholderDbUrl =
 
 const hasDatabaseUrl = !isPlaceholderDbUrl;
 
-// Schema synchronization is safely managed through Prisma migrations.
-// Runtime API requests and serverless cold starts must not execute DDL / ALTER TABLE statements.
-export function ensureDbSchema(): Promise<void> {
-  return Promise.resolve();
+let dbSchemaEnsured = false;
+
+export async function ensureDbSchema(): Promise<void> {
+  if (!hasDatabaseUrl) {
+    return;
+  }
+  if (dbSchemaEnsured) return;
+
+  try {
+    await rawPrisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "custom_orders" (
+        "id" TEXT NOT NULL,
+        "customerName" TEXT NOT NULL,
+        "phone" TEXT NOT NULL,
+        "email" TEXT,
+        "description" TEXT,
+        "amount" DECIMAL(10,2) NOT NULL,
+        "deliveryType" TEXT NOT NULL DEFAULT 'STORE_PICKUP',
+        "notes" TEXT,
+        "paymentStatus" TEXT NOT NULL DEFAULT 'AWAITING_PAYMENT',
+        "razorpayOrderId" TEXT,
+        "razorpayQrId" TEXT,
+        "qrImageUrl" TEXT,
+        "paymentLink" TEXT,
+        "isSimulated" BOOLEAN NOT NULL DEFAULT false,
+        "expiresAt" TIMESTAMP(3),
+        "paidAt" TIMESTAMP(3),
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+        CONSTRAINT "custom_orders_pkey" PRIMARY KEY ("id")
+      );
+    `);
+
+    try {
+      await rawPrisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS "custom_orders_phone_idx" ON "custom_orders"("phone");
+      `);
+      await rawPrisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS "custom_orders_paymentStatus_idx" ON "custom_orders"("paymentStatus");
+      `);
+    } catch (_) {}
+
+    dbSchemaEnsured = true;
+    console.log('[Database] custom_orders table and indexes ensured successfully.');
+  } catch (err: any) {
+    console.warn('[Database] Could not execute DDL for custom_orders:', err?.message || err);
+  }
 }
 
 function createModelProxy(modelName: string | symbol) {
@@ -60,6 +104,11 @@ function createModelProxy(modelName: string | symbol) {
 
         const rawModel = (rawPrisma as any)[modelName];
         if (!rawModel || typeof rawModel[prop] !== 'function') {
+          // If the model does not exist on Prisma client, fallback to memory store
+          const fn = (memoryHandler as any)[prop];
+          if (typeof fn === 'function') {
+            return fn(...args);
+          }
           throw new Error(`Method '${prop}' does not exist on Prisma model '${modelName}'.`);
         }
 
@@ -74,6 +123,26 @@ function createModelProxy(modelName: string | symbol) {
             const queryName = `${modelName}.${prop}`;
             const errorMessage = err?.message || String(err);
             const timestamp = new Date().toISOString();
+
+            // Check if table is missing in database (Prisma P2021 or Postgres relation does not exist)
+            const isTableMissing =
+              err?.code === 'P2021' ||
+              errorMessage.toLowerCase().includes('does not exist') ||
+              (errorMessage.toLowerCase().includes('relation') && errorMessage.toLowerCase().includes('does not exist'));
+
+            if (isTableMissing) {
+              console.warn(`[${timestamp}] Table for model '${modelName}' is missing in database. Attempting auto-creation...`);
+              try {
+                await ensureDbSchema();
+                return await rawModel[prop](...args);
+              } catch (retryErr: any) {
+                console.warn(`[${timestamp}] Auto-creation failed or query retry failed: ${retryErr?.message}. Falling back to memory store for ${queryName}.`);
+                const fn = (memoryHandler as any)[prop];
+                if (typeof fn === 'function') {
+                  return fn(...args);
+                }
+              }
+            }
 
             // Do not retry on deterministic request / validation / constraint errors
             const isNonRetryable =
