@@ -5440,6 +5440,17 @@ const formatOrder = (o: any) => {
     manifestUrl: o.manifestUrl || (awb ? `/api/shipping/manifest/${awb}` : null),
     lastTrackingUpdate: o.lastTrackingUpdate || o.updatedAt,
     trackingHistory: o.trackingHistory || [],
+    trackingEvents: (o.trackingHistory && Array.isArray(o.trackingHistory) && o.trackingHistory.length > 0)
+      ? o.trackingHistory.map((scan: any) => ({
+          title: scan.status || 'Shipment Scan',
+          description: scan.remark || scan.status || 'Processed by Delhivery',
+          timestamp: scan.date ? new Date(scan.date).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+          location: scan.location || 'Delhivery Hub'
+        }))
+      : [],
+    latestTracking: (o.trackingHistory && Array.isArray(o.trackingHistory) && o.trackingHistory.length > 0)
+      ? o.trackingHistory[o.trackingHistory.length - 1]
+      : null,
     shipments: shipmentsList,
     customerName: addr.fullName || o.user?.name || 'Customer',
     customerEmail: addr.email || o.user?.email || '',
@@ -5500,7 +5511,7 @@ app.get('/api/orders', requireAuthMiddleware, async (req: AuthenticatedRequest, 
     }
 
     console.log('[GET /api/orders] Prisma query start...');
-    const rawOrders = await prisma.order.findMany({
+    let rawOrders = await prisma.order.findMany({
       where: whereClause,
       include: {
         items: {
@@ -5517,6 +5528,44 @@ app.get('/api/orders', requireAuthMiddleware, async (req: AuthenticatedRequest, 
       },
       orderBy: { createdAt: 'desc' }
     });
+
+    // Auto-sync active Delhivery shipments if last update is stale (> 2 mins)
+    const activeToSync = rawOrders.filter(o =>
+      o.awbNumber &&
+      (!o.shippingProvider || o.shippingProvider.toLowerCase().includes('delhivery')) &&
+      o.status !== 'DELIVERED' &&
+      o.status !== 'CANCELLED' &&
+      o.status !== 'REFUNDED' &&
+      (!o.lastTrackingUpdate || (Date.now() - new Date(o.lastTrackingUpdate).getTime() > 120000))
+    ).slice(0, 5);
+
+    if (activeToSync.length > 0) {
+      await Promise.allSettled(activeToSync.map(async (ord) => {
+        try {
+          const tracking = await delhiveryService.trackShipment(ord.awbNumber!);
+          await syncDelhiveryOrderStatus(ord, tracking);
+        } catch (e) {}
+      }));
+
+      // Refresh list to include updated status
+      rawOrders = await prisma.order.findMany({
+        where: whereClause,
+        include: {
+          items: {
+            include: {
+              product: { include: { images: true } },
+              variant: true,
+              customizationImages: true
+            }
+          },
+          user: true,
+          shipment: { include: { statusHistory: true } },
+          payment: true,
+          coupon: true
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+    }
 
     console.log(`[GET /api/orders] Prisma query completion. Orders count: ${rawOrders.length}`);
     console.log('[GET /api/orders] Formatter start...');
@@ -5570,6 +5619,21 @@ app.get('/api/orders/:id', requireAuthMiddleware, async (req: AuthenticatedReque
 
     if (order.userId !== req.user.id && order.user?.email !== req.user.email && req.user.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Unauthorized to view this order' });
+    }
+
+    // Auto-sync Delhivery status if active shipment
+    const awb = order.awbNumber || order.shipment?.awbNumber;
+    const isDelhivery = !order.shippingProvider || order.shippingProvider.toLowerCase().includes('delhivery');
+    if (isDelhivery && awb && (req.query.refresh === 'true' || (order.status !== 'DELIVERED' && order.status !== 'CANCELLED'))) {
+      try {
+        const tracking = await delhiveryService.trackShipment(awb);
+        const synced = await syncDelhiveryOrderStatus(order, tracking);
+        if (synced) {
+          return res.json(formatOrder(synced));
+        }
+      } catch (e: any) {
+        console.warn('Delhivery live sync warning on order lookup:', e.message);
+      }
     }
 
     return res.json(formatOrder(order));
@@ -7996,30 +8060,397 @@ app.post('/api/shipping/create', requireAuthMiddleware, async (req: Authenticate
   }
 });
 
-// 4. Track Shipment
+/**
+ * Helper to sync Delhivery tracking status, milestone scans, and timestamps with Prisma Order & Shipment models
+ */
+export async function syncDelhiveryOrderStatus(
+  existingOrder: any,
+  tracking: {
+    status?: string;
+    location?: string;
+    estimatedDelivery?: string;
+    scans?: any[];
+    awb?: string;
+  }
+) {
+  if (!existingOrder || !tracking) return existingOrder;
+
+  const rawStatus = String(tracking.status || '').trim();
+  const rawScans = Array.isArray(tracking.scans) ? tracking.scans : [];
+
+  const mapped = delhiveryService.mapDelhiveryStatus(rawStatus, rawScans);
+  const targetOrderStatus = mapped.orderStatus;
+  const targetShipmentStatus = mapped.shipmentStatus;
+
+  const wasDeliveredBefore = existingOrder.status === 'DELIVERED';
+  const isNowDelivered = targetOrderStatus === 'DELIVERED';
+
+  const estDeliveryDate = tracking.estimatedDelivery ? new Date(tracking.estimatedDelivery) : existingOrder.estimatedDelivery;
+
+  let updatedOrder = existingOrder;
+  try {
+    updatedOrder = await prisma.order.update({
+      where: { id: existingOrder.id },
+      data: {
+        status: targetOrderStatus as any,
+        shipmentStatus: targetShipmentStatus,
+        lastTrackingUpdate: new Date(),
+        trackingHistory: (rawScans.length > 0 ? rawScans : existingOrder.trackingHistory) as any,
+        ...(estDeliveryDate ? { estimatedDelivery: estDeliveryDate } : {})
+      },
+      include: {
+        items: {
+          include: {
+            product: { include: { images: true } },
+            variant: true,
+            customizationImages: true
+          }
+        },
+        user: true,
+        shipment: { include: { statusHistory: true } },
+        payment: true,
+        coupon: true
+      }
+    });
+  } catch (err: any) {
+    console.error(`[Delhivery Sync Error] Failed updating Order ${existingOrder.id}:`, err.message);
+  }
+
+  // Sync to Shipment model
+  try {
+    await prisma.shipment.updateMany({
+      where: { orderId: existingOrder.id },
+      data: {
+        status: targetShipmentStatus as any,
+        ...(isNowDelivered ? { deliveredAt: new Date() } : {}),
+        ...(targetOrderStatus === 'CANCELLED' ? { cancelledAt: new Date() } : {}),
+        ...(targetOrderStatus === 'SHIPPED' && !existingOrder.shipment?.shippedAt ? { shippedAt: new Date() } : {}),
+        ...(estDeliveryDate ? { estimatedDelivery: estDeliveryDate, estimatedDeliveryDate: estDeliveryDate } : {})
+      }
+    });
+  } catch (e: any) {
+    console.warn(`[Delhivery Sync Warning] Failed updating Shipment for Order ${existingOrder.id}:`, e.message);
+  }
+
+  // If status transitioned to DELIVERED, send delivery notification email to customer
+  if (isNowDelivered && !wasDeliveredBefore) {
+    try {
+      const custEmail = (updatedOrder.shippingAddress as any)?.email || updatedOrder.user?.email;
+      if (custEmail) {
+        await sendEmail({
+          to: custEmail,
+          subject: `🎉 Delivered! Order #${updatedOrder.orderNumber} - NEXRA 3D`,
+          html: `<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #10b981; border-radius: 12px;">
+            <h2 style="color: #059669;">Your NEXRA 3D Order Has Been Delivered!</h2>
+            <p>Great news! Delhivery has confirmed delivery of Order <strong>#${updatedOrder.orderNumber}</strong>.</p>
+            <p><strong>AWB Number:</strong> ${existingOrder.awbNumber || tracking.awb || 'N/A'}</p>
+            <p><strong>Delivered At:</strong> ${new Date().toLocaleString('en-IN')}</p>
+            <p>Thank you for choosing NEXRA 3D. We hope you enjoy your customized 3D prints!</p>
+          </div>`
+        });
+        console.log(`[Delhivery Notification] Dispatched delivery confirmation email for Order #${updatedOrder.orderNumber} to ${custEmail}`);
+      }
+    } catch (e: any) {
+      console.warn(`[Delhivery Delivery Email Failed]:`, e.message);
+    }
+  }
+
+  return updatedOrder;
+}
+
+// 4. Track Shipment by AWB
 app.get('/api/shipping/track/:awb', async (req: Request, res: Response) => {
   try {
     const { awb } = req.params;
-    const tracking = await delhiveryService.trackShipment(awb);
+    const cleanAwb = String(awb || '').trim();
+    const tracking = await delhiveryService.trackShipment(cleanAwb);
 
     const existingOrder = await prisma.order.findFirst({
-      where: { OR: [{ awbNumber: awb }, { trackingNumber: awb }, { shipmentId: awb }] }
+      where: {
+        OR: [
+          { awbNumber: cleanAwb },
+          { trackingNumber: cleanAwb },
+          { shipmentId: cleanAwb },
+          { orderNumber: cleanAwb },
+          { id: cleanAwb }
+        ]
+      },
+      include: {
+        items: {
+          include: {
+            product: { include: { images: true } },
+            variant: true,
+            customizationImages: true
+          }
+        },
+        user: true,
+        shipment: { include: { statusHistory: true } },
+        payment: true,
+        coupon: true
+      }
     });
 
+    let updatedOrder = existingOrder;
     if (existingOrder) {
-      await prisma.order.update({
-        where: { id: existingOrder.id },
-        data: {
-          shipmentStatus: tracking.status,
-          lastTrackingUpdate: new Date(),
-          trackingHistory: tracking.scans as any
-        }
-      }).catch(() => {});
+      updatedOrder = await syncDelhiveryOrderStatus(existingOrder, tracking);
     }
 
-    return res.json(tracking);
+    return res.json({
+      ...tracking,
+      order: updatedOrder ? formatOrder(updatedOrder) : null
+    });
   } catch (err: any) {
     return res.status(500).json({ error: 'Failed to track shipment', details: err.message });
+  }
+});
+
+// 4b. Track Order Live Status by Order ID or Order Number
+app.get('/api/orders/:id/track', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const decodedId = decodeURIComponent(id || '').trim();
+    const spaceVariant = decodedId.replace(/-/g, ' ');
+    const hyphenVariant = decodedId.replace(/\s+/g, '-');
+
+    const order = await prisma.order.findFirst({
+      where: {
+        OR: [
+          { id: decodedId },
+          { orderNumber: decodedId },
+          { orderNumber: { equals: decodedId, mode: 'insensitive' } },
+          { orderNumber: spaceVariant },
+          { orderNumber: hyphenVariant },
+          { awbNumber: decodedId },
+          { trackingNumber: decodedId }
+        ]
+      },
+      include: {
+        items: {
+          include: {
+            product: { include: { images: true } },
+            variant: true,
+            customizationImages: true
+          }
+        },
+        user: true,
+        shipment: { include: { statusHistory: true } },
+        payment: true,
+        coupon: true
+      }
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const awb = order.awbNumber || order.shipment?.awbNumber || order.trackingNumber;
+
+    if (awb && (!order.shippingProvider || order.shippingProvider.toLowerCase().includes('delhivery'))) {
+      const tracking = await delhiveryService.trackShipment(awb);
+      const syncedOrder = await syncDelhiveryOrderStatus(order, tracking);
+
+      return res.json({
+        success: true,
+        provider: 'Delhivery',
+        courierName: order.shipment?.courier || 'Delhivery Express',
+        awbNumber: awb,
+        trackingUrl: order.trackingUrl || `https://track.delhivery.com/track/package/${awb}`,
+        status: tracking.status,
+        orderStatus: syncedOrder.status,
+        shipmentStatus: syncedOrder.shipmentStatus,
+        location: tracking.location || 'In Transit',
+        estimatedDelivery: tracking.estimatedDelivery,
+        lastUpdate: tracking.lastUpdate,
+        scans: tracking.scans || [],
+        order: formatOrder(syncedOrder)
+      });
+    }
+
+    // If order has no Delhivery AWB yet (e.g. freshly placed)
+    const initialScans = [
+      {
+        date: order.createdAt.toISOString(),
+        status: 'Order Confirmed',
+        location: 'NEXRA 3D Central Hub',
+        remark: 'Payment acknowledged & order scheduled for production'
+      }
+    ];
+
+    if (order.status === 'PROCESSING') {
+      initialScans.push({
+        date: order.updatedAt.toISOString(),
+        status: 'Packed',
+        location: 'NEXRA Fulfillment Facility',
+        remark: 'Items 3D printed, quality checked, and packed'
+      });
+    }
+
+    return res.json({
+      success: true,
+      provider: order.shippingProvider || 'Delhivery',
+      courierName: 'Delhivery Express',
+      awbNumber: null,
+      trackingUrl: null,
+      status: order.status === 'PROCESSING' ? 'Packed' : 'Order Confirmed',
+      orderStatus: order.status,
+      shipmentStatus: order.shipmentStatus || 'CREATED',
+      location: 'NEXRA Fulfillment Facility',
+      estimatedDelivery: order.estimatedDelivery ? order.estimatedDelivery.toISOString().split('T')[0] : null,
+      lastUpdate: order.updatedAt.toISOString(),
+      scans: initialScans,
+      order: formatOrder(order)
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to retrieve order tracking', details: err.message });
+  }
+});
+
+// 4c. Delhivery Webhook for Real-Time Status Push Notifications
+app.post(['/api/shipping/delhivery/webhook', '/api/webhooks/delhivery'], async (req: Request, res: Response) => {
+  try {
+    const payload = req.body;
+    console.log('[Delhivery Webhook Received]:', typeof payload === 'object' ? JSON.stringify(payload) : payload);
+
+    const events = Array.isArray(payload) ? payload : [payload];
+    const results: any[] = [];
+
+    for (const evt of events) {
+      if (!evt) continue;
+
+      const awb =
+        evt.waybill ||
+        evt.AWB ||
+        evt.awbNumber ||
+        evt.awb ||
+        evt.trackingNumber ||
+        evt.Shipment?.AWB ||
+        evt.ShipmentData?.[0]?.Shipment?.AWB;
+
+      if (!awb) continue;
+
+      const cleanAwb = String(awb).trim();
+
+      const existingOrder = await prisma.order.findFirst({
+        where: {
+          OR: [
+            { awbNumber: cleanAwb },
+            { trackingNumber: cleanAwb },
+            { shipmentId: cleanAwb }
+          ]
+        },
+        include: {
+          items: { include: { product: true, variant: true } },
+          user: true,
+          shipment: true
+        }
+      });
+
+      if (!existingOrder) {
+        console.warn(`[Delhivery Webhook] No matching order found for AWB: ${cleanAwb}`);
+        continue;
+      }
+
+      const rawStatus =
+        evt.Status?.Status ||
+        evt.Status?.StatusType ||
+        evt.Status ||
+        evt.status ||
+        evt.ScanDetail?.Instructions ||
+        evt.ScanDetail?.Scan ||
+        'In Transit';
+
+      const scanDetail = evt.ScanDetail || {};
+      const newScan = {
+        date: scanDetail.ScanDateTime || evt.Status?.StatusDateTime || evt.date || new Date().toISOString(),
+        status: scanDetail.Instructions || scanDetail.Scan || String(rawStatus),
+        location: scanDetail.ScannedLocation || evt.Status?.StatusLocation || evt.location || 'Delhivery Hub',
+        remark: scanDetail.Instructions || scanDetail.Comment || evt.remark || 'Status updated by Delhivery'
+      };
+
+      const existingScans = Array.isArray(existingOrder.trackingHistory)
+        ? (existingOrder.trackingHistory as any[])
+        : [];
+
+      const scans = [...existingScans];
+      const isDuplicate = scans.some(
+        (s) => s.status === newScan.status && s.location === newScan.location
+      );
+      if (!isDuplicate) {
+        scans.push(newScan);
+      }
+
+      const trackingResult = {
+        awb: cleanAwb,
+        status: String(rawStatus),
+        location: newScan.location,
+        estimatedDelivery: evt.ExpectedDeliveryDate || evt.estimatedDelivery || (existingOrder.estimatedDelivery ? existingOrder.estimatedDelivery.toISOString() : undefined),
+        scans,
+        lastUpdate: new Date().toISOString()
+      };
+
+      const updated = await syncDelhiveryOrderStatus(existingOrder, trackingResult);
+      results.push({
+        orderNumber: updated.orderNumber,
+        awb: cleanAwb,
+        status: updated.status,
+        shipmentStatus: updated.shipmentStatus
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Delhivery webhook processed successfully',
+      processedCount: results.length,
+      updates: results
+    });
+  } catch (err: any) {
+    console.error('[Delhivery Webhook Error]:', err.message);
+    return res.status(500).json({ error: 'Failed to process Delhivery webhook', details: err.message });
+  }
+});
+
+// 4d. Manual or Cron Sync for all active Delhivery orders
+app.post('/api/shipping/delhivery/sync', async (req: Request, res: Response) => {
+  try {
+    const activeOrders = await prisma.order.findMany({
+      where: {
+        awbNumber: { not: null },
+        status: { in: ['PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'OUT_FOR_DELIVERY'] }
+      },
+      include: {
+        items: { include: { product: true, variant: true } },
+        user: true,
+        shipment: true
+      }
+    });
+
+    const results = [];
+    for (const ord of activeOrders) {
+      if (!ord.awbNumber) continue;
+      const isDelhivery = !ord.shippingProvider || ord.shippingProvider.toLowerCase().includes('delhivery');
+      if (!isDelhivery) continue;
+
+      try {
+        const tracking = await delhiveryService.trackShipment(ord.awbNumber);
+        const synced = await syncDelhiveryOrderStatus(ord, tracking);
+        results.push({
+          orderNumber: synced.orderNumber,
+          awbNumber: ord.awbNumber,
+          status: synced.status,
+          shipmentStatus: synced.shipmentStatus
+        });
+      } catch (e: any) {
+        console.warn(`[Delhivery Sync] Failed to sync order ${ord.orderNumber}:`, e.message);
+      }
+    }
+
+    return res.json({
+      success: true,
+      syncedCount: results.length,
+      orders: results
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: 'Failed to sync Delhivery orders', details: err.message });
   }
 });
 
@@ -8196,5 +8627,44 @@ app.post('/api/shipping/cancel', requireAuthMiddleware, async (req: Authenticate
 app.use('/api', (req: Request, res: Response) => {
   return res.status(404).json({ error: `API endpoint ${req.originalUrl} not found` });
 });
+
+// Periodic background poller for active Delhivery shipments (runs every 5 minutes)
+if (process.env.NODE_ENV !== 'test') {
+  const syncInterval = setInterval(async () => {
+    try {
+      const activeOrders = await prisma.order.findMany({
+        where: {
+          awbNumber: { not: null },
+          status: { in: ['CONFIRMED', 'PROCESSING', 'SHIPPED', 'OUT_FOR_DELIVERY'] }
+        },
+        include: {
+          items: { include: { product: true, variant: true } },
+          user: true,
+          shipment: true
+        },
+        take: 15
+      });
+
+      for (const ord of activeOrders) {
+        if (!ord.awbNumber) continue;
+        const isDelhivery = !ord.shippingProvider || ord.shippingProvider.toLowerCase().includes('delhivery');
+        if (!isDelhivery) continue;
+
+        try {
+          const tracking = await delhiveryService.trackShipment(ord.awbNumber);
+          await syncDelhiveryOrderStatus(ord, tracking);
+        } catch (e: any) {
+          // Silent catch to prevent interval interruption
+        }
+      }
+    } catch (e: any) {
+      console.warn('[Delhivery Background Poller] Sync error:', e?.message);
+    }
+  }, 5 * 60 * 1000);
+
+  if (typeof (syncInterval as any)?.unref === 'function') {
+    (syncInterval as any).unref();
+  }
+}
 
 export default app;

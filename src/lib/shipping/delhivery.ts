@@ -909,32 +909,111 @@ export async function requestPickup(pickupData?: {
 }
 
 /**
+ * Helper to map Delhivery tracking status strings and scans into OrderStatus and ShipmentStatus
+ */
+export function mapDelhiveryStatus(rawStatus: string = '', rawScans: TrackingScan[] = []): {
+  orderStatus: 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'CANCELLED';
+  shipmentStatus: 'CREATED' | 'READY_TO_SHIP' | 'PACKED' | 'SHIPPED' | 'PICKED_UP' | 'IN_TRANSIT' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'DELIVERY_ATTEMPTED' | 'FAILED' | 'RETURNED' | 'CANCELLED';
+  displayStatus: string;
+} {
+  const norm = String(rawStatus || '').toUpperCase().trim();
+  const latestScan = rawScans.length > 0 ? String(rawScans[rawScans.length - 1].status || rawScans[rawScans.length - 1].remark || '').toUpperCase() : '';
+  const combined = `${norm} ${latestScan}`;
+
+  if (
+    combined.includes('DELIVERED') ||
+    norm === 'DL' ||
+    combined.includes('DELIVERY COMPLETED') ||
+    combined.includes('CLOSED')
+  ) {
+    return { orderStatus: 'DELIVERED', shipmentStatus: 'DELIVERED', displayStatus: 'Delivered' };
+  }
+  if (
+    combined.includes('OUT FOR DELIVERY') ||
+    norm === 'OFD' ||
+    combined.includes('DISPATCHED FOR DELIVERY')
+  ) {
+    return { orderStatus: 'OUT_FOR_DELIVERY', shipmentStatus: 'OUT_FOR_DELIVERY', displayStatus: 'Out For Delivery' };
+  }
+  if (
+    combined.includes('IN TRANSIT') ||
+    combined.includes('TRANSIT') ||
+    norm === 'IT' ||
+    combined.includes('DISPATCHED') ||
+    combined.includes('MANIFEST') ||
+    combined.includes('REACHED') ||
+    combined.includes('HUB')
+  ) {
+    return { orderStatus: 'SHIPPED', shipmentStatus: 'IN_TRANSIT', displayStatus: 'In Transit' };
+  }
+  if (
+    combined.includes('PICKED UP') ||
+    combined.includes('PICKED') ||
+    norm === 'PU' ||
+    combined.includes('INBOUND')
+  ) {
+    return { orderStatus: 'SHIPPED', shipmentStatus: 'PICKED_UP', displayStatus: 'Picked Up' };
+  }
+  if (
+    combined.includes('PICKUP SCHEDULED') ||
+    combined.includes('SCHEDULED') ||
+    norm === 'MANIFESTED'
+  ) {
+    return { orderStatus: 'PROCESSING', shipmentStatus: 'READY_TO_SHIP', displayStatus: 'Pickup Scheduled' };
+  }
+  if (
+    combined.includes('RTO') ||
+    combined.includes('RETURN') ||
+    combined.includes('RETURNED') ||
+    norm === 'RT'
+  ) {
+    return { orderStatus: 'CANCELLED', shipmentStatus: 'RETURNED', displayStatus: 'RTO / Returned' };
+  }
+  if (combined.includes('CANCEL') || norm === 'CN') {
+    return { orderStatus: 'CANCELLED', shipmentStatus: 'CANCELLED', displayStatus: 'Cancelled' };
+  }
+  if (combined.includes('PACKED') || combined.includes('PROCESSING')) {
+    return { orderStatus: 'PROCESSING', shipmentStatus: 'PACKED', displayStatus: 'Packed' };
+  }
+  return {
+    orderStatus: rawScans.length > 0 ? 'SHIPPED' : 'CONFIRMED',
+    shipmentStatus: rawScans.length > 0 ? 'IN_TRANSIT' : 'CREATED',
+    displayStatus: rawStatus || 'In Transit'
+  };
+}
+
+/**
  * 7. Track Shipment
  */
 export async function trackShipment(awbNumber: string): Promise<TrackingResult> {
+  const cleanAwb = String(awbNumber || '').trim();
+
   if (DELHIVERY_API_TOKEN) {
     try {
       const response = await axios.get(`${DELHIVERY_BASE_URL}/api/v1/packages/json/`, {
-        params: { waybill: awbNumber },
+        params: { waybill: cleanAwb },
         headers: {
           'Authorization': `Token ${DELHIVERY_API_TOKEN}`
         },
-        timeout: 5000
+        timeout: 6000
       });
 
       if (response.data && response.data.ShipmentData && response.data.ShipmentData.length > 0) {
         const data = response.data.ShipmentData[0].Shipment;
         const scans: TrackingScan[] = (data.Scans || []).map((s: any) => ({
-          date: s.ScanDetail?.ScanDateTime || new Date().toISOString(),
+          date: s.ScanDetail?.ScanDateTime || s.ScanDetail?.ScanDate || new Date().toISOString(),
           status: s.ScanDetail?.Instructions || s.ScanDetail?.Scan || 'In Transit',
           location: s.ScanDetail?.ScannedLocation || 'Delhivery Hub',
-          remark: s.ScanDetail?.Instructions || 'Shipment scanned at sorting facility'
+          remark: s.ScanDetail?.Instructions || s.ScanDetail?.Comment || 'Shipment scanned at sorting facility'
         }));
 
+        const rawStatus = data.Status?.Status || data.Status?.StatusType || data.Status?.Instructions || 'IN_TRANSIT';
+        const mapped = mapDelhiveryStatus(rawStatus, scans);
+
         return {
-          awb: awbNumber,
-          status: data.Status?.Status || 'IN_TRANSIT',
-          location: data.Status?.StatusLocation || 'Delhivery Hub',
+          awb: cleanAwb,
+          status: mapped.displayStatus,
+          location: data.Status?.StatusLocation || (scans.length > 0 ? scans[scans.length - 1].location : 'Delhivery Hub'),
           estimatedDelivery: data.ExpectedDeliveryDate || new Date().toISOString().split('T')[0],
           scans,
           lastUpdate: new Date().toISOString()
@@ -945,9 +1024,15 @@ export async function trackShipment(awbNumber: string): Promise<TrackingResult> 
     }
   }
 
-  // Fallback mock tracking sequence for preview
+  // Deterministic and flexible tracking for simulation & test verification
   const now = new Date();
-  const scans: TrackingScan[] = [
+  const lowerAwb = cleanAwb.toLowerCase();
+
+  const isDeliveredSim = lowerAwb.includes('delivered') || lowerAwb.endsWith('-dl') || lowerAwb.includes('dlhv-del');
+  const isOfdSim = lowerAwb.includes('ofd') || lowerAwb.includes('out-for-delivery');
+  const isRtoSim = lowerAwb.includes('rto') || lowerAwb.includes('returned');
+
+  const baseScans: TrackingScan[] = [
     {
       date: new Date(now.getTime() - 86400000 * 2).toISOString(),
       status: 'Order Confirmed',
@@ -965,22 +1050,84 @@ export async function trackShipment(awbNumber: string): Promise<TrackingResult> 
       status: 'In Transit',
       location: 'Hyderabad Main Logistics Park',
       remark: 'Dispatched to destination processing center'
-    },
-    {
+    }
+  ];
+
+  if (isDeliveredSim) {
+    baseScans.push({
       date: new Date(now.getTime() - 3600000 * 4).toISOString(),
       status: 'Out For Delivery',
       location: 'Destination Local Hub',
       remark: 'Out with delivery executive for final drop'
-    }
-  ];
+    });
+    baseScans.push({
+      date: new Date(now.getTime() - 3600000 * 1).toISOString(),
+      status: 'Delivered',
+      location: 'Customer Address',
+      remark: 'Shipment delivered to consignee'
+    });
+
+    return {
+      awb: cleanAwb,
+      status: 'Delivered',
+      location: 'Customer Address',
+      estimatedDelivery: now.toISOString().split('T')[0],
+      scans: baseScans,
+      lastUpdate: now.toISOString()
+    };
+  }
+
+  if (isOfdSim) {
+    baseScans.push({
+      date: new Date(now.getTime() - 3600000 * 2).toISOString(),
+      status: 'Out For Delivery',
+      location: 'Destination Local Hub',
+      remark: 'Out with delivery executive for final drop'
+    });
+
+    return {
+      awb: cleanAwb,
+      status: 'Out For Delivery',
+      location: 'Destination Local Hub',
+      estimatedDelivery: now.toISOString().split('T')[0],
+      scans: baseScans,
+      lastUpdate: now.toISOString()
+    };
+  }
+
+  if (isRtoSim) {
+    baseScans.push({
+      date: new Date(now.getTime() - 3600000 * 2).toISOString(),
+      status: 'RTO / Returned',
+      location: 'Return Processing Center',
+      remark: 'Shipment returned to seller origin'
+    });
+
+    return {
+      awb: cleanAwb,
+      status: 'RTO / Returned',
+      location: 'Return Processing Center',
+      estimatedDelivery: now.toISOString().split('T')[0],
+      scans: baseScans,
+      lastUpdate: now.toISOString()
+    };
+  }
+
+  // Default in transit
+  baseScans.push({
+    date: new Date(now.getTime() - 3600000 * 4).toISOString(),
+    status: 'In Transit',
+    location: 'Destination Facility',
+    remark: 'Package processed at transit hub'
+  });
 
   return {
-    awb: awbNumber,
-    status: 'IN_TRANSIT',
+    awb: cleanAwb,
+    status: 'In Transit',
     location: 'Destination Facility',
     estimatedDelivery: new Date(now.getTime() + 86400000).toISOString().split('T')[0],
-    scans,
-    lastUpdate: new Date().toISOString()
+    scans: baseScans,
+    lastUpdate: now.toISOString()
   };
 }
 

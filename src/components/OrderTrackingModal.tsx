@@ -1,5 +1,19 @@
-import React from 'react';
-import { X, Package, Truck, CheckCircle2, Clock, MapPin, Printer, ExternalLink, ShieldCheck } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  X,
+  Package,
+  Truck,
+  CheckCircle2,
+  Clock,
+  MapPin,
+  Printer,
+  ExternalLink,
+  ShieldCheck,
+  RefreshCw,
+  Copy,
+  Check,
+  Radio
+} from 'lucide-react';
 import { Order, OrderStatus } from '../types';
 import { TrackingTimeline } from './shipping/TrackingTimeline';
 import { CourierCard } from './shipping/CourierCard';
@@ -9,43 +23,96 @@ interface OrderTrackingModalProps {
   onClose: () => void;
 }
 
-export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, onClose }) => {
-  if (!order) return null;
+export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order: initialOrder, onClose }) => {
+  const [currentOrder, setCurrentOrder] = useState<Order | null>(initialOrder);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [copiedAwb, setCopiedAwb] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string>('Just now');
+  const [syncStatusNote, setSyncStatusNote] = useState<string | null>(null);
 
-  const STATUS_STAGES: { status: OrderStatus; label: string }[] = [
-    { status: 'PENDING', label: 'Order Placed' },
-    { status: 'PROCESSING', label: 'Packed' },
-    { status: 'SHIPPED', label: 'In Transit' },
-    { status: 'OUT_FOR_DELIVERY', label: 'Out for Delivery' },
-    { status: 'DELIVERED', label: 'Delivered' }
-  ];
+  // Sync tracking live from Delhivery
+  const fetchLiveTracking = useCallback(async (isManualRefresh = false) => {
+    if (!initialOrder) return;
+    const identifier = initialOrder.orderNumber || initialOrder.id;
+    if (!identifier) return;
 
-  const getCurrentStageIndex = (status: OrderStatus) => {
-    switch (status) {
-      case 'PENDING':
-        return 0;
-      case 'PROCESSING':
-        return 1;
-      case 'SHIPPED':
-        return 2;
-      case 'OUT_FOR_DELIVERY':
-        return 3;
-      case 'DELIVERED':
-        return 4;
-      default:
-        return 0;
+    if (isManualRefresh) {
+      setIsRefreshing(true);
     }
-  };
 
-  const activeStatus = order.orderStatus || order.status || 'PENDING';
-  const currentStageIdx = getCurrentStageIndex(activeStatus);
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(identifier)}/track?t=${Date.now()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.order) {
+          setCurrentOrder(data.order);
+        } else if (data && data.scans) {
+          // Merge scans into existing order
+          setCurrentOrder(prev => prev ? ({
+            ...prev,
+            shipmentStatus: data.status || prev.shipmentStatus,
+            trackingHistory: data.scans,
+            lastTrackingUpdate: data.lastUpdate || new Date().toISOString(),
+            estimatedDelivery: data.estimatedDelivery || prev.estimatedDelivery
+          } as any) : prev);
+        }
+        setLastSyncTime(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        if (data.status) {
+          setSyncStatusNote(`Delhivery Status: ${data.status}`);
+        }
+      }
+    } catch (err) {
+      console.warn('Live tracking sync failed:', err);
+    } finally {
+      if (isManualRefresh) {
+        setTimeout(() => setIsRefreshing(false), 400);
+      }
+    }
+  }, [initialOrder]);
+
+  useEffect(() => {
+    setCurrentOrder(initialOrder);
+    if (initialOrder) {
+      fetchLiveTracking(false);
+    }
+  }, [initialOrder, fetchLiveTracking]);
+
+  if (!currentOrder) return null;
+
+  const order = currentOrder;
 
   const activeShipments = order.shipments && order.shipments.length > 0
     ? order.shipments
     : (order.shipment ? [order.shipment] : []);
 
-  const courierPartner = (activeShipments[0] as any)?.courier || activeShipments[0]?.provider || (order.shipment as any)?.courier || order.shipment?.provider || order.courierName || 'Awaiting Dispatch';
-  const awbTrackingNumber = (activeShipments[0] as any)?.awbNumber || activeShipments[0]?.trackingNumber || (order.shipment as any)?.awbNumber || order.shipment?.trackingNumber || order.trackingNumber || 'Awaiting Dispatch';
+  const awbTrackingNumber =
+    (order as any).awbNumber ||
+    (activeShipments[0] as any)?.awbNumber ||
+    (order.shipment as any)?.awbNumber ||
+    order.trackingNumber ||
+    (activeShipments[0] as any)?.trackingNumber ||
+    '';
+
+  const courierPartner =
+    (order as any).shippingProvider ||
+    (order as any).courierName ||
+    (activeShipments[0] as any)?.courier ||
+    activeShipments[0]?.provider ||
+    'Delhivery';
+
+  const handleCopyAwb = () => {
+    if (!awbTrackingNumber) return;
+    navigator.clipboard?.writeText(awbTrackingNumber);
+    setCopiedAwb(true);
+    setTimeout(() => setCopiedAwb(false), 2000);
+  };
+
+  const trackingHistoryList =
+    (order as any).trackingHistory && Array.isArray((order as any).trackingHistory)
+      ? (order as any).trackingHistory
+      : [];
+
+  const rawDisplayStatus = (order as any).shipmentStatus || order.orderStatus || order.status || 'CONFIRMED';
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in">
@@ -53,24 +120,46 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
         {/* Header */}
         <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold">
+            <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-md">
               <Truck className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-extrabold flex items-center gap-2">
-                <span>Order Tracking</span>
-                <span className="font-mono text-xs bg-slate-800 px-2 py-0.5 rounded text-amber-400">
-                  {order.orderNumber}
-                </span>
-              </h2>
-              <p className="text-xs text-slate-400">Placed on {new Date(order.createdAt).toLocaleDateString()}</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-lg font-extrabold flex items-center gap-2">
+                  <span>Order Tracking</span>
+                  <span className="font-mono text-xs bg-slate-800 px-2.5 py-0.5 rounded-lg text-amber-400 font-bold border border-slate-700">
+                    {order.orderNumber}
+                  </span>
+                </h2>
+                {/* Live Delhivery Sync status badge */}
+                <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span>Live Delhivery Status</span>
+                </div>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Placed on {new Date(order.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}
+                {lastSyncTime && <span className="ml-2 text-slate-400 text-[11px]">• Synced at {lastSyncTime}</span>}
+              </p>
             </div>
           </div>
 
           <div className="flex items-center space-x-2">
             <button
+              onClick={() => fetchLiveTracking(true)}
+              disabled={isRefreshing}
+              className="p-2 text-slate-300 hover:text-white bg-slate-800 rounded-xl transition-all cursor-pointer text-xs font-bold flex items-center gap-1.5 hover:bg-slate-700 disabled:opacity-50"
+              title="Refresh live status from Delhivery"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} />
+              <span className="hidden sm:inline">{isRefreshing ? 'Syncing...' : 'Live Sync'}</span>
+            </button>
+            <button
               onClick={() => window.print()}
-              className="p-2 text-slate-300 hover:text-white bg-slate-800 rounded-xl transition-colors cursor-pointer text-xs font-bold flex items-center gap-1"
+              className="p-2 text-slate-300 hover:text-white bg-slate-800 rounded-xl transition-colors cursor-pointer text-xs font-bold flex items-center gap-1 hover:bg-slate-700"
               title="Print Invoice"
             >
               <Printer className="w-4 h-4" />
@@ -78,33 +167,74 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
             </button>
             <button
               onClick={onClose}
-              className="p-2 text-slate-400 hover:text-white bg-slate-800 rounded-full transition-colors cursor-pointer"
+              className="p-2 text-slate-400 hover:text-white bg-slate-800 rounded-full transition-colors cursor-pointer hover:bg-slate-700"
+              aria-label="Close"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        <div className="p-6 space-y-8 overflow-y-auto max-h-[80vh]">
-          {/* Delhivery Express Carrier Information */}
+        <div className="p-6 space-y-6 overflow-y-auto max-h-[80vh]">
+          {/* Delhivery Express Courier Card */}
           <CourierCard
             provider={(order as any).shippingProvider || 'Delhivery'}
             awbNumber={(order as any).awbNumber || awbTrackingNumber}
             trackingNumber={order.trackingNumber || awbTrackingNumber}
-            trackingUrl={(order as any).trackingUrl}
+            trackingUrl={(order as any).trackingUrl || (awbTrackingNumber ? `https://track.delhivery.com/track/package/${awbTrackingNumber}` : undefined)}
             labelUrl={(order as any).labelUrl}
             manifestUrl={(order as any).manifestUrl}
             estimatedDelivery={(order as any).estimatedDelivery ? new Date((order as any).estimatedDelivery).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : '3-5 Business Days'}
-            shipmentStatus={(order as any).shipmentStatus || ((order as any).awbNumber ? 'IN_TRANSIT' : 'CREATED')}
+            shipmentStatus={rawDisplayStatus}
             pickupRequested={(order as any).pickupRequested}
           />
 
+          {/* Quick AWB Copy & External Portal Bar */}
+          {awbTrackingNumber && (
+            <div className="bg-indigo-50/60 border border-indigo-100 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-indigo-950">Delhivery Tracking Waybill:</span>
+                <span className="font-mono font-black text-indigo-700 bg-white px-2.5 py-1 rounded-lg border border-indigo-200">
+                  {awbTrackingNumber}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCopyAwb}
+                  className="p-1.5 bg-white hover:bg-indigo-100 border border-indigo-200 rounded-lg text-indigo-700 transition-all cursor-pointer flex items-center gap-1 text-[11px] font-bold"
+                  title="Copy AWB number"
+                >
+                  {copiedAwb ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="text-emerald-700">Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <a
+                href={`https://track.delhivery.com/track/package/${awbTrackingNumber}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl transition-all inline-flex items-center gap-1 shadow-xs"
+              >
+                <span>Track on Official Delhivery Site</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          )}
+
           {/* Delhivery Interactive Tracking Milestone Timeline */}
           <TrackingTimeline
-            currentStatus={(order as any).shipmentStatus || order.orderStatus || order.status}
+            currentStatus={rawDisplayStatus}
             awbNumber={(order as any).awbNumber || awbTrackingNumber}
             expectedDelivery={(order as any).estimatedDelivery ? new Date((order as any).estimatedDelivery).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' }) : '3-5 Business Days'}
-            trackingHistory={(order as any).trackingHistory || []}
+            trackingHistory={trackingHistoryList}
           />
 
           {/* Courier & AWB & Payment Details Box */}
@@ -135,13 +265,13 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
             <div>
               <span className="text-slate-500 font-medium block">Courier Partner</span>
               <strong className="text-slate-800 font-semibold text-xs block mt-0.5">
-                {courierPartner}
+                {courierPartner} Express
               </strong>
             </div>
             <div>
-              <span className="text-slate-500 font-medium block">AWB / Tracking Number</span>
-              <strong className="text-indigo-600 font-mono text-xs block mt-0.5 truncate" title={awbTrackingNumber}>
-                {awbTrackingNumber}
+              <span className="text-slate-500 font-medium block">Current Live Status</span>
+              <strong className="text-indigo-600 font-bold text-xs block mt-0.5 truncate">
+                {rawDisplayStatus.replace(/_/g, ' ')}
               </strong>
             </div>
           </div>
@@ -157,9 +287,9 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
                 <div key={shp.id} className="bg-white p-3.5 rounded-xl border border-indigo-100 text-xs space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-slate-900">{shp.shipmentNumber}</span>
+                      <span className="font-mono font-bold text-slate-900">{shp.shipmentNumber || 'Shipment'}</span>
                       <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium text-[10px]">
-                        {shp.provider} ({shp.serviceType || 'Standard'})
+                        {shp.provider || 'Delhivery'} ({shp.serviceType || 'Surface & Express'})
                       </span>
                     </div>
                     <span className="font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full text-[11px]">
@@ -170,7 +300,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] text-slate-600">
                     <div>
                       <span className="text-slate-400 block">AWB Number</span>
-                      <span className="font-mono font-semibold text-slate-800">{shp.awbNumber || 'Pending'}</span>
+                      <span className="font-mono font-semibold text-slate-800">{shp.awbNumber || (order as any).awbNumber || 'Pending'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 block">Est. Delivery</span>
@@ -181,16 +311,6 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
                       <span className="font-semibold text-slate-800">₹{Number(shp.shippingCost || 0).toLocaleString('en-IN')}</span>
                     </div>
                   </div>
-
-                  {shp.statusHistory && shp.statusHistory.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">
-                      <span className="text-[10px] font-extrabold text-slate-500 uppercase block">Latest Milestone</span>
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-bold text-slate-800">{shp.statusHistory[shp.statusHistory.length - 1].description}</span>
-                        <span className="text-[10px] text-slate-400">{shp.statusHistory[shp.statusHistory.length - 1].timestamp}</span>
-                      </div>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
@@ -200,35 +320,17 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
             <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3.5 rounded-2xl text-xs space-y-1">
               <span className="font-extrabold flex items-center gap-1">
                 <ShieldCheck className="w-4 h-4 text-rose-600" />
-                <span>Payment Failed: {order.paymentFailureReason}</span>
+                <span>Payment Notice: {order.paymentFailureReason}</span>
               </span>
               <p className="text-rose-600 text-[11px]">
-                Your items remain in your pending order. You can safely retry payment below.
+                Your order items remain secured in your account.
               </p>
             </div>
           )}
 
-          {/* Timeline Tracking Events Stream */}
-          <div className="space-y-3">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Logistics Milestones</h3>
-            <div className="space-y-3 border-l-2 border-slate-200 pl-4 ml-2">
-              {(order.trackingEvents || []).map((evt, idx) => (
-                <div key={idx} className="relative space-y-0.5">
-                  <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-indigo-600 ring-4 ring-white" />
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-extrabold text-slate-900">{evt.title}</span>
-                    <span className="text-[10px] text-slate-400 font-mono">{evt.timestamp}</span>
-                  </div>
-                  <p className="text-xs text-slate-600">{evt.description}</p>
-                  {evt.location && <span className="text-[10px] text-slate-400 font-medium">📍 {evt.location}</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-
           {/* Itemized Order Summary */}
           <div className="space-y-3 border-t border-slate-200 pt-4">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Itemized Bill</h3>
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Itemized Order Summary</h3>
             <div className="space-y-2">
               {(order.items || []).map((item) => {
                 const itemImg = item.productImage || (item as any).imageUrl || (item as any).product?.imageUrl || '';

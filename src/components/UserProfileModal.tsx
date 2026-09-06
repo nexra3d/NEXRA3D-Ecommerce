@@ -149,6 +149,20 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         <span className="text-[11px] text-slate-500">
                           Placed on {new Date(ord.createdAt).toLocaleDateString()} • {(ord.items || []).length} Items
                         </span>
+                        {((ord as any).awbNumber || ord.trackingNumber) && (
+                          <div className="mt-1 flex items-center gap-1.5 text-[11px]">
+                            <span className="font-semibold text-slate-700">Delhivery AWB:</span>
+                            <span className="font-mono font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                              {(ord as any).awbNumber || ord.trackingNumber}
+                            </span>
+                            {((ord as any).shipmentStatus || (ord as any).latestTracking) && (
+                              <span className="text-emerald-700 font-bold ml-1 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+                                {((ord as any).shipmentStatus || (ord as any).latestTracking?.status || 'In Transit').replace(/_/g, ' ')}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex items-center space-x-3">

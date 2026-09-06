@@ -1054,6 +1054,37 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                           </div>
                         </div>
 
+                        {/* Live Delhivery Tracking Status Bar if dispatched */}
+                        {((order as any).awbNumber || order.trackingNumber) && (
+                          <div className="bg-white border border-indigo-100 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs shadow-2xs">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white font-black text-[10px] flex items-center justify-center">
+                                DL
+                              </div>
+                              <div>
+                                <span className="font-bold text-slate-800">
+                                  {(order as any).shippingProvider || 'Delhivery'} Express
+                                </span>
+                                <span className="text-slate-500 text-[11px] ml-2 font-mono font-bold">
+                                  AWB: {(order as any).awbNumber || order.trackingNumber}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1.5 font-bold text-xs bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full border border-indigo-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                <span>{((order as any).shipmentStatus || order.orderStatus || 'IN_TRANSIT').replace(/_/g, ' ')}</span>
+                              </span>
+                              {(order as any).latestTracking && (
+                                <span className="text-slate-500 text-[11px] hidden md:inline">
+                                  • 📍 {(order as any).latestTracking.location || 'Delhivery Hub'}: {(order as any).latestTracking.status || (order as any).latestTracking.remark}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Items row */}
                         <div className="flex flex-wrap items-center justify-between gap-4">
                           <div className="flex items-center space-x-3 overflow-x-auto">

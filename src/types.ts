@@ -311,6 +311,17 @@ export interface Order {
   trackingNumber?: string;
   shipment?: Shipment;
   shipments?: Shipment[];
+  shippingProvider?: string;
+  awbNumber?: string;
+  shipmentStatus?: ShipmentStatus;
+  trackingUrl?: string;
+  labelUrl?: string;
+  manifestUrl?: string;
+  trackingHistory?: any[];
+  latestTracking?: any;
+  lastTrackingUpdate?: string;
+  estimatedDelivery?: string;
+  pickupRequested?: boolean;
   createdAt: string;
   estimatedDeliveryDate: string;
 }
