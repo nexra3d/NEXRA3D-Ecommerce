@@ -450,3 +450,28 @@ export interface SiteSetting {
   value: any;
   updatedAt?: string;
 }
+
+export type CustomOrderDeliveryType = 'STORE_PICKUP' | 'HOME_DELIVERY' | 'COURIER_DELIVERY';
+export type CustomOrderPaymentStatus = 'AWAITING_PAYMENT' | 'PAID' | 'CANCELLED' | 'EXPIRED';
+
+export interface CustomOrder {
+  id: string;
+  customerName: string;
+  phone: string;
+  email?: string | null;
+  description?: string | null;
+  amount: number;
+  deliveryType: CustomOrderDeliveryType;
+  notes?: string | null;
+  paymentStatus: CustomOrderPaymentStatus;
+  razorpayOrderId?: string | null;
+  razorpayQrId?: string | null;
+  qrImageUrl?: string | null;
+  paymentLink?: string | null;
+  isSimulated?: boolean;
+  expiresAt?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+

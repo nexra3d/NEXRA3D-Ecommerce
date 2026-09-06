@@ -43,7 +43,8 @@ class MemoryStore {
     consentRecord: [],
     customerUpload: [],
     privacyRequest: [],
-    securityEvent: []
+    securityEvent: [],
+    customOrder: []
   };
 
   constructor() {
@@ -312,6 +313,49 @@ class MemoryStore {
         isActive: true,
         createdAt: new Date(),
         updatedAt: new Date()
+      }
+    ];
+
+    this.collections.customOrder = [
+      {
+        id: 'co-demo-1001',
+        customerName: 'Rahul Sharma',
+        phone: '9876543210',
+        email: 'rahul.sharma@example.com',
+        description: 'Custom 3D-printed aerospace drone bracket (PETG-CF)',
+        amount: 1450,
+        deliveryType: 'STORE_PICKUP',
+        notes: 'Needs 0.2mm high infill for mechanical rigidity',
+        paymentStatus: 'AWAITING_PAYMENT',
+        razorpayOrderId: 'order_demo_1001',
+        razorpayQrId: 'qr_demo_1001',
+        qrImageUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent('upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=1450.00&cu=INR&tn=Custom%20Order%20CO-1001'),
+        paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=1450.00&cu=INR&tn=Custom%20Order%20CO-1001',
+        isSimulated: true,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        paidAt: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      },
+      {
+        id: 'co-demo-1002',
+        customerName: 'Priya Patel',
+        phone: '9812345678',
+        email: 'priya.p@example.com',
+        description: 'Personalized curved lithophane bedside lamp with wooden base',
+        amount: 2200,
+        deliveryType: 'HOME_DELIVERY',
+        notes: 'Gift wrap requested with message card',
+        paymentStatus: 'PAID',
+        razorpayOrderId: 'order_demo_1002',
+        razorpayQrId: 'qr_demo_1002',
+        qrImageUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent('upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=2200.00&cu=INR&tn=Custom%20Order%20CO-1002'),
+        paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=2200.00&cu=INR&tn=Custom%20Order%20CO-1002',
+        isSimulated: true,
+        expiresAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        paidAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+        createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+        updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString()
       }
     ];
   }

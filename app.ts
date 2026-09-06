@@ -46,6 +46,7 @@ import {
 } from './src/lib/validation.js';
 import * as delhiveryService from './src/lib/shipping/delhivery.js';
 import * as nimbuspostService from './src/lib/shipping/nimbuspost.js';
+import { generateRazorpayCustomOrderQr, deactivateRazorpayQrCode } from './src/lib/razorpayCustomOrder.js';
 
 export interface AuthenticatedRequest extends Request {
   user?: any;
@@ -7107,6 +7108,218 @@ app.post('/api/admin/orders/:id/reconcile', requireAdminMiddleware, async (req: 
     return res.json(order);
   } catch (err) {
     return res.status(500).json({ error: 'Failed to reconcile order' });
+  }
+});
+
+// ==========================================
+// CUSTOM ORDERS & RAZORPAY QR REST APIs
+// ==========================================
+
+// 1. Get all custom orders (Admin)
+app.get('/api/admin/custom-orders', requireAdminMiddleware, async (_req: Request, res: Response) => {
+  try {
+    const orders = await (prisma as any).customOrder.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+    return res.json(orders || []);
+  } catch (err: any) {
+    console.error('Error fetching custom orders:', err);
+    return res.status(500).json({ error: 'Failed to fetch custom orders' });
+  }
+});
+
+// 2. Get single custom order (Admin)
+app.get('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const order = await (prisma as any).customOrder.findUnique({
+      where: { id }
+    });
+    if (!order) {
+      return res.status(404).json({ error: 'Custom order not found' });
+    }
+    return res.json(order);
+  } catch (err: any) {
+    console.error('Error fetching custom order:', err);
+    return res.status(500).json({ error: 'Failed to fetch custom order' });
+  }
+});
+
+// 3. Create custom order and generate Razorpay QR (Admin)
+app.post('/api/admin/custom-orders', requireAdminMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { customerName, phone, email, description, amount, deliveryType, notes } = req.body;
+
+    if (!customerName || typeof customerName !== 'string' || customerName.trim().length < 2) {
+      return res.status(400).json({ error: 'Customer Name is required (min 2 characters).' });
+    }
+
+    const cleanPhone = String(phone || '').trim().replace(/\D/g, '');
+    if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
+      return res.status(400).json({ error: 'Valid 10-digit Indian phone number is required.' });
+    }
+
+    const numAmount = Number(amount);
+    if (isNaN(numAmount) || numAmount < 1) {
+      return res.status(400).json({ error: 'Amount must be at least ₹1.' });
+    }
+
+    const orderDbId = `co-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+    // Generate Dynamic Razorpay QR Code & UPI payment link
+    const qrResult = await generateRazorpayCustomOrderQr({
+      orderDbId,
+      customerName: customerName.trim(),
+      phone: cleanPhone,
+      email: email ? String(email).trim() : null,
+      description: description ? String(description).trim() : null,
+      amount: numAmount,
+      deliveryType: deliveryType === 'HOME_DELIVERY' ? 'HOME_DELIVERY' : 'STORE_PICKUP',
+      validityMinutes: 30
+    });
+
+    const customOrder = await (prisma as any).customOrder.create({
+      data: {
+        id: orderDbId,
+        customerName: customerName.trim(),
+        phone: cleanPhone,
+        email: email ? String(email).trim() : null,
+        description: description ? String(description).trim() : null,
+        amount: numAmount,
+        deliveryType: deliveryType === 'HOME_DELIVERY' ? 'HOME_DELIVERY' : 'STORE_PICKUP',
+        notes: notes ? String(notes).trim() : null,
+        paymentStatus: 'AWAITING_PAYMENT',
+        razorpayOrderId: qrResult.razorpayOrderId,
+        razorpayQrId: qrResult.razorpayQrId,
+        qrImageUrl: qrResult.qrImageUrl,
+        paymentLink: qrResult.paymentLink,
+        isSimulated: qrResult.isSimulated,
+        expiresAt: safeToISOString(qrResult.expiresAt),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    });
+
+    return res.status(201).json({
+      customOrder,
+      message: qrResult.isSimulated
+        ? 'Custom order created with dynamic QR (Simulated UPI mode).'
+        : 'Custom order created and Razorpay QR activated.'
+    });
+  } catch (err: any) {
+    console.error('Error creating custom order:', err);
+    return res.status(500).json({ error: err.message || 'Failed to create custom order' });
+  }
+});
+
+// 4. Verify status of custom order with Razorpay (Admin)
+app.post('/api/admin/custom-orders/:id/verify-status', requireAdminMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const order = await (prisma as any).customOrder.findUnique({ where: { id } });
+    if (!order) {
+      return res.status(404).json({ error: 'Custom order not found' });
+    }
+
+    if (order.paymentStatus === 'PAID') {
+      return res.json({ customOrder: order, message: 'Custom order is already marked as Paid.' });
+    }
+
+    // If live Razorpay keys are configured, check QR status from Razorpay API
+    const keyId = (process.env.RAZORPAY_KEY_ID || '').trim();
+    const keySecret = (process.env.RAZORPAY_KEY_SECRET || '').trim();
+    let isPaid = false;
+
+    if (keyId && keySecret && keyId !== 'rzp_test_sample_key_id' && order.razorpayQrId && !order.razorpayQrId.startsWith('qr_sim_')) {
+      try {
+        const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+        const checkRes = await fetch(`https://api.razorpay.com/v1/payments/qr_codes/${order.razorpayQrId}/payments`, {
+          headers: { Authorization: authHeader }
+        });
+        if (checkRes.ok) {
+          const qrPayments: any = await checkRes.json();
+          if (qrPayments.items && qrPayments.items.length > 0) {
+            const captured = qrPayments.items.find((p: any) => p.status === 'captured');
+            if (captured) isPaid = true;
+          }
+        }
+      } catch (checkErr) {
+        console.warn('Could not query Razorpay QR payments:', checkErr);
+      }
+    }
+
+    if (isPaid) {
+      const updated = await (prisma as any).customOrder.update({
+        where: { id },
+        data: {
+          paymentStatus: 'PAID',
+          paidAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      });
+      return res.json({ customOrder: updated, message: 'Payment confirmed & verified via Razorpay! ✅' });
+    }
+
+    return res.json({
+      customOrder: order,
+      message: 'Payment has not been credited yet. Status remains Awaiting Payment.'
+    });
+  } catch (err: any) {
+    console.error('Error verifying custom order status:', err);
+    return res.status(500).json({ error: err.message || 'Failed to verify custom order payment status' });
+  }
+});
+
+// 5. Cancel / Expire custom order (Admin)
+app.post('/api/admin/custom-orders/:id/cancel', requireAdminMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const order = await (prisma as any).customOrder.findUnique({ where: { id } });
+    if (!order) {
+      return res.status(404).json({ error: 'Custom order not found' });
+    }
+
+    if (order.razorpayQrId) {
+      await deactivateRazorpayQrCode(order.razorpayQrId);
+    }
+
+    const updated = await (prisma as any).customOrder.update({
+      where: { id },
+      data: {
+        paymentStatus: 'CANCELLED',
+        updatedAt: new Date().toISOString()
+      }
+    });
+
+    return res.json({ customOrder: updated, message: 'Custom order cancelled and QR code deactivated.' });
+  } catch (err: any) {
+    console.error('Error cancelling custom order:', err);
+    return res.status(500).json({ error: err.message || 'Failed to cancel custom order' });
+  }
+});
+
+// 6. Manually Mark Custom Order as Paid (Admin counter/cash override)
+app.post('/api/admin/custom-orders/:id/mark-paid', requireAdminMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const order = await (prisma as any).customOrder.findUnique({ where: { id } });
+    if (!order) {
+      return res.status(404).json({ error: 'Custom order not found' });
+    }
+
+    const updated = await (prisma as any).customOrder.update({
+      where: { id },
+      data: {
+        paymentStatus: 'PAID',
+        paidAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    });
+
+    return res.json({ customOrder: updated, message: 'Custom order marked as Paid ✅' });
+  } catch (err: any) {
+    console.error('Error marking custom order as paid:', err);
+    return res.status(500).json({ error: err.message || 'Failed to mark custom order as paid' });
   }
 });
 

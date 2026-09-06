@@ -47,7 +47,8 @@ import {
 } from '../types';
 
 import { AdminPrivacyTab } from './AdminPrivacyTab';
-import { Shield } from 'lucide-react';
+import { CustomOrdersPanel } from './CustomOrdersPanel';
+import { Shield, QrCode } from 'lucide-react';
 
 interface AdminDashboardProps {
   isOpen: boolean;
@@ -69,7 +70,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onRefreshData
 }) => {
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'products' | 'categories' | 'inventory' | 'orders' | 'shipments' | 'coupons' | 'customers' | 'payments' | 'reports' | 'integrations' | 'privacy'
+    'overview' | 'products' | 'categories' | 'inventory' | 'orders' | 'custom-orders' | 'shipments' | 'coupons' | 'customers' | 'payments' | 'reports' | 'integrations' | 'privacy'
   >('overview');
 
   const [analytics, setAnalytics] = useState<SalesReport | null>(null);
@@ -1595,6 +1596,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           <button
+            onClick={() => setActiveTab('custom-orders')}
+            className={`px-4 py-2.5 rounded-t-xl transition-colors cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'custom-orders' ? 'bg-slate-900 text-indigo-400 border-t-2 border-indigo-500' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <QrCode className="w-4 h-4 text-indigo-400" />
+            <span>Custom Orders (QR)</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('shipments')}
             className={`px-4 py-2.5 rounded-t-xl transition-colors cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'shipments' ? 'bg-slate-900 text-indigo-400 border-t-2 border-indigo-500' : 'text-slate-400 hover:text-white'
@@ -1668,6 +1679,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
           {activeTab === 'privacy' && <AdminPrivacyTab />}
+          {activeTab === 'custom-orders' && (
+            <CustomOrdersPanel
+              getAuthHeaders={getAuthHeaders}
+              onOrderPaid={() => {
+                onRefreshData();
+              }}
+            />
+          )}
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-6">

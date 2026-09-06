@@ -767,3 +767,29 @@ model SecurityEvent {
   @@index([eventType])
   @@map("security_events")
 }
+
+model CustomOrder {
+  id              String    @id @default(uuid())
+  customerName    String
+  phone           String
+  email           String?
+  description     String?
+  amount          Decimal   @db.Decimal(10, 2)
+  deliveryType    String    @default("STORE_PICKUP")
+  notes           String?
+  paymentStatus   String    @default("AWAITING_PAYMENT")
+  razorpayOrderId String?
+  razorpayQrId    String?
+  qrImageUrl      String?
+  paymentLink     String?
+  isSimulated     Boolean   @default(false)
+  expiresAt       DateTime?
+  paidAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([phone])
+  @@index([paymentStatus])
+  @@map("custom_orders")
+}
+
