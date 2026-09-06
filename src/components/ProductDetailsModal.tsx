@@ -21,18 +21,32 @@ import {
   Check,
   ThumbsUp,
   Flag,
-  Filter
+  Filter,
+  Camera,
+  Upload,
+  Trash2,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import { Product, ProductReview, ProductVariant } from '../types';
 import { useSEO } from '../hooks/useSEO';
+import { isNameKeychainProduct, isLithophaneProduct } from '../lib/personalization';
+
+interface LampOptionItem {
+  id: string;
+  value: string;
+  priceDelta: number;
+  sortOrder: number;
+  isActive: boolean;
+}
 
 interface ProductDetailsModalProps {
   product: Product | null;
   onClose: () => void;
   isWishlisted: boolean;
   onToggleWishlist: (p: Product) => void;
-  onAddToCart: (p: Product, variantId?: string, quantity?: number) => void;
-  onBuyNow: (p: Product) => void;
+  onAddToCart: (p: Product, variantId?: string, quantity?: number, customizationText?: string, selectedColour?: string, selectedWattage?: string, customizationImages?: any[]) => void;
+  onBuyNow: (p: Product, customizationText?: string, selectedColour?: string, selectedWattage?: string, variantId?: string, customizationImages?: any[]) => void;
   onSelectRelatedProduct?: (p: Product) => void;
 }
 
@@ -45,8 +59,12 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   onBuyNow,
   onSelectRelatedProduct
 }) => {
-  const imagesList = (product?.images && product.images.length > 0)
+  const rawImages = product?.images && product.images.length > 0
     ? product.images
+    : ((product as any)?.productImages && (product as any).productImages.length > 0 ? (product as any).productImages : []);
+
+  const imagesList: string[] = rawImages.length > 0
+    ? rawImages.map((img: any) => typeof img === 'string' ? img : (img?.url || '')).filter(Boolean)
     : [product?.imageUrl || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&q=80&w=800'];
 
   const variantsList: ProductVariant[] = product?.variants || product?.productVariants || [];
@@ -68,7 +86,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   // Reviews state
   const [reviews, setReviews] = useState<ProductReview[]>([]);
   const [ratingSummary, setRatingSummary] = useState({
-    averageRating: product?.rating || 5.0,
+    averageRating: (product?.reviewCount && product?.reviewCount > 0) ? (product?.rating || 0) : 0,
     totalCount: product?.reviewCount || 0,
     distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } as Record<number, number>
   });
@@ -81,6 +99,79 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
   const [newReviewComment, setNewReviewComment] = useState('');
   const [newReviewRating, setNewReviewRating] = useState(5);
   const [reviewSubmittedMsg, setReviewSubmittedMsg] = useState(false);
+  const [customizationText, setCustomizationText] = useState('');
+  const [customizationError, setCustomizationError] = useState<string | null>(null);
+  const needsCustomization = product ? (product.requiresCustomization === true || isNameKeychainProduct(product)) : false;
+
+  const needsImageUpload = Boolean(product && product.requiresImageUpload === true);
+  const minImageCount = (product as any)?.minimumImageUploads !== undefined && (product as any)?.minimumImageUploads !== null ? Number((product as any).minimumImageUploads) : 1;
+  const maxImageCount = (product as any)?.maximumImageUploads !== undefined && (product as any)?.maximumImageUploads !== null ? Number((product as any).maximumImageUploads) : 5;
+
+  const [customizationImages, setCustomizationImages] = useState<{ id?: string; url: string; publicId?: string | null }[]>([]);
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+
+  const handlePhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const files: File[] = Array.from(e.target.files);
+
+    if (customizationImages.length + files.length > maxImageCount) {
+      setImageUploadError(`Maximum allowed photos for this product is ${maxImageCount}. You currently have ${customizationImages.length} photo(s).`);
+      return;
+    }
+
+    for (const f of files) {
+      if (f.size > 10 * 1024 * 1024) {
+        setImageUploadError(`File "${f.name}" exceeds the 10 MB limit.`);
+        return;
+      }
+    }
+
+    setImageUploadError(null);
+    setIsUploadingImages(true);
+
+    try {
+      const formData = new FormData();
+      files.forEach((file: File) => formData.append('images', file));
+      if (product?.id) {
+        formData.append('productId', product.id);
+      }
+      formData.append('maxImages', String(maxImageCount));
+      formData.append('currentCount', String(customizationImages.length));
+
+      const res = await fetch('/api/customization/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      let data: any = {};
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await res.json().catch(() => ({}));
+      } else {
+        const text = await res.text().catch(() => '');
+        data = { error: text || `Server error (${res.status})` };
+      }
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to upload photo(s)');
+      }
+
+      const uploaded: { url: string; publicId: string | null }[] = data.images || [];
+      setCustomizationImages((prev) => [...prev, ...uploaded]);
+      setCustomizationError(null);
+    } catch (err: any) {
+      console.error('Photo upload error:', err);
+      setImageUploadError(err.message || 'Photo upload failed. Please try again.');
+    } finally {
+      setIsUploadingImages(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemovePhoto = (indexToRemove: number) => {
+    setCustomizationImages((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+  };
 
   // SEO Hook
   useSEO({
@@ -112,6 +203,10 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     if (!product) return;
     setSelectedImageIndex(0);
     setQuantity(1);
+    setCustomizationText('');
+    setCustomizationImages([]);
+    setImageUploadError(null);
+    setCustomizationError(null);
     if (variantsList.length > 0) {
       setSelectedVariant(variantsList[0]);
     } else {
@@ -121,8 +216,9 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     // Reset reviews state immediately for new product
     setReviews([]);
     setRatingSummary({
-      averageRating: Number(product.rating || 5.0),
-      totalReviews: product.reviewCount || 0
+      averageRating: (product.reviewCount && product.reviewCount > 0) ? Number(product.rating || 0) : 0,
+      totalCount: product.reviewCount || 0,
+      distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
     });
 
     // Save to localStorage recently viewed
@@ -157,9 +253,9 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
             setRatingSummary(data.summary);
           } else if (revs.length > 0) {
             const avg = Number((revs.reduce((acc: number, r: any) => acc + (r.rating || 5), 0) / revs.length).toFixed(1));
-            setRatingSummary({ averageRating: avg, totalReviews: revs.length });
+            setRatingSummary({ averageRating: avg, totalCount: revs.length, distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } });
           } else {
-            setRatingSummary({ averageRating: Number(product.rating || 5.0), totalReviews: 0 });
+            setRatingSummary({ averageRating: (product.reviewCount && product.reviewCount > 0) ? Number(product.rating || 0) : 0, totalCount: 0, distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } });
           }
         }
       })
@@ -176,11 +272,188 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     }
   }, [product?.id]);
 
+  const isLampProduct = (product?.category?.name || '').toLowerCase().includes('lamp') ||
+    (product?.name || '').toLowerCase().includes('lamp') ||
+    variantsList.some((v) => v.colour || v.wattage || (v.attributes as any)?.colour || (v.attributes as any)?.wattage);
+
+  const [dbColours, setDbColours] = useState<LampOptionItem[]>([]);
+  const [dbWattages, setDbWattages] = useState<LampOptionItem[]>([]);
+  const [hasLoadedDbOptions, setHasLoadedDbOptions] = useState<boolean>(false);
+  const [selectedColour, setSelectedColour] = useState<string>('');
+  const [selectedWattage, setSelectedWattage] = useState<string>('');
+
+  useEffect(() => {
+    if (!product?.id) {
+      setDbColours([]);
+      setDbWattages([]);
+      setHasLoadedDbOptions(true);
+      setSelectedColour('');
+      setSelectedWattage('');
+      return;
+    }
+
+    const controller = new AbortController();
+
+    // CLEAR OLD OPTIONS IMMEDIATELY when product changes to prevent retaining previous product's options
+    setDbColours([]);
+    setDbWattages([]);
+    setHasLoadedDbOptions(false);
+    setSelectedColour('');
+    setSelectedWattage('');
+
+    fetch(`/api/products/${encodeURIComponent(product.id)}/lamp-options`, {
+      signal: controller.signal
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && (Array.isArray(data.colours) || Array.isArray(data.wattages))) {
+          const fetchedColours: LampOptionItem[] = Array.isArray(data.colours) ? data.colours : [];
+          const fetchedWattages: LampOptionItem[] = Array.isArray(data.wattages) ? data.wattages : [];
+          setDbColours(fetchedColours);
+          setDbWattages(fetchedWattages);
+          setHasLoadedDbOptions(true);
+
+          if (fetchedColours.length > 0) {
+            setSelectedColour(fetchedColours[0].value);
+          } else {
+            setSelectedColour('');
+          }
+
+          if (fetchedWattages.length > 0) {
+            setSelectedWattage(fetchedWattages[0].value);
+          } else {
+            setSelectedWattage('');
+          }
+        } else {
+          setDbColours([]);
+          setDbWattages([]);
+          setHasLoadedDbOptions(true);
+          setSelectedColour('');
+          setSelectedWattage('');
+        }
+      })
+      .catch((err) => {
+        if ((err as Error).name !== 'AbortError') {
+          console.warn('[LAMP OPTIONS] Error loading lamp options:', err);
+          setDbColours([]);
+          setDbWattages([]);
+          setHasLoadedDbOptions(true);
+          setSelectedColour('');
+          setSelectedWattage('');
+        }
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [product?.id]);
+
+  // Extract options strictly belonging to variants of THIS product if DB options aren't present
+  const availableColoursFromVariants = Array.from(
+    new Set(
+      variantsList
+        .map((v) => v.colour || (v.attributes as any)?.colour)
+        .filter(Boolean) as string[]
+    )
+  );
+
+  const availableWattagesFromVariants = Array.from(
+    new Set(
+      variantsList
+        .map((v) => v.wattage || (v.attributes as any)?.wattage)
+        .filter(Boolean) as string[]
+    )
+  );
+
+  const colourOptionsList: LampOptionItem[] = (hasLoadedDbOptions && dbColours.length > 0)
+    ? dbColours
+    : availableColoursFromVariants.map((c, idx) => ({
+        id: `col-${idx}`,
+        value: c,
+        priceDelta: c.toUpperCase().includes('RGB') ? 200 : 0,
+        sortOrder: idx + 1,
+        isActive: true
+      }));
+
+  const wattageOptionsList: LampOptionItem[] = (hasLoadedDbOptions && dbWattages.length > 0)
+    ? dbWattages
+    : availableWattagesFromVariants.map((w, idx) => {
+        let delta = 0;
+        const upper = w.toUpperCase().trim();
+        if (upper === '7W') delta = 100;
+        else if (upper === '9W' || upper.includes('9W')) delta = 150;
+        else if (upper === '12W' || upper.includes('12W')) delta = 200;
+        else if (upper === '15W' || upper.includes('15W')) delta = 250;
+        else if (upper.includes('3IN1') || upper.includes('3-IN-1')) delta = 25;
+        else if (upper === '4W') delta = 30;
+        return {
+          id: `wat-${idx}`,
+          value: w,
+          priceDelta: delta,
+          sortOrder: idx + 1,
+          isActive: true
+        };
+      });
+
+  useEffect(() => {
+    if (colourOptionsList.length > 0 && (!selectedColour || !colourOptionsList.some((c) => c.value === selectedColour))) {
+      setSelectedColour(colourOptionsList[0].value);
+    }
+  }, [colourOptionsList]);
+
+  useEffect(() => {
+    if (wattageOptionsList.length > 0 && (!selectedWattage || !wattageOptionsList.some((w) => w.value === selectedWattage))) {
+      setSelectedWattage(wattageOptionsList[0].value);
+    }
+  }, [wattageOptionsList]);
+
+  // Debug log variants when product is loaded
+  useEffect(() => {
+    if (product && variantsList.length > 0) {
+      console.log('[LAMP VARIANTS]', variantsList);
+    }
+  }, [product?.id, variantsList]);
+
+  // Sync selected variant when colour or wattage changes
+  useEffect(() => {
+    if (variantsList.length > 0) {
+      const normCol = (selectedColour || '').trim().toLowerCase();
+      const normWat = (selectedWattage || '').trim().toLowerCase();
+
+      const match = variantsList.find((v) => {
+        if (v.isActive === false) return false;
+        const vCol = (v.colour || (v.attributes as any)?.colour || '').trim().toLowerCase();
+        const vWat = (v.wattage || (v.attributes as any)?.wattage || '').trim().toLowerCase();
+
+        const colMatches = !normCol || vCol === normCol;
+        const watMatches = !normWat || vWat === normWat;
+
+        return colMatches && watMatches;
+      });
+
+      setSelectedVariant(match || null);
+
+      console.log('[SELECTED LAMP VARIANT]', {
+        selectedColour,
+        selectedWattage,
+        selectedVariant: match
+      });
+    } else {
+      setSelectedVariant(null);
+    }
+  }, [selectedColour, selectedWattage, variantsList]);
+
   if (!product) return null;
 
-  const activePrice = selectedVariant ? selectedVariant.price : Number(product.price || 0);
-  const activeMrp = selectedVariant ? selectedVariant.mrp : (product.mrp ? Number(product.mrp) : activePrice);
-  const activeSku = selectedVariant ? selectedVariant.sku : product.sku;
+  const isVariantProduct = variantsList.length > 0;
+  const isCombinationUnavailable = isVariantProduct && Boolean(selectedColour || selectedWattage) && !selectedVariant;
+
+  const calculatedBasePrice = Number(product.price || 0);
+  const calculatedBaseMrp = Number(product.mrp || product.price || 0);
+
+  const activePrice = selectedVariant ? Number(selectedVariant.price) : calculatedBasePrice;
+  const activeMrp = selectedVariant ? Number(selectedVariant.mrp || selectedVariant.price) : calculatedBaseMrp;
+  const activeSku = selectedVariant ? selectedVariant.sku : (product.sku || 'NX-LMP-SPRL');
 
   const formatINR = (val: number) => {
     return new Intl.NumberFormat('en-IN', {
@@ -207,6 +480,20 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
+  const handleAddCustomProduct = () => {
+    if (!product) return;
+    if (needsCustomization && !customizationText.trim()) {
+      setCustomizationError('Please enter the name for your keychain / customization.');
+      return;
+    }
+    if (needsImageUpload && customizationImages.length < minImageCount) {
+      setCustomizationError(`This product requires at least ${minImageCount} photo${minImageCount > 1 ? 's' : ''}. Please upload your photo(s).`);
+      return;
+    }
+    setCustomizationError(null);
+    onAddToCart(product, selectedVariant?.id, quantity, customizationText.trim(), selectedColour, selectedWattage, customizationImages);
+  };
+
   const handleAddReview = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newReviewComment.trim()) return;
@@ -231,7 +518,8 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
         const newAvg = Number((updatedRevs.reduce((acc, r) => acc + (r.rating || 5), 0) / updatedRevs.length).toFixed(1));
         setRatingSummary({
           averageRating: newAvg,
-          totalReviews: updatedRevs.length
+          totalCount: updatedRevs.length,
+          distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
         });
         setNewReviewName('');
         setNewReviewTitle('');
@@ -297,7 +585,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* Left Column: Image Gallery with Controls & Zoom */}
             <div className="space-y-4">
-              <div className="relative aspect-4/3 bg-slate-50 rounded-2xl overflow-hidden border border-slate-200/80 group flex items-center justify-center p-2">
+              <div className="relative aspect-[4/3] min-h-[260px] w-full bg-slate-50 rounded-2xl overflow-hidden border border-slate-200/80 group flex items-center justify-center p-2">
                 <img
                   src={imagesList[selectedImageIndex] || imagesList[0]}
                   alt={productName}
@@ -384,8 +672,139 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                 <span className="text-xs text-slate-500 font-medium">({reviews.length} Verified Customer Reviews)</span>
               </div>
 
-              {/* Variant Selector (if available) */}
-              {variantsList.length > 0 && (
+              {/* Lamp Options or Standard Variant Selector */}
+              {isLampProduct ? (
+                <div className="space-y-4 bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200">
+                  {!hasLoadedDbOptions ? (
+                    <div className="text-xs text-slate-500 font-medium animate-pulse py-2 px-1">
+                      Loading product options...
+                    </div>
+                  ) : colourOptionsList.length === 0 && wattageOptionsList.length === 0 ? (
+                    <div className="text-xs text-slate-500 font-medium italic py-1 px-1">
+                      No customizable lamp options configured for this product.
+                    </div>
+                  ) : (
+                    <>
+                      {/* Lamp Colour Selector */}
+                      {colourOptionsList.length > 0 && (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                              <span>Lamp Light Colour:</span>
+                            </span>
+                            <span className="text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                              {selectedColour || 'Default'}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {colourOptionsList.map((colObj) => {
+                              const col = colObj.value;
+                              const isSel = selectedColour === col;
+                              let bgDot = 'bg-amber-300';
+                              if (col.toLowerCase().includes('cool')) bgDot = 'bg-sky-200';
+                              if (col.toLowerCase().includes('neutral')) bgDot = 'bg-orange-100';
+                              if (col.toLowerCase().includes('rgb')) bgDot = 'bg-gradient-to-r from-red-500 via-green-500 to-blue-500';
+
+                              const matchingVar = variantsList.find(
+                                (v) =>
+                                  v.isActive !== false &&
+                                  (v.colour || (v.attributes as any)?.colour || '').trim().toLowerCase() === col.trim().toLowerCase() &&
+                                  (!selectedWattage || (v.wattage || (v.attributes as any)?.wattage || '').trim().toLowerCase() === selectedWattage.trim().toLowerCase())
+                              );
+
+                              const displayPrice = matchingVar ? Number(matchingVar.price) : null;
+                              const isAvailable = variantsList.length === 0 || !!matchingVar;
+
+                              return (
+                                <button
+                                  key={colObj.id || col}
+                                  type="button"
+                                  onClick={() => setSelectedColour(col)}
+                                  className={`p-2.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-between gap-1.5 cursor-pointer ${
+                                    isSel
+                                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs ring-2 ring-indigo-300'
+                                      : isAvailable
+                                      ? 'bg-white border-slate-200 text-slate-800 hover:bg-slate-100'
+                                      : 'bg-slate-100 border-slate-200 text-slate-400 opacity-60'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className={`w-3 h-3 rounded-full shrink-0 ${bgDot} border border-slate-300`} />
+                                    <span className="truncate">{col}</span>
+                                  </div>
+                                  {displayPrice !== null ? (
+                                    <span className={`text-[10px] shrink-0 font-bold px-1.5 py-0.5 rounded ${isSel ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-100 text-slate-700'}`}>
+                                      {formatINR(displayPrice)}
+                                    </span>
+                                  ) : isVariantProduct ? (
+                                    <span className="text-[10px] shrink-0 font-medium text-rose-500">
+                                      N/A
+                                    </span>
+                                  ) : null}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Bulb Wattage Selector */}
+                      {wattageOptionsList.length > 0 && (
+                        <div className="space-y-1.5 pt-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                              <Zap className="w-3.5 h-3.5 text-amber-500" />
+                              <span>Bulb Wattage Option:</span>
+                            </span>
+                            <span className="text-xs font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
+                              {selectedWattage || 'Default'}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {wattageOptionsList.map((wattObj) => {
+                              const watt = wattObj.value;
+                              const isSel = selectedWattage === watt;
+
+                              const matchingVar = variantsList.find(
+                                (v) =>
+                                  v.isActive !== false &&
+                                  (!selectedColour || (v.colour || (v.attributes as any)?.colour || '').trim().toLowerCase() === selectedColour.trim().toLowerCase()) &&
+                                  (v.wattage || (v.attributes as any)?.wattage || '').trim().toLowerCase() === watt.trim().toLowerCase()
+                              );
+
+                              const displayPrice = matchingVar ? Number(matchingVar.price) : null;
+                              const isAvailable = variantsList.length === 0 || !!matchingVar;
+
+                              return (
+                                <button
+                                  key={wattObj.id || watt}
+                                  type="button"
+                                  onClick={() => setSelectedWattage(watt)}
+                                  className={`p-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer text-center ${
+                                    isSel
+                                      ? 'bg-amber-500 border-amber-500 text-slate-950 font-black shadow-xs ring-2 ring-amber-300'
+                                      : isAvailable
+                                      ? 'bg-white border-slate-200 text-slate-800 hover:bg-slate-100'
+                                      : 'bg-slate-100 border-slate-200 text-slate-400 opacity-60'
+                                  }`}
+                                >
+                                  <div>{watt}</div>
+                                  <div className={`text-[10px] mt-0.5 ${isSel ? 'text-slate-950 font-bold' : isAvailable ? 'text-slate-600 font-semibold' : 'text-rose-500'}`}>
+                                    {displayPrice !== null ? formatINR(displayPrice) : (isVariantProduct ? 'Unavailable' : '')}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              ) : variantsList.length > 0 ? (
                 <div className="space-y-2">
                   <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
                     <Layers className="w-3.5 h-3.5 text-indigo-600" />
@@ -402,31 +821,41 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                             : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                         }`}
                       >
-                        {v.name} ({formatINR(v.price)})
+                        {v.name} ({formatINR(Number(v.price))})
                       </button>
                     ))}
                   </div>
                 </div>
-              )}
+              ) : null}
 
               {/* Price Display */}
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-baseline justify-between">
                 <div>
                   <span className="text-xs text-slate-500 block uppercase font-bold tracking-wider">Price</span>
-                  <div className="flex items-baseline space-x-2">
-                    <span className="text-2xl font-black text-slate-900">
-                      {formatINR(activePrice)}
-                    </span>
-                    {activeMrp > activePrice && (
-                      <span className="text-sm text-slate-400 line-through">
-                        {formatINR(activeMrp)}
+                  {isCombinationUnavailable ? (
+                    <div className="text-sm font-semibold text-rose-600 mt-1">
+                      Option Combination Unavailable
+                    </div>
+                  ) : (
+                    <div className="flex items-baseline space-x-2">
+                      <span className="text-2xl font-black text-slate-900">
+                        {formatINR(activePrice)}
                       </span>
-                    )}
-                  </div>
+                      {activeMrp > activePrice && (
+                        <span className="text-sm text-slate-400 line-through">
+                          {formatINR(activeMrp)}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div>
-                  {stockQty > 0 ? (
+                  {isCombinationUnavailable ? (
+                    <span className="bg-rose-100 text-rose-800 text-xs font-bold px-3 py-1 rounded-full">
+                      Unavailable
+                    </span>
+                  ) : stockQty > 0 ? (
                     <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                       <span>{stockQty} Units In Stock</span>
@@ -440,7 +869,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
               </div>
 
               {/* Quantity Selector */}
-              {stockQty > 0 && (
+              {stockQty > 0 && !isCombinationUnavailable && (
                 <div className="flex items-center space-x-4">
                   <span className="text-xs font-bold text-slate-700 uppercase">Quantity:</span>
                   <div className="flex items-center border border-slate-300 rounded-xl bg-slate-50 overflow-hidden">
@@ -461,26 +890,172 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                 </div>
               )}
 
+              {needsImageUpload && (
+                <div className="space-y-3 pt-1 p-4 bg-cyan-50/70 rounded-2xl border border-cyan-200">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black uppercase tracking-wider text-cyan-950 flex items-center gap-1.5">
+                      <Camera className="w-4 h-4 text-cyan-600" />
+                      <span>UPLOAD PERSONALIZATION PHOTOS</span>
+                    </label>
+                    <span className="text-[10px] text-cyan-800 font-bold bg-cyan-100 px-2 py-0.5 rounded-full">
+                      {minImageCount === maxImageCount ? `${minImageCount} Photo${minImageCount > 1 ? 's' : ''}` : `${minImageCount} to ${maxImageCount} Photos`}
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-cyan-900 font-medium leading-relaxed">
+                    Upload your high-resolution photos for 3D Lithophane rendering / personalization (JPG, PNG, WEBP, max 10MB per file).
+                  </p>
+
+                  {customizationImages.length < maxImageCount && (
+                    <label className={`block border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+                      isUploadingImages
+                        ? 'bg-cyan-100/50 border-cyan-400'
+                        : 'bg-white hover:bg-cyan-100/30 border-cyan-300 hover:border-cyan-500'
+                    }`}>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/jpg,image/png,image/webp"
+                        multiple={maxImageCount > 1}
+                        onChange={handlePhotoFileChange}
+                        disabled={isUploadingImages}
+                        className="hidden"
+                      />
+                      <div className="flex flex-col items-center justify-center space-y-2">
+                        {isUploadingImages ? (
+                          <>
+                            <Loader2 className="w-6 h-6 text-cyan-600 animate-spin" />
+                            <span className="text-xs font-bold text-cyan-800">Uploading photos...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-6 h-6 text-cyan-600" />
+                            <div className="text-xs font-bold text-slate-800">
+                              Click or Drag & Drop to Upload Photos
+                            </div>
+                            <span className="text-[10px] text-slate-500">
+                              ({customizationImages.length} of {maxImageCount} uploaded)
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </label>
+                  )}
+
+                  {imageUploadError && (
+                    <p className="text-xs font-bold text-rose-600 flex items-center gap-1.5 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>{imageUploadError}</span>
+                    </p>
+                  )}
+
+                  {customizationImages.length > 0 && (
+                    <div className="space-y-2 pt-1">
+                      <div className="text-[11px] font-bold text-slate-700 flex items-center justify-between">
+                        <span>Uploaded Photos ({customizationImages.length} / {maxImageCount}):</span>
+                        {customizationImages.length < minImageCount && (
+                          <span className="text-rose-600 font-extrabold text-[10px]">
+                            Upload {minImageCount - customizationImages.length} more photo(s)
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-4 gap-2">
+                        {customizationImages.map((img, imgIdx) => (
+                          <div key={img.id || imgIdx} className="relative group rounded-xl overflow-hidden border border-cyan-300 bg-white shadow-xs aspect-square">
+                            <img
+                              src={img.url}
+                              alt={`Uploaded photo ${imgIdx + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute top-1 left-1 bg-slate-900/80 text-white text-[9px] font-black px-1.5 py-0.5 rounded">
+                              #{imgIdx + 1}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemovePhoto(imgIdx)}
+                              className="absolute top-1 right-1 bg-rose-600 hover:bg-rose-700 text-white p-1 rounded-full shadow-md transition-transform hover:scale-110 cursor-pointer"
+                              title="Remove photo"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {needsCustomization && (
+                <div className="space-y-2 pt-1 p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
+                      CUSTOMIZE YOUR KEYCHAIN
+                    </label>
+                    <span className="text-[10px] text-slate-500 font-medium">Maximum 30 characters</span>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Enter Name <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={30}
+                      value={customizationText}
+                      onChange={(e) => {
+                        setCustomizationText(e.target.value.slice(0, 30));
+                        if (e.target.value.trim()) setCustomizationError(null);
+                      }}
+                      placeholder="e.g. VARUN"
+                      className={`w-full border rounded-xl px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 transition-all ${
+                        customizationError
+                          ? 'border-rose-400 focus:ring-rose-200'
+                          : 'border-slate-300 focus:ring-indigo-200 focus:border-indigo-500'
+                      }`}
+                    />
+                    {customizationError && (
+                      <p className="text-xs font-bold text-rose-600 mt-1.5 flex items-center gap-1">
+                        <span>⚠️</span> {customizationError}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {customizationError && (
+                <p className="text-xs font-bold text-rose-600 p-2.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{customizationError}</span>
+                </p>
+              )}
+
               {/* Main CTA Buttons */}
               <div className="space-y-3 pt-2">
                 <div className="grid grid-cols-2 gap-3">
                   <button
-                    onClick={() => {
-                      onAddToCart(product, selectedVariant?.id, quantity);
-                    }}
-                    disabled={stockQty <= 0}
+                    onClick={handleAddCustomProduct}
+                    disabled={isCombinationUnavailable || stockQty <= 0}
                     className="w-full py-3.5 bg-slate-900 hover:bg-indigo-600 text-white font-bold text-sm rounded-2xl flex items-center justify-center space-x-2 transition-all shadow-md cursor-pointer disabled:opacity-50"
                   >
                     <ShoppingBag className="w-4 h-4" />
-                    <span>Add to Cart</span>
+                    <span>{isCombinationUnavailable ? 'Unavailable' : 'Add to Cart'}</span>
                   </button>
 
                   <button
                     onClick={() => {
-                      onBuyNow(product);
+                      if (isCombinationUnavailable || !product) return;
+                      if (needsCustomization && !customizationText.trim()) {
+                        setCustomizationError('Please enter the name for your keychain / customization.');
+                        return;
+                      }
+                      if (needsImageUpload && customizationImages.length < minImageCount) {
+                        setCustomizationError(`This product requires at least ${minImageCount} photo${minImageCount > 1 ? 's' : ''}. Please upload your photo(s).`);
+                        return;
+                      }
+                      setCustomizationError(null);
+                      onBuyNow(product, customizationText.trim(), selectedColour, selectedWattage, selectedVariant?.id, customizationImages);
                       onClose();
                     }}
-                    disabled={stockQty <= 0}
+                    disabled={isCombinationUnavailable || stockQty <= 0}
                     className="w-full py-3.5 bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold text-sm rounded-2xl flex items-center justify-center space-x-2 transition-all shadow-md cursor-pointer disabled:opacity-50"
                   >
                     <Zap className="w-4 h-4 text-slate-900 fill-slate-900" />
@@ -830,7 +1405,7 @@ export const ProductDetailsModal: React.FC<ProductDetailsModalProps> = ({
                       }}
                       className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 space-y-2 hover:border-indigo-300 transition-all cursor-pointer group"
                     >
-                      <div className="aspect-4/3 bg-white rounded-xl overflow-hidden border border-slate-100 flex items-center justify-center p-1">
+                      <div className="aspect-[4/3] min-h-[100px] w-full bg-white rounded-xl overflow-hidden border border-slate-100 flex items-center justify-center p-1">
                         <img
                           src={relImg}
                           alt={relProd.name || relProd.title}

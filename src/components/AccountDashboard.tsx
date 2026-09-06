@@ -29,10 +29,13 @@ import { User, Order, Address } from '../types';
 import { apiFetch, setStoredAuth } from '../lib/api';
 import { INDIAN_STATES, lookupPincode } from '../lib/pincode';
 
+import { CustomerPrivacyTab } from './CustomerPrivacyTab';
+import { Shield } from 'lucide-react';
+
 interface AccountDashboardProps {
   user: User | null;
-  currentSubSection?: 'overview' | 'profile' | 'password' | 'orders' | 'wishlist' | 'addresses';
-  onNavigateSubSection: (section: 'overview' | 'profile' | 'password' | 'orders' | 'wishlist' | 'addresses') => void;
+  currentSubSection?: 'overview' | 'profile' | 'password' | 'orders' | 'wishlist' | 'addresses' | 'privacy';
+  onNavigateSubSection: (section: 'overview' | 'profile' | 'password' | 'orders' | 'wishlist' | 'addresses' | 'privacy') => void;
   onUpdateUserSuccess: (user: User) => void;
   onLogout: () => void;
   onNavigateHome: () => void;
@@ -105,7 +108,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
       setProfileName(prev => prev || user.name || '');
       setProfileEmail(prev => prev || user.email || '');
       if (user.phone) setProfilePhone(user.phone);
-      setProfileAvatarUrl(user.avatarUrl || user.avatar || '');
+      setProfileAvatarUrl(user.avatarUrl || (user as any).avatar || '');
       if (user.addressLine1) setProfileAddressLine1(user.addressLine1);
       if (user.addressLine2) setProfileAddressLine2(user.addressLine2);
       if (user.city) setProfileCity(user.city);
@@ -113,7 +116,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
       if (user.country) setProfileCountry(user.country);
       if (user.postalCode) setProfilePostalCode(user.postalCode);
     }
-  }, [user?.id, user?.updatedAt, user?.phone, user?.addressLine1, user?.email]);
+  }, [user?.id, (user as any)?.updatedAt, user?.phone, user?.addressLine1, user?.email]);
 
   // Orders state
   const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null);
@@ -567,6 +570,20 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
             <MapPin className="w-4 h-4" />
             <span>My Addresses</span>
           </button>
+
+          <div className="pt-3 px-3 text-[10px] font-black text-slate-400 uppercase tracking-wider border-t border-slate-100 mt-2">
+            Privacy Center
+          </div>
+
+          <button
+            onClick={() => onNavigateSubSection('privacy')}
+            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+              currentSubSection === 'privacy' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100' : 'text-slate-700 hover:bg-slate-100'
+            }`}
+          >
+            <Shield className="w-4 h-4 text-emerald-500" />
+            <span>Privacy & Data Rights</span>
+          </button>
         </div>
 
         {/* Main Section Content */}
@@ -950,7 +967,7 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                   </div>
                   <h3 className="text-sm font-bold text-slate-900">No Orders Found</h3>
                   <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                    You haven't placed any orders yet. Browse our industrial 3D printers and materials to get started!
+                    You haven't placed any orders yet. Browse our customizable 3D printed lamps, lithophanes, and gifts to get started!
                   </p>
                   <button
                     onClick={onNavigateHome}
@@ -961,104 +978,126 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {orders.map((order) => (
-                    <div
-                      key={order.id}
-                      className="border border-slate-200 rounded-2xl p-5 hover:border-slate-300 transition-all space-y-4 bg-slate-50/50"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-3 text-xs border-b border-slate-200/80 pb-3">
-                        <div>
-                          <span className="text-slate-400 text-[10px] uppercase tracking-wider block font-bold">Order ID</span>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="font-mono font-extrabold text-slate-900 text-sm">{order.orderNumber}</span>
-                            {order.fulfillmentMethod === 'STORE_PICKUP' ? (
-                              <span className="bg-indigo-100 text-indigo-800 text-[9px] font-extrabold px-2 py-0.5 rounded-full border border-indigo-200">
-                                STORE PICKUP
-                              </span>
-                            ) : (
-                              <span className="bg-slate-200 text-slate-700 text-[9px] font-extrabold px-2 py-0.5 rounded-full">
-                                HOME DELIVERY
-                              </span>
-                            )}
+                  {orders.map((order) => {
+                    const isCancelled = order.orderStatus === 'CANCELLED';
+                    return (
+                      <div
+                        key={order.id}
+                        className={`border rounded-2xl p-5 transition-all space-y-4 ${
+                          isCancelled
+                            ? 'bg-rose-50/40 border-rose-200 hover:border-rose-300'
+                            : 'bg-slate-50/50 border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3 text-xs border-b border-slate-200/80 pb-3">
+                          <div>
+                            <span className="text-slate-400 text-[10px] uppercase tracking-wider block font-bold">Order ID</span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-extrabold text-slate-900 text-sm">{order.orderNumber}</span>
+                              {isCancelled && (
+                                <span className="inline-block font-black text-[10px] px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200">
+                                  CANCELLED
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div>
+                            <span className="text-slate-400 text-[10px] uppercase tracking-wider block font-bold">Date</span>
+                            <span className="font-medium text-slate-700">{new Date(order.createdAt).toLocaleDateString()}</span>
+                          </div>
+
+                          <div>
+                            <span className="text-slate-400 text-[10px] uppercase tracking-wider block font-bold">Order Status</span>
+                            <span className={`inline-block font-black text-[11px] px-2.5 py-0.5 rounded-full ${
+                              order.orderStatus === 'DELIVERED'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                : order.orderStatus === 'SHIPPED' || order.orderStatus === 'OUT_FOR_DELIVERY'
+                                ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                : order.orderStatus === 'PROCESSING' || (order.orderStatus as string) === 'CONFIRMED'
+                                ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                                : order.orderStatus === 'CANCELLED'
+                                ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                : 'bg-amber-100 text-amber-800 border border-amber-200'
+                            }`}>
+                              {order.orderStatus}
+                            </span>
+                          </div>
+
+                          <div>
+                            <span className="text-slate-400 text-[10px] uppercase tracking-wider block font-bold">Payment Status</span>
+                            <span className={`inline-block font-black text-[11px] px-2 py-0.5 rounded ${
+                              order.paymentStatus === 'CAPTURED' || order.paymentStatus === 'SUCCESS' || (order.paymentStatus as string) === 'PAID'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : (order.paymentStatus as string) === 'COD' || order.paymentMethod === 'COD' || (order.paymentMethod as string) === 'CASH_ON_DELIVERY'
+                                ? 'bg-blue-100 text-blue-800'
+                                : order.paymentStatus === 'FAILED'
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {(order.paymentStatus as string) === 'COD' || order.paymentMethod === 'COD' || (order.paymentMethod as string) === 'CASH_ON_DELIVERY'
+                                ? 'COD (Pay on Delivery)'
+                                : order.paymentStatus}
+                            </span>
+                          </div>
+
+                          {((order as any).razorpayPaymentId || (order as any).paymentId) && (
+                            <div>
+                              <span className="text-slate-400 text-[10px] uppercase tracking-wider block font-bold">Payment ID</span>
+                              <span className="font-mono text-emerald-600 font-bold text-xs">{(order as any).razorpayPaymentId || (order as any).paymentId}</span>
+                            </div>
+                          )}
+
+                          <div>
+                            <span className="text-slate-400 text-[10px] uppercase tracking-wider block font-bold">Total Amount</span>
+                            <span className="font-black text-indigo-600 text-sm">₹{Number(order.totalAmount || 0).toLocaleString('en-IN')}</span>
                           </div>
                         </div>
 
-                        <div>
-                          <span className="text-slate-400 text-[10px] uppercase tracking-wider block font-bold">Date</span>
-                          <span className="font-medium text-slate-700">{new Date(order.createdAt).toLocaleDateString()}</span>
-                        </div>
-
-                        <div>
-                          <span className="text-slate-400 text-[10px] uppercase tracking-wider block font-bold">GST Invoice</span>
-                          <span className="font-mono text-slate-800 font-bold">{order.invoiceNumber || 'INV-PENDING'}</span>
-                        </div>
-
-                        <div>
-                          <span className="text-slate-400 text-[10px] uppercase tracking-wider block font-bold">Payment Status</span>
-                          <span className={`inline-block font-black text-[11px] px-2 py-0.5 rounded ${
-                            order.paymentStatus === 'CAPTURED' || order.paymentStatus === 'SUCCESS' || order.paymentStatus === 'PAID'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : order.paymentStatus === 'COD' || order.paymentMethod === 'COD' || order.paymentMethod === 'CASH_ON_DELIVERY'
-                              ? 'bg-blue-100 text-blue-800'
-                              : order.paymentStatus === 'FAILED'
-                              ? 'bg-rose-100 text-rose-800'
-                              : 'bg-amber-100 text-amber-800'
-                          }`}>
-                            {order.paymentStatus === 'COD' || order.paymentMethod === 'COD' || order.paymentMethod === 'CASH_ON_DELIVERY'
-                              ? 'COD (Pay on Delivery)'
-                              : order.paymentStatus}
-                          </span>
-                        </div>
-
-                        <div>
-                          <span className="text-slate-400 text-[10px] uppercase tracking-wider block font-bold">Total Amount</span>
-                          <span className="font-black text-indigo-600 text-sm">₹{Number(order.totalAmount || 0).toLocaleString('en-IN')}</span>
-                        </div>
-                      </div>
-
-                      {/* Items row */}
-                      <div className="flex flex-wrap items-center justify-between gap-4">
-                        <div className="flex items-center space-x-3 overflow-x-auto">
-                          {order.items.slice(0, 3).map((item) => (
-                            <div key={item.id} className="flex items-center space-x-2 bg-white border border-slate-200 rounded-xl p-1.5 shrink-0">
-                              <img src={item.productImage || (item.product && item.product.imageUrl)} alt={item.productTitle || (item.product && item.product.name)} className="w-8 h-8 rounded-lg object-cover" />
-                              <div className="text-[11px] pr-2">
-                                <span className="font-bold text-slate-900 block max-w-[120px] truncate">{item.productTitle || (item.product && item.product.name)}</span>
-                                <span className="text-slate-500 text-[10px]">Qty: {item.quantity}</span>
+                        {/* Items row */}
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                          <div className="flex items-center space-x-3 overflow-x-auto">
+                            {order.items.slice(0, 3).map((item) => (
+                              <div key={item.id} className="flex items-center space-x-2 bg-white border border-slate-200 rounded-xl p-1.5 shrink-0">
+                                <img src={item.productImage || ((item as any).product && (item as any).product.imageUrl)} alt={item.productTitle || ((item as any).product && (item as any).product.name)} className="w-8 h-8 rounded-lg object-cover" />
+                                <div className="text-[11px] pr-2">
+                                  <span className="font-bold text-slate-900 block max-w-[120px] truncate">{item.productTitle || ((item as any).product && (item as any).product.name)}</span>
+                                  <span className="text-slate-500 text-[10px]">Qty: {item.quantity}</span>
+                                </div>
                               </div>
-                            </div>
-                          ))}
-                          {order.items.length > 3 && (
-                            <span className="text-xs text-slate-500 font-bold">+ {order.items.length - 3} more</span>
-                          )}
-                        </div>
+                            ))}
+                            {order.items.length > 3 && (
+                              <span className="text-xs text-slate-500 font-bold">+ {order.items.length - 3} more</span>
+                            )}
+                          </div>
 
-                        {/* Action buttons */}
-                        <div className="flex items-center space-x-2 shrink-0">
-                          {(order.paymentStatus === 'FAILED' || order.paymentStatus === 'PENDING') &&
-                           order.paymentMethod !== 'COD' &&
-                           order.paymentMethod !== 'CASH_ON_DELIVERY' && (
-                            <button
-                              onClick={() => handleRetryPayment(order)}
-                              disabled={retryingOrderId === order.id}
-                              className="bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer shadow-xs disabled:opacity-50"
-                            >
-                              {retryingOrderId === order.id ? 'Retrying...' : 'Retry Payment'}
-                            </button>
-                          )}
+                          {/* Action buttons */}
+                          <div className="flex items-center space-x-2 shrink-0">
+                            {!isCancelled && (order.paymentStatus === 'FAILED' || order.paymentStatus === 'PENDING') &&
+                             order.paymentMethod !== 'COD' &&
+                             (order.paymentMethod as string) !== 'CASH_ON_DELIVERY' && (
+                              <button
+                                onClick={() => handleRetryPayment(order)}
+                                disabled={retryingOrderId === order.id}
+                                className="bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                              >
+                                {retryingOrderId === order.id ? 'Retrying...' : 'Retry Payment'}
+                              </button>
+                            )}
 
-                          {onSelectOrderToTrack && (
-                            <button
-                              onClick={() => onSelectOrderToTrack(order)}
-                              className="bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer shadow-xs"
-                            >
-                              View Invoice & Tracking
-                            </button>
-                          )}
+                            {onSelectOrderToTrack && (
+                              <button
+                                onClick={() => onSelectOrderToTrack(order)}
+                                className="bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer shadow-xs"
+                              >
+                                View Details & Tracking
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1426,6 +1465,11 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
                 </div>
               )}
             </div>
+          )}
+
+          {/* SECTION 7: PRIVACY & DATA RIGHTS */}
+          {currentSubSection === 'privacy' && (
+            <CustomerPrivacyTab user={user} onLogout={onLogout} />
           )}
         </div>
       </div>

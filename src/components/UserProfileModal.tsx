@@ -172,8 +172,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     <div className="flex items-center space-x-2 overflow-x-auto pt-1">
                       {(ord.items || []).map((it) => (
                         <div key={it.id} className="flex items-center space-x-2 bg-white border border-slate-200 rounded-xl p-1.5 shrink-0 text-xs">
-                          <img src={it.productImage || (it.product && it.product.imageUrl)} alt={it.productTitle || (it.product && it.product.name)} className="w-8 h-8 rounded-lg object-cover" />
-                          <span className="font-semibold text-slate-800 max-w-[120px] truncate">{it.productTitle || (it.product && it.product.name)}</span>
+                          <img src={it.productImage || ((it as any).product && (it as any).product.imageUrl)} alt={it.productTitle || ((it as any).product && (it as any).product.name)} className="w-8 h-8 rounded-lg object-cover" />
+                          <span className="font-semibold text-slate-800 max-w-[120px] truncate">{it.productTitle || ((it as any).product && (it as any).product.name)}</span>
                         </div>
                       ))}
                     </div>

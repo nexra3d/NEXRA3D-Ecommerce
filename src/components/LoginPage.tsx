@@ -4,6 +4,7 @@ import { loginSchema } from '../lib/validation';
 import { User } from '../types';
 import { setStoredAuth } from '../lib/api';
 import { signInWithGoogle, isSupabaseConfigured } from '../lib/supabase';
+import { OTPVerificationModal } from './OTPVerificationModal';
 
 interface LoginPageProps {
   onLoginSuccess: (user: User) => void;
@@ -24,6 +25,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  // OTP Modal state for unverified account login attempts
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState('');
 
   const handleGoogleLogin = async () => {
     setErrorMsg('');
@@ -75,6 +80,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
       if (!res.ok) {
         setErrorMsg(data.error || data.message || 'Invalid email or password. Please try again.');
+      } else if (data.requiresEmailVerification) {
+        setUnverifiedEmail(data.email || email.toLowerCase().trim());
+        setShowOtpModal(true);
       } else {
         setStoredAuth(data.token, data.user);
         onLoginSuccess(data.user);
@@ -226,7 +234,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           </div>
         </div>
       </div>
+
+      {/* OTP Verification Modal */}
+      <OTPVerificationModal
+        isOpen={showOtpModal}
+        email={unverifiedEmail}
+        onClose={() => setShowOtpModal(false)}
+        onSuccess={(user) => {
+          setShowOtpModal(false);
+          onLoginSuccess(user);
+        }}
+      />
     </div>
   );
 };
+
 

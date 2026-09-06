@@ -33,9 +33,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
   const displayCategories = Array.isArray(categories) ? categories : [];
 
   // Collect all unique brands from catalog
-  const availableBrands = Array.from(
-    new Set(safeProducts.map((p) => p.brand || p.category?.name || 'NEXRA 3D'))
-  ).filter(Boolean) as string[];
+  const availableBrands = Array.from(new Set(safeProducts.map((p) => p.brand))) as string[];
 
   // Selected Category Object
   const selectedCategoryObj = displayCategories.find((c) => c.id === filters.categoryId || c.slug === filters.categoryId);

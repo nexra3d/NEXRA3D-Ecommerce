@@ -7,8 +7,6 @@ export interface User {
   phone?: string;
   role: UserRole;
   avatarUrl?: string;
-  isEmailVerified?: boolean;
-  emailVerified?: boolean;
   addressLine1?: string;
   addressLine2?: string;
   city?: string;
@@ -91,6 +89,8 @@ export interface ProductVariant {
   price: number;
   mrp: number;
   stockQuantity: number;
+  colour?: string | null;
+  wattage?: string | null;
   attributes?: Record<string, any> | null;
   isActive: boolean;
   createdAt?: string;
@@ -121,10 +121,10 @@ export interface Product {
   productVariants?: ProductVariant[];
   variants?: ProductVariant[];
   imageUrl?: string | null;
-  weight?: number;
-  length?: number;
-  width?: number;
-  height?: number;
+  weight?: number | null;
+  length?: number | null;
+  width?: number | null;
+  height?: number | null;
   brand?: string;
   rating?: number;
   reviewCount?: number;
@@ -137,9 +137,22 @@ export interface Product {
   seoDescription?: string | null;
   metaDescription?: string | null;
   specifications?: Record<string, any>;
+  requiresCustomization?: boolean;
+  requiresImageUpload?: boolean;
+  minimumImageUploads?: number;
+  maximumImageUploads?: number;
   tags?: string[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface CustomizationImage {
+  id?: string;
+  imageUrl?: string;
+  url?: string;
+  publicId?: string | null;
+  sortOrder?: number;
+  createdAt?: string;
 }
 
 export interface CartItem {
@@ -147,24 +160,40 @@ export interface CartItem {
   productId: string;
   product: Product;
   quantity: number;
+  variantId?: string | null;
+  variant?: ProductVariant | null;
   selectedVariant?: string;
+  selectedColour?: string;
+  selectedWattage?: string;
   taxPercentage?: number;
+  customizationText?: string;
+  customizationImages?: CustomizationImage[];
 }
 
 export interface Coupon {
   id: string;
   code: string;
+  description?: string;
   discountType: 'PERCENTAGE' | 'FIXED';
   discountValue: number;
-  minOrderAmount: number;
+  minOrderAmount?: number;
+  minimumOrderAmount?: number;
   maxDiscount?: number;
-  expiryDate: string;
-  usageLimit: number;
-  usedCount: number;
+  maximumDiscountAmount?: number;
+  usageLimit?: number;
+  usedCount?: number;
+  usageCount?: number;
+  startDate?: string;
+  startsAt?: string;
+  endDate?: string;
+  expiresAt?: string;
+  expiryDate?: string;
   isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-export type OrderStatus = 'PENDING' | 'PROCESSING' | 'SHIPPED' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'CANCELLED';
+export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'CANCELLED' | 'REFUNDED';
 export type PaymentStatus = 'CREATED' | 'PENDING' | 'AUTHORIZED' | 'CAPTURED' | 'SUCCESS' | 'FAILED' | 'REFUNDED' | 'PARTIALLY_REFUNDED' | 'COD';
 export type PaymentMethod = 'RAZORPAY' | 'COD' | 'CARD' | 'UPI';
 
@@ -172,11 +201,16 @@ export interface OrderItem {
   id: string;
   productId: string;
   variantId?: string;
+  skuSnapshot?: string;
+  selectedColour?: string;
+  selectedWattage?: string;
   productTitle: string;
   productImage: string;
   price: number;
   quantity: number;
   totalPrice: number;
+  customizationText?: string;
+  customizationImages?: CustomizationImage[];
 }
 
 export type ShipmentStatus =
@@ -264,8 +298,6 @@ export interface Order {
   status?: OrderStatus;
   paymentStatus: PaymentStatus;
   paymentMethod: PaymentMethod;
-  fulfillmentMethod?: 'HOME_DELIVERY' | 'STORE_PICKUP';
-  shippingProvider?: string;
   paymentId?: string; // Razorpay payment ID
   razorpayOrderId?: string;
   razorpaySignature?: string;
@@ -276,19 +308,11 @@ export interface Order {
   confirmationEmailSent?: boolean;
   trackingEvents: OrderTrackingEvent[];
   courierName?: string;
-  awbNumber?: string | null;
-  trackingNumber?: string | null;
-  trackingUrl?: string | null;
-  labelUrl?: string | null;
-  manifestUrl?: string | null;
-  pickupRequested?: boolean;
-  shipmentStatus?: string;
-  trackingHistory?: any[];
+  trackingNumber?: string;
   shipment?: Shipment;
   shipments?: Shipment[];
   createdAt: string;
-  estimatedDeliveryDate?: string;
-  estimatedDelivery?: string;
+  estimatedDeliveryDate: string;
 }
 
 export interface EmailNotification {
@@ -426,27 +450,3 @@ export interface SiteSetting {
   value: any;
   updatedAt?: string;
 }
-
-export type CustomOrderDeliveryType = 'STORE_PICKUP' | 'HOME_DELIVERY';
-export type CustomOrderPaymentStatus = 'AWAITING_PAYMENT' | 'PAID' | 'CANCELLED' | 'EXPIRED';
-
-export interface CustomOrder {
-  id: string;
-  customerName: string;
-  phone: string;
-  email?: string | null;
-  description?: string | null;
-  amount: number;
-  deliveryType: CustomOrderDeliveryType;
-  notes?: string | null;
-  razorpayOrderId?: string | null;
-  razorpayQrId?: string | null;
-  qrImageUrl?: string | null;
-  paymentLink?: string | null;
-  paymentStatus: CustomOrderPaymentStatus;
-  createdAt: string;
-  paidAt?: string | null;
-  expiresAt?: string | null;
-  updatedAt?: string;
-}
-

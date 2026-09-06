@@ -45,6 +45,31 @@ export function getAuthHeaders(): Record<string, string> {
 }
 
 export function wrapResponseWithSafeJson(res: Response): Response {
+  const originalJson = res.json.bind(res);
+  res.json = async () => {
+    let clone: Response | null = null;
+    try {
+      clone = res.clone();
+    } catch {
+      // ignore clone error if stream already consumed
+    }
+    try {
+      return await originalJson();
+    } catch (err) {
+      if (clone) {
+        try {
+          const text = await clone.text();
+          if (text && (text.trim().startsWith('{') || text.trim().startsWith('['))) {
+            return JSON.parse(text);
+          }
+          return { error: text || res.statusText || 'Response parse error', message: text, status: res.status };
+        } catch {
+          // ignore
+        }
+      }
+      return { error: 'Invalid JSON response', status: res.status };
+    }
+  };
   return res;
 }
 
@@ -52,25 +77,21 @@ export async function safeParseJson<T = any>(res: Response): Promise<T | null> {
   try {
     const data = await res.json();
     return data as T;
-  } catch (err) {
-    console.error('safeParseJson error:', err);
+  } catch {
     return null;
   }
 }
 
 export async function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const authHeaders = getAuthHeaders();
-  const headers: Record<string, string> = {
+  const headers = {
     ...authHeaders,
-    ...(options.headers as Record<string, string> || {})
+    ...(options.headers || {})
   };
 
-  // Only attach application/json Content-Type if body is present and not FormData
-  if (options.body && !(options.body instanceof FormData) && !headers['Content-Type']) {
-    headers['Content-Type'] = 'application/json';
-  }
+  // If body is FormData, browser auto-sets Content-Type boundary
   if (options.body instanceof FormData) {
-    delete headers['Content-Type'];
+    delete (headers as any)['Content-Type'];
   }
 
   try {
@@ -87,12 +108,13 @@ export async function apiFetch(url: string, options: RequestInit = {}): Promise<
       }
     }
 
-    return res;
+    return wrapResponseWithSafeJson(res);
   } catch (err) {
-    console.warn(`apiFetch network error for ${url}:`, err);
-    return new Response(
+    // Return a synthetic Response object if fetch fails completely (e.g. network failure)
+    const errorResponse = new Response(
       JSON.stringify({ error: 'Network or server error', message: String(err) }),
       { status: 503, headers: { 'Content-Type': 'application/json' } }
     );
+    return wrapResponseWithSafeJson(errorResponse);
   }
 }

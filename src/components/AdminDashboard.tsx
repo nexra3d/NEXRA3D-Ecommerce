@@ -14,6 +14,8 @@ import {
   Edit,
   CheckCircle2,
   AlertTriangle,
+  AlertCircle,
+  XCircle,
   Download,
   Search,
   Filter,
@@ -29,15 +31,9 @@ import {
   MapPin,
   Clock,
   ExternalLink,
-  Shield,
-  ShieldAlert,
-  Lock,
-  Server,
-  Activity,
-  Terminal,
-  QrCode
+  Building2
 } from 'lucide-react';
-import { CustomOrdersPanel } from './CustomOrdersPanel';
+import { ErrorBoundary } from './ErrorBoundary';
 import {
   Product,
   Category,
@@ -49,6 +45,9 @@ import {
   Shipment,
   ShipmentStatus
 } from '../types';
+
+import { AdminPrivacyTab } from './AdminPrivacyTab';
+import { Shield } from 'lucide-react';
 
 interface AdminDashboardProps {
   isOpen: boolean;
@@ -70,29 +69,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onRefreshData
 }) => {
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'products' | 'categories' | 'inventory' | 'orders' | 'custom_orders' | 'shipments' | 'coupons' | 'customers' | 'payments' | 'reports' | 'integrations' | 'security'
+    'overview' | 'products' | 'categories' | 'inventory' | 'orders' | 'shipments' | 'coupons' | 'customers' | 'payments' | 'reports' | 'integrations' | 'privacy'
   >('overview');
 
   const [analytics, setAnalytics] = useState<SalesReport | null>(null);
   const [customersList, setCustomersList] = useState<User[]>([]);
   const [integrationsStatus, setIntegrationsStatus] = useState<any[]>([]);
 
-  // Security & Audit State
-  const [securityPosture, setSecurityPosture] = useState<any>(null);
-  const [securityMetrics, setSecurityMetrics] = useState<any>(null);
-  const [securityLogs, setSecurityLogs] = useState<any[]>([]);
-  const [abuseStats, setAbuseStats] = useState<any>(null);
-  const [manualIpToBlock, setManualIpToBlock] = useState<string>('');
-  const [manualBlockReason, setManualBlockReason] = useState<string>('');
-  const [securityFilterLevel, setSecurityFilterLevel] = useState<string>('ALL');
-  const [securityFilterType, setSecurityFilterType] = useState<string>('ALL');
-  const [isLoadingSecurity, setIsLoadingSecurity] = useState<boolean>(false);
-
   // Shipping & Logistics State
   const [shipmentsList, setShipmentsList] = useState<Shipment[]>([]);
   const [shipmentFilterStatus, setShipmentFilterStatus] = useState<string>('ALL');
   const [shipmentFilterProvider, setShipmentFilterProvider] = useState<string>('ALL');
   const [shipmentSearchQuery, setShipmentSearchQuery] = useState<string>('');
+  const [orderFulfillmentFilter, setOrderFulfillmentFilter] = useState<'ALL' | 'PICKUP' | 'DELIVERY'>('ALL');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'ALL' | 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED'>('ALL');
+
+  // Cancel Order Modal State
+  const [cancelOrderModal, setCancelOrderModal] = useState<{
+    isOpen: boolean;
+    order: Order | null;
+    reason: string;
+    isSubmitting: boolean;
+    error: string | null;
+  }>({
+    isOpen: false,
+    order: null,
+    reason: '',
+    isSubmitting: false,
+    error: null
+  });
 
   // Create Shipment Modal
   const [showCreateShipmentModal, setShowCreateShipmentModal] = useState(false);
@@ -163,13 +168,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return headers;
   };
 
-  const [adminOrders, setAdminOrders] = useState<Order[]>(orders || []);
-
-  useEffect(() => {
-    if (orders) {
-      setAdminOrders(orders);
-    }
-  }, [orders]);
+  const [adminOrders, setAdminOrders] = useState<Order[]>([]);
 
   const fetchAdminOrders = async () => {
     try {
@@ -181,15 +180,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const data = await res.json();
         if (Array.isArray(data)) {
           setAdminOrders(data);
-        } else if (orders) {
-          setAdminOrders(orders);
         }
       }
     } catch (err) {
-      console.error('Failed to fetch admin orders from database:', err);
-      if (orders) {
-        setAdminOrders(orders);
-      }
+      console.error('Failed to fetch admin orders:', err);
     }
   };
 
@@ -208,95 +202,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  const fetchSecurityData = async () => {
-    setIsLoadingSecurity(true);
-    try {
-      const [postureRes, metricsRes, logsRes, abuseRes] = await Promise.all([
-        fetch('/api/admin/security/posture', { headers: getAuthHeaders(), credentials: 'include' }),
-        fetch('/api/admin/security/metrics', { headers: getAuthHeaders(), credentials: 'include' }),
-        fetch('/api/admin/security/audit-logs?limit=150', { headers: getAuthHeaders(), credentials: 'include' }),
-        fetch('/api/admin/security/abuse-stats', { headers: getAuthHeaders(), credentials: 'include' })
-      ]);
-
-      if (postureRes.ok) {
-        const posture = await postureRes.json();
-        setSecurityPosture(posture);
-      }
-      if (metricsRes.ok) {
-        const metricsData = await metricsRes.json();
-        setSecurityMetrics(metricsData.metrics);
-      }
-      if (logsRes.ok) {
-        const logsData = await logsRes.json();
-        setSecurityLogs(logsData.logs || []);
-      }
-      if (abuseRes.ok) {
-        const abuseData = await abuseRes.json();
-        setAbuseStats(abuseData.stats || null);
-      }
-    } catch (err) {
-      console.error('Failed to fetch security audit data:', err);
-    } finally {
-      setIsLoadingSecurity(false);
-    }
-  };
-
-  const handleClearBlacklist = async () => {
-    if (!confirm('Are you sure you want to clear all blocked and blacklisted IPs?')) return;
-    try {
-      const res = await fetch('/api/admin/security/clear-blacklist', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        credentials: 'include'
-      });
-      if (res.ok) {
-        alert('IP Blacklist cleared successfully!');
-        fetchSecurityData();
-      }
-    } catch (err) {
-      alert('Failed to clear blacklist.');
-    }
-  };
-
-  const handleManualBlockIp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!manualIpToBlock.trim()) {
-      alert('Please enter a valid IP address.');
-      return;
-    }
-    try {
-      const res = await fetch('/api/admin/security/blacklist-ip', {
-        method: 'POST',
-        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-        credentials: 'include',
-        body: JSON.stringify({
-          ip: manualIpToBlock.trim(),
-          reason: manualBlockReason.trim() || 'Blocked manually via admin console',
-          durationHours: 24
-        })
-      });
-      if (res.ok) {
-        alert(`IP ${manualIpToBlock} has been blacklisted for 24 hours.`);
-        setManualIpToBlock('');
-        setManualBlockReason('');
-        fetchSecurityData();
-      } else {
-        const err = await res.json();
-        alert(err.error || 'Failed to blacklist IP.');
-      }
-    } catch (err) {
-      alert('Network error while blacklisting IP.');
-    }
-  };
-
   useEffect(() => {
     if (!isOpen) return;
     fetchAdminOrders();
     if (activeTab === 'shipments' || activeTab === 'orders' || activeTab === 'overview') {
       fetchShipments();
-    }
-    if (activeTab === 'security' || activeTab === 'overview') {
-      fetchSecurityData();
     }
   }, [activeTab, isOpen]);
 
@@ -436,17 +346,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [prodIsFeatured, setProdIsFeatured] = useState(false);
   const [prodIsNewArrival, setProdIsNewArrival] = useState(false);
   const [prodIsBestSeller, setProdIsBestSeller] = useState(false);
-  const [prodWeight, setProdWeight] = useState('0.50');
-  const [prodLength, setProdLength] = useState('20');
-  const [prodWidth, setProdWidth] = useState('15');
-  const [prodHeight, setProdHeight] = useState('10');
+  const [prodRequiresCustomization, setProdRequiresCustomization] = useState(false);
+  const [prodRequiresImageUpload, setProdRequiresImageUpload] = useState(false);
+  const [prodMinimumImageUploads, setProdMinimumImageUploads] = useState('1');
+  const [prodMaximumImageUploads, setProdMaximumImageUploads] = useState('5');
+  const [prodWeight, setProdWeight] = useState('');
+  const [prodLength, setProdLength] = useState('');
+  const [prodWidth, setProdWidth] = useState('');
+  const [prodHeight, setProdHeight] = useState('');
   const [productFormError, setProductFormError] = useState<string | null>(null);
 
-  // Stage 5 Image & Variant State for Editing Product
+  // Stage 5 Image & Variant State for Product Create & Edit
   const [productImages, setProductImages] = useState<any[]>([]);
+  const [pendingProductImages, setPendingProductImages] = useState<{ file?: File; url: string; isPrimary: boolean }[]>([]);
   const [productVariants, setProductVariants] = useState<any[]>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+
+  // Lamp Matrix Configurator State
+  const [lampColours, setLampColours] = useState<string[]>([]);
+  const [lampWattages, setLampWattages] = useState<string[]>([]);
+  const [newLampColourInput, setNewLampColourInput] = useState('');
+  const [newLampWattageInput, setNewLampWattageInput] = useState('');
+  const [newLampWattageDeltaInput, setNewLampWattageDeltaInput] = useState('');
+  const [variantSuccess, setVariantSuccess] = useState<string | null>(null);
 
   // Variant Form State
   const [showAddVariantForm, setShowAddVariantForm] = useState(false);
@@ -492,12 +415,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       .catch((err) => console.error(err));
   }, [isOpen, activeTab]);
 
-  // Load product images and variants when editing a product
+  // Load product images, variants, and lamp options when editing a product
   const loadProductImagesAndVariants = async (productId: string) => {
     try {
-      const [imgRes, varRes] = await Promise.all([
+      setLampColours([]);
+      setLampWattages([]);
+      const [imgRes, varRes, lampRes] = await Promise.all([
         fetch(`/api/products/${productId}/images`, { headers: getAuthHeaders(), credentials: 'include' }),
-        fetch(`/api/products/${productId}/variants`, { headers: getAuthHeaders(), credentials: 'include' })
+        fetch(`/api/products/${productId}/variants`, { headers: getAuthHeaders(), credentials: 'include' }),
+        fetch(`/api/products/${productId}/lamp-options?includeInactive=true`, { headers: getAuthHeaders(), credentials: 'include' })
       ]);
       if (imgRes.ok) {
         const imgs = await imgRes.json();
@@ -507,8 +433,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const vars = await varRes.json();
         setProductVariants(vars);
       }
+      if (lampRes.ok) {
+        const lampData = await lampRes.json();
+        if (lampData && Array.isArray(lampData.colours)) {
+          setLampColours(
+            lampData.colours.map((c: any) => {
+              if (typeof c === 'string') return c;
+              const val = c?.value || c?.colour || '';
+              const delta = Number(c?.priceDelta || 0);
+              return delta > 0 ? `${val} (+₹${delta})` : val;
+            })
+          );
+        }
+        if (lampData && Array.isArray(lampData.wattages)) {
+          setLampWattages(
+            lampData.wattages.map((w: any) => {
+              if (typeof w === 'string') return w;
+              const val = w?.value || w?.wattage || '';
+              const delta = Number(w?.priceDelta || 0);
+              return delta > 0 ? `${val} (+₹${delta})` : val;
+            })
+          );
+        }
+      }
     } catch (err) {
-      console.error('Error loading images/variants:', err);
+      console.error('Error loading images/variants/lamp-options:', err);
     }
   };
 
@@ -531,15 +480,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setProdIsFeatured(false);
     setProdIsNewArrival(false);
     setProdIsBestSeller(false);
-    setProdWeight('0.50');
-    setProdLength('20');
-    setProdWidth('15');
-    setProdHeight('10');
+    setProdRequiresCustomization(false);
+    setProdRequiresImageUpload(false);
+    setProdMinimumImageUploads('1');
+    setProdMaximumImageUploads('5');
+    setProdWeight('');
+    setProdLength('');
+    setProdWidth('');
+    setProdHeight('');
     setProductFormError(null);
     setProductImages([]);
+    setPendingProductImages([]);
     setProductVariants([]);
     setImageUploadError(null);
     setShowAddVariantForm(false);
+    setLampColours([]);
+    setLampWattages([]);
+    setNewLampColourInput('');
+    setNewLampWattageInput('');
+    setNewLampWattageDeltaInput('');
+    setVariantSuccess(null);
   };
 
   // Open Add Product Modal
@@ -567,29 +527,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setProdIsFeatured(p.isFeatured ?? false);
     setProdIsNewArrival(p.isNewArrival ?? false);
     setProdIsBestSeller(p.isBestSeller ?? p.isTrending ?? false);
-    setProdWeight(p.weight !== null && p.weight !== undefined ? String(p.weight) : '0.50');
-    const specs = (p.specifications as any) || {};
-    setProdLength(p.length !== null && p.length !== undefined ? String(p.length) : String(specs.length || specs.dimensions?.length || '20'));
-    setProdWidth(p.width !== null && p.width !== undefined ? String(p.width) : String(specs.width || specs.dimensions?.width || '15'));
-    setProdHeight(p.height !== null && p.height !== undefined ? String(p.height) : String(specs.height || specs.dimensions?.height || '10'));
+    setProdRequiresCustomization(p.requiresCustomization ?? false);
+    setProdRequiresImageUpload(p.requiresImageUpload ?? false);
+    setProdMinimumImageUploads(String(p.minimumImageUploads ?? 1));
+    setProdMaximumImageUploads(String(p.maximumImageUploads ?? 5));
+    setProdWeight(p.weight !== null && p.weight !== undefined ? String(p.weight) : '');
+    setProdLength(p.length !== null && p.length !== undefined ? String(p.length) : '');
+    setProdWidth(p.width !== null && p.width !== undefined ? String(p.width) : '');
+    setProdHeight(p.height !== null && p.height !== undefined ? String(p.height) : '');
     setProductFormError(null);
+    setPendingProductImages([]);
 
     loadProductImagesAndVariants(p.id);
     setShowProductModal(true);
   };
 
-  // Upload Product Image (File Upload)
-  const handleUploadImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!editingProductId || !e.target.files || e.target.files.length === 0) return;
-    const file = e.target.files[0];
+  // Handle Multi-file Upload for Existing Product
+  const handleUploadImageFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const files: File[] = Array.from(e.target.files);
+
+    if (!editingProductId) {
+      // Pick pending files for new product creation
+      const newPending = files.map((f, idx) => ({
+        file: f,
+        url: URL.createObjectURL(f),
+        isPrimary: pendingProductImages.length === 0 && idx === 0
+      }));
+      setPendingProductImages((prev) => [...prev, ...newPending]);
+      e.target.value = '';
+      return;
+    }
+
     setIsUploadingImage(true);
     setImageUploadError(null);
 
     const formData = new FormData();
-    formData.append('image', file);
+    files.forEach((file) => {
+      formData.append('images', file);
+    });
 
     try {
-      const res = await fetch(`/api/products/${editingProductId}/images`, {
+      const res = await fetch(`/api/products/${editingProductId}/images/batch`, {
         method: 'POST',
         headers: getAuthHeadersForFormData(),
         credentials: 'include',
@@ -597,7 +576,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       const data = await res.json();
       if (!res.ok) {
-        setImageUploadError(data.error || 'Failed to upload image');
+        setImageUploadError(data.error || 'Failed to upload images');
       } else {
         await loadProductImagesAndVariants(editingProductId);
         onRefreshData();
@@ -606,6 +585,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setImageUploadError(err.message || 'Image upload failed');
     } finally {
       setIsUploadingImage(false);
+      e.target.value = '';
+    }
+  };
+
+  // Reorder Images
+  const handleReorderImage = async (index: number, direction: 'left' | 'right') => {
+    if (!editingProductId) {
+      // Reorder pending images
+      const targetIdx = direction === 'left' ? index - 1 : index + 1;
+      if (targetIdx < 0 || targetIdx >= pendingProductImages.length) return;
+      const updated = [...pendingProductImages];
+      const temp = updated[index];
+      updated[index] = updated[targetIdx];
+      updated[targetIdx] = temp;
+      setPendingProductImages(updated);
+      return;
+    }
+
+    if (productImages.length <= 1) return;
+    const targetIdx = direction === 'left' ? index - 1 : index + 1;
+    if (targetIdx < 0 || targetIdx >= productImages.length) return;
+
+    const newImgs = [...productImages];
+    const temp = newImgs[index];
+    newImgs[index] = newImgs[targetIdx];
+    newImgs[targetIdx] = temp;
+
+    setProductImages(newImgs);
+
+    try {
+      const imageOrders = newImgs.map((img, i) => ({ id: img.id, sortOrder: i }));
+      await fetch(`/api/products/${editingProductId}/images/reorder`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ imageOrders })
+      });
+    } catch (err) {
+      console.error('Reorder error:', err);
     }
   };
 
@@ -643,6 +661,139 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Helper to parse option text like "4W (+₹30)" or "4W (+30)" or "4W = 30"
+  const parseOptionInput = (input: any, defaultType: 'COLOUR' | 'WATTAGE') => {
+    if (typeof input === 'object' && input !== null) {
+      const val = String(input.value || input.colour || input.wattage || input.optionValue || '').trim();
+      const delta = Number(input.priceDelta ?? input.price_delta ?? 0);
+      return { value: val, priceDelta: delta };
+    }
+
+    const str = String(input || '').trim();
+    if (!str) return { value: '', priceDelta: 0 };
+
+    const match = str.match(/(\(\+?₹?\s*(-?\d+(\.\d+)?)\)|=\s*₹?\s*(-?\d+(\.\d+)?))/);
+    if (match) {
+      const numbers = str.match(/(-?\d+(\.\d+)?)/g);
+      let delta = 0;
+      if (numbers && numbers.length > 0) {
+        delta = Number(numbers[numbers.length - 1]);
+      }
+      const cleanValue = str.replace(/(\(\+?₹?\s*(-?\d+(\.\d+)?)\)|=\s*₹?\s*(-?\d+(\.\d+)?))/, '').trim();
+      return { value: cleanValue, priceDelta: delta };
+    }
+
+    let delta = 0;
+    if (defaultType === 'COLOUR') {
+      if (str.toUpperCase().includes('RGB') || str.toUpperCase().includes('MULTI')) {
+        delta = 200;
+      }
+    } else {
+      const u = str.toUpperCase();
+      if (u === '7W') delta = 100;
+      else if (u === '9W' || u.includes('9W')) delta = 150;
+      else if (u === '12W' || u.includes('12W')) delta = 200;
+      else if (u === '15W' || u.includes('15W')) delta = 250;
+      else if (u.includes('3IN1') || u.includes('3-IN-1') || u.includes('3 IN 1')) delta = 25;
+      else if (u === '4W') delta = 30;
+      else if (u === '6W') delta = 80;
+      else if (u === '2W' || u === '5W') delta = 0;
+    }
+
+    return { value: str, priceDelta: delta };
+  };
+
+  // Lamp Matrix Generation Functions
+  const handleGenerateLampMatrix = () => {
+    if (lampColours.length === 0 || lampWattages.length === 0) {
+      setVariantError('Please configure at least one Lamp Colour and one Bulb Wattage before generating matrix.');
+      return;
+    }
+
+    setVariantError(null);
+    setVariantSuccess(null);
+    const base = Number(prodPrice || 1499);
+    const baseMrp = Number(prodMrp || base * 1.2);
+
+    const parsedCols = lampColours.map((c) => parseOptionInput(c, 'COLOUR')).filter((c) => c.value);
+    const parsedWatts = lampWattages.map((w) => parseOptionInput(w, 'WATTAGE')).filter((w) => w.value);
+
+    const generated: any[] = [];
+    parsedCols.forEach((colObj) => {
+      parsedWatts.forEach((wattObj) => {
+        const col = colObj.value;
+        const watt = wattObj.value;
+        const delta = colObj.priceDelta + wattObj.priceDelta;
+
+        const price = Math.max(0, base + delta);
+        const mrp = Math.max(price, baseMrp + delta);
+        const cleanSku = `${prodSku || 'LAMP'}-${col.replace(/[^a-zA-Z0-9]/g, '')}-${watt.replace(/[^a-zA-Z0-9]/g, '')}`.toUpperCase();
+        const name = `${col} - ${watt}`;
+
+        // Check if an existing variant matches
+        const existingMatch = productVariants.find(
+          (v) => (v.colour === col || v.attributes?.colour === col) && (v.wattage === watt || v.attributes?.wattage === watt)
+        );
+
+        generated.push({
+          id: existingMatch?.id,
+          sku: existingMatch?.sku || cleanSku,
+          name,
+          price,
+          mrp,
+          stockQuantity: existingMatch ? existingMatch.stockQuantity : Number(prodStock || 10),
+          colour: col,
+          wattage: watt,
+          isActive: true
+        });
+      });
+    });
+
+    setProductVariants(generated);
+  };
+
+  const handleSaveLampMatrix = async () => {
+    if (!editingProductId) {
+      setVariantError('Please save the main product first before saving variant matrix to database.');
+      return;
+    }
+    if (productVariants.length === 0) {
+      setVariantError('No variants generated. Click "Generate Matrix" first.');
+      return;
+    }
+
+    setVariantError(null);
+    setVariantSuccess(null);
+    try {
+      // Sync lamp options and variant matrix in parallel
+      const [res] = await Promise.all([
+        fetch(`/api/products/${editingProductId}/variants/matrix`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          credentials: 'include',
+          body: JSON.stringify({ variants: productVariants })
+        }),
+        fetch(`/api/products/${editingProductId}/lamp-options/sync`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          credentials: 'include',
+          body: JSON.stringify({ colours: lampColours, wattages: lampWattages })
+        }).catch((err) => console.warn('Lamp sync error:', err))
+      ]);
+      const data = await res.json();
+      if (!res.ok) {
+        setVariantError(data.error || 'Failed to save variant matrix');
+      } else {
+        await loadProductImagesAndVariants(editingProductId);
+        onRefreshData();
+        setVariantSuccess('Lamp options & variant matrix saved successfully!');
+        setTimeout(() => setVariantSuccess(null), 3000);
+      }
+    } catch (err: any) {
+      setVariantError(err.message || 'Error saving variant matrix');
     }
   };
 
@@ -725,10 +876,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Coupon Form State
   const [showAddCouponModal, setShowAddCouponModal] = useState(false);
+  const [editingCouponId, setEditingCouponId] = useState<string | null>(null);
   const [coupCode, setCoupCode] = useState('');
+  const [coupDescription, setCoupDescription] = useState('');
   const [coupType, setCoupType] = useState<'PERCENTAGE' | 'FIXED'>('PERCENTAGE');
   const [coupVal, setCoupVal] = useState('');
-  const [coupMinOrder, setCoupMinOrder] = useState('999');
+  const [coupMinOrder, setCoupMinOrder] = useState('0');
+  const [coupMaxDiscount, setCoupMaxDiscount] = useState('');
+  const [coupUsageLimit, setCoupUsageLimit] = useState('');
+  const [coupStartDate, setCoupStartDate] = useState('');
+  const [coupEndDate, setCoupEndDate] = useState('');
+  const [coupIsActive, setCoupIsActive] = useState(true);
+  const [coupError, setCoupError] = useState<string | null>(null);
+  const [isSavingCoupon, setIsSavingCoupon] = useState(false);
 
   // Save Product (Create or Update)
   const handleSaveProduct = async (e: React.FormEvent) => {
@@ -745,27 +905,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const price = Number(prodPrice);
     const mrp = prodMrp && !isNaN(Number(prodMrp)) && Number(prodMrp) >= price ? Number(prodMrp) : price;
 
-    const numWeight = Number(prodWeight);
-    const numLength = Number(prodLength);
-    const numWidth = Number(prodWidth);
-    const numHeight = Number(prodHeight);
-
-    if (isNaN(numWeight) || numWeight <= 0) {
-      setProductFormError('Weight must be a valid number greater than 0 kg.');
-      return;
-    }
-    if (isNaN(numLength) || numLength <= 0) {
-      setProductFormError('Length must be a valid number greater than 0 cm.');
-      return;
-    }
-    if (isNaN(numWidth) || numWidth <= 0) {
-      setProductFormError('Width must be a valid number greater than 0 cm.');
-      return;
-    }
-    if (isNaN(numHeight) || numHeight <= 0) {
-      setProductFormError('Height must be a valid number greater than 0 cm.');
-      return;
-    }
+    const numWeight = (prodWeight && !isNaN(Number(prodWeight)) && Number(prodWeight) > 0) ? Number(prodWeight) : 0.5;
+    const numLength = (prodLength && !isNaN(Number(prodLength)) && Number(prodLength) > 0) ? Number(prodLength) : 10;
+    const numWidth = (prodWidth && !isNaN(Number(prodWidth)) && Number(prodWidth) > 0) ? Number(prodWidth) : 10;
+    const numHeight = (prodHeight && !isNaN(Number(prodHeight)) && Number(prodHeight) > 0) ? Number(prodHeight) : 10;
 
     const existingP = editingProductId ? products.find((p) => p.id === editingProductId) : null;
     const existingSpecs = (existingP?.specifications as any) || {};
@@ -784,19 +927,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       length: numLength,
       width: numWidth,
       height: numHeight,
-      specifications: {
-        ...existingSpecs,
-        length: numLength,
-        width: numWidth,
-        height: numHeight
-      },
+      specifications: existingSpecs,
       shortDescription: prodShortDesc || undefined,
       description: prodDescription || undefined,
       imageUrl: prodImageUrl || undefined,
       isActive: prodIsActive,
       isFeatured: prodIsFeatured,
       isNewArrival: prodIsNewArrival,
-      isBestSeller: prodIsBestSeller
+      isBestSeller: prodIsBestSeller,
+      requiresCustomization: prodRequiresCustomization,
+      requiresImageUpload: prodRequiresImageUpload,
+      minimumImageUploads: Number(prodMinimumImageUploads || 1),
+      maximumImageUploads: Number(prodMaximumImageUploads || 5)
     };
 
     try {
@@ -814,6 +956,59 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (!res.ok) {
         setProductFormError(data.error || 'Failed to save product');
         return;
+      }
+
+      const savedProductId = editingProductId || data.id;
+
+      // Upload pending images if new product was created or pending images exist
+      if (savedProductId && pendingProductImages.length > 0) {
+        const formData = new FormData();
+        pendingProductImages.forEach((item) => {
+          if (item.file) {
+            formData.append('images', item.file);
+          }
+        });
+
+        if (formData.has('images')) {
+          try {
+            await fetch(`/api/products/${savedProductId}/images/batch`, {
+              method: 'POST',
+              headers: getAuthHeadersForFormData(),
+              credentials: 'include',
+              body: formData
+            });
+          } catch (uploadErr) {
+            console.error('Batch upload error for new product:', uploadErr);
+          }
+        }
+      }
+
+      // Sync lamp options if defined
+      if (savedProductId && (lampColours.length > 0 || lampWattages.length > 0)) {
+        try {
+          await fetch(`/api/products/${savedProductId}/lamp-options/sync`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            credentials: 'include',
+            body: JSON.stringify({ colours: lampColours, wattages: lampWattages })
+          });
+        } catch (lampErr) {
+          console.error('Lamp options sync error:', lampErr);
+        }
+      }
+
+      // Sync variant matrix if defined
+      if (savedProductId && productVariants.length > 0) {
+        try {
+          await fetch(`/api/products/${savedProductId}/variants/matrix`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            credentials: 'include',
+            body: JSON.stringify({ variants: productVariants })
+          });
+        } catch (varErr) {
+          console.error('Variant matrix sync error:', varErr);
+        }
       }
 
       setShowProductModal(false);
@@ -1015,34 +1210,175 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  const handleCreateCoupon = async (e: React.FormEvent) => {
+  const handleOpenCreateCoupon = () => {
+    setEditingCouponId(null);
+    setCoupCode('');
+    setCoupDescription('');
+    setCoupType('PERCENTAGE');
+    setCoupVal('');
+    setCoupMinOrder('0');
+    setCoupMaxDiscount('');
+    setCoupUsageLimit('');
+    setCoupStartDate('');
+    setCoupEndDate('');
+    setCoupIsActive(true);
+    setCoupError(null);
+    setShowAddCouponModal(true);
+  };
+
+  const handleOpenEditCoupon = (c: Coupon) => {
+    setEditingCouponId(c.id);
+    setCoupCode(c.code);
+    setCoupDescription(c.description || '');
+    setCoupType(c.discountType === 'PERCENTAGE' || (c as any).type === 'PERCENTAGE' ? 'PERCENTAGE' : 'FIXED');
+    setCoupVal(String(c.discountValue || ''));
+    setCoupMinOrder(String(c.minOrderAmount ?? c.minimumOrderAmount ?? 0));
+    setCoupMaxDiscount(c.maxDiscount || c.maximumDiscountAmount ? String(c.maxDiscount || c.maximumDiscountAmount) : '');
+    setCoupUsageLimit(c.usageLimit ? String(c.usageLimit) : '');
+    
+    let startIso = '';
+    const rawStart = c.startDate || c.startsAt;
+    if (rawStart) {
+      try { startIso = new Date(rawStart).toISOString().slice(0, 16); } catch {}
+    }
+    setCoupStartDate(startIso);
+
+    let endIso = '';
+    const rawEnd = c.endDate || c.expiresAt || c.expiryDate;
+    if (rawEnd) {
+      try { endIso = new Date(rawEnd).toISOString().slice(0, 16); } catch {}
+    }
+    setCoupEndDate(endIso);
+
+    setCoupIsActive(Boolean(c.isActive));
+    setCoupError(null);
+    setShowAddCouponModal(true);
+  };
+
+  const handleSaveCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!coupCode || !coupVal) return;
+    setCoupError(null);
+
+    if (!coupCode.trim()) {
+      setCoupError('Coupon code is required.');
+      return;
+    }
+    const valNum = Number(coupVal);
+    if (isNaN(valNum) || valNum <= 0) {
+      setCoupError('Discount value must be greater than 0.');
+      return;
+    }
+    if (coupType === 'PERCENTAGE' && valNum > 100) {
+      setCoupError('Percentage discount cannot exceed 100%.');
+      return;
+    }
+
+    if (coupStartDate && coupEndDate && new Date(coupEndDate) <= new Date(coupStartDate)) {
+      setCoupError('Expiry date must be after start date.');
+      return;
+    }
+
+    setIsSavingCoupon(true);
 
     try {
-      const res = await fetch('/api/coupons', {
-        method: 'POST',
+      const isEdit = Boolean(editingCouponId);
+      const url = isEdit ? `/api/admin/coupons/${editingCouponId}` : '/api/admin/coupons';
+      const method = isEdit ? 'PUT' : 'POST';
+
+      const bodyPayload = {
+        code: coupCode.trim().toUpperCase(),
+        description: coupDescription.trim(),
+        discountType: coupType,
+        discountValue: valNum,
+        minOrderAmount: Number(coupMinOrder) || 0,
+        maxDiscount: coupMaxDiscount ? Number(coupMaxDiscount) : null,
+        usageLimit: coupUsageLimit ? Number(coupUsageLimit) : null,
+        startDate: coupStartDate ? new Date(coupStartDate).toISOString() : null,
+        endDate: coupEndDate ? new Date(coupEndDate).toISOString() : null,
+        isActive: coupIsActive
+      };
+
+      const res = await fetch(url, {
+        method,
         headers: getAuthHeaders(),
         credentials: 'include',
-        body: JSON.stringify({
-          code: coupCode,
-          discountType: coupType,
-          discountValue: Number(coupVal),
-          minOrderAmount: Number(coupMinOrder)
-        })
+        body: JSON.stringify(bodyPayload)
       });
+
+      const data = await res.json();
+
       if (res.ok) {
         setShowAddCouponModal(false);
-        setCoupCode('');
-        setCoupVal('');
+        setEditingCouponId(null);
         onRefreshData();
+      } else {
+        setCoupError(data.error || data.message || 'Failed to save coupon.');
+      }
+    } catch (err: any) {
+      setCoupError(err?.message || 'Server error saving coupon.');
+    } finally {
+      setIsSavingCoupon(false);
+    }
+  };
+
+  const handleToggleCouponStatus = async (c: Coupon) => {
+    try {
+      const res = await fetch(`/api/admin/coupons/${c.id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ isActive: !c.isActive })
+      });
+
+      if (res.ok) {
+        onRefreshData();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to update coupon status');
       }
     } catch (err) {
-      console.error(err);
+      alert('Error updating coupon status');
+    }
+  };
+
+  const handleDeleteCoupon = async (couponId: string, couponCode: string) => {
+    if (!window.confirm(`Are you sure you want to permanently delete coupon "${couponCode}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/admin/coupons/${couponId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+
+      if (res.ok) {
+        onRefreshData();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to delete coupon');
+      }
+    } catch (err) {
+      alert('Error deleting coupon');
     }
   };
 
   const handleUpdateOrderStatus = async (orderId: string, newStatus: OrderStatus) => {
+    if (newStatus === 'CANCELLED') {
+      const targetOrd = adminOrders.find((o) => (o.id === orderId || o.orderNumber === orderId));
+      if (targetOrd) {
+        setCancelOrderModal({
+          isOpen: true,
+          order: targetOrd,
+          reason: '',
+          isSubmitting: false,
+          error: null
+        });
+        return;
+      }
+    }
+
     try {
       const res = await fetch(`/api/orders/${orderId}/status`, {
         method: 'PUT',
@@ -1055,10 +1391,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         })
       });
       if (res.ok) {
+        fetchAdminOrders();
         onRefreshData();
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleConfirmCancelOrder = async () => {
+    if (!cancelOrderModal.order) return;
+    setCancelOrderModal((prev) => ({ ...prev, isSubmitting: true, error: null }));
+    try {
+      const orderId = cancelOrderModal.order.id || cancelOrderModal.order.orderNumber;
+      const res = await fetch(`/api/admin/orders/${orderId}/cancel`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({
+          reason: cancelOrderModal.reason || 'Cancelled by admin'
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCancelOrderModal((prev) => ({
+          ...prev,
+          isSubmitting: false,
+          error: data.message || data.error || 'Failed to cancel order'
+        }));
+        return;
+      }
+      setCancelOrderModal({ isOpen: false, order: null, reason: '', isSubmitting: false, error: null });
+      fetchAdminOrders();
+      onRefreshData();
+    } catch (err: any) {
+      setCancelOrderModal((prev) => ({
+        ...prev,
+        isSubmitting: false,
+        error: err.message || 'Network error cancelling order'
+      }));
     }
   };
 
@@ -1079,9 +1450,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   if (!isOpen) return null;
 
-  const displayOrders = (adminOrders && adminOrders.length > 0)
-    ? adminOrders
-    : (orders || []);
+  const checkIsStorePickup = (ord: any): boolean => {
+    if (!ord) return false;
+    const prov = String(ord.shippingProvider || '').toLowerCase();
+    const courier = String(ord.courierName || '').toLowerCase();
+    const opt = String(ord.selectedShippingOptionId || '').toLowerCase();
+    const addr = ord.shippingAddress || {};
+    return (
+      prov.includes('store') ||
+      prov.includes('pickup') ||
+      courier.includes('store') ||
+      courier.includes('pickup') ||
+      opt === 'pickup-store' ||
+      addr.deliveryMethod === 'PICKUP' ||
+      addr.fulfillmentType === 'STORE_PICKUP' ||
+      addr.isStorePickup === true ||
+      Boolean(addr.pickupFromStore)
+    );
+  };
+
+  const countAllOrders = adminOrders.length;
+  const countPendingOrders = adminOrders.filter((o) => (o.orderStatus || o.status) === 'PENDING').length;
+  const countConfirmedOrders = adminOrders.filter((o) => (o.orderStatus || o.status) === 'CONFIRMED').length;
+  const countProcessingOrders = adminOrders.filter((o) => (o.orderStatus || o.status) === 'PROCESSING').length;
+  const countShippedOrders = adminOrders.filter((o) => ['SHIPPED', 'OUT_FOR_DELIVERY', 'READY_FOR_PICKUP'].includes(o.orderStatus || o.status)).length;
+  const countDeliveredOrders = adminOrders.filter((o) => (o.orderStatus || o.status) === 'DELIVERED').length;
+  const countCancelledOrders = adminOrders.filter((o) => (o.orderStatus || o.status) === 'CANCELLED').length;
+
+  const displayOrders = adminOrders.filter((ord) => {
+    if (orderFulfillmentFilter === 'PICKUP' && !checkIsStorePickup(ord)) return false;
+    if (orderFulfillmentFilter === 'DELIVERY' && checkIsStorePickup(ord)) return false;
+
+    const st = (ord.orderStatus || ord.status || 'PENDING') as string;
+    if (orderStatusFilter === 'PENDING') return st === 'PENDING';
+    if (orderStatusFilter === 'CONFIRMED') return st === 'CONFIRMED';
+    if (orderStatusFilter === 'PROCESSING') return st === 'PROCESSING';
+    if (orderStatusFilter === 'SHIPPED') return ['SHIPPED', 'OUT_FOR_DELIVERY', 'READY_FOR_PICKUP'].includes(st);
+    if (orderStatusFilter === 'DELIVERED') return st === 'DELIVERED';
+    if (orderStatusFilter === 'CANCELLED') return st === 'CANCELLED';
+    return true;
+  });
   const overviewRevenue = (analytics && typeof analytics.totalRevenue === 'number' && analytics.totalRevenue > 0)
     ? analytics.totalRevenue
     : displayOrders.reduce((acc, o) => acc + Number(o.totalAmount || 0), 0);
@@ -1187,16 +1595,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           <button
-            onClick={() => setActiveTab('custom_orders')}
-            className={`px-4 py-2.5 rounded-t-xl transition-colors cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'custom_orders' ? 'bg-slate-900 text-indigo-400 border-t-2 border-indigo-500' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <QrCode className="w-4 h-4 text-indigo-400" />
-            <span>Custom Order</span>
-          </button>
-
-          <button
             onClick={() => setActiveTab('shipments')}
             className={`px-4 py-2.5 rounded-t-xl transition-colors cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'shipments' ? 'bg-slate-900 text-indigo-400 border-t-2 border-indigo-500' : 'text-slate-400 hover:text-white'
@@ -1257,18 +1655,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           <button
-            onClick={() => setActiveTab('security')}
+            onClick={() => setActiveTab('privacy')}
             className={`px-4 py-2.5 rounded-t-xl transition-colors cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'security' ? 'bg-slate-900 text-emerald-400 border-t-2 border-emerald-500 font-bold' : 'text-slate-400 hover:text-white'
+              activeTab === 'privacy' ? 'bg-slate-900 text-emerald-400 border-t-2 border-emerald-500' : 'text-slate-400 hover:text-white'
             }`}
           >
             <Shield className="w-4 h-4 text-emerald-400" />
-            <span>Security & Audit</span>
+            <span>Privacy & Security</span>
           </button>
         </div>
 
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+          {activeTab === 'privacy' && <AdminPrivacyTab />}
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
@@ -1382,69 +1781,98 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               {/* Add/Edit Product Modal Form */}
               {showProductModal && (
-                <form
-                  onSubmit={handleSaveProduct}
-                  className="bg-slate-800 border border-slate-700 rounded-2xl p-5 space-y-4 text-xs"
-                >
-                  <div className="flex justify-between items-center border-b border-slate-700 pb-2">
-                    <h4 className="font-bold text-indigo-400 text-sm">
-                      {editingProductId ? 'Edit Product' : 'Add New Product'}
-                    </h4>
-                    <button
-                      type="button"
-                      onClick={() => setShowProductModal(false)}
-                      className="text-slate-400 hover:text-white"
+                <ErrorBoundary fallbackTitle="Unable to load Add Product" onReset={() => setShowProductModal(false)}>
+                  {(() => {
+                    const safeCategories = Array.isArray(categories) ? categories : [];
+                    const selectedCatObj = safeCategories.find((c) => c?.id === prodCategoryId || c?.slug === prodCategoryId);
+                    const safeCatId = (prodCategoryId || '').toLowerCase();
+                    const safeProdName = (prodName || '').toLowerCase();
+                    const safeEditId = (editingProductId || '').toLowerCase();
+
+                    const isLampCategory = Boolean(
+                      (selectedCatObj?.name || '').toLowerCase().includes('lamp') ||
+                      (selectedCatObj?.slug || '').toLowerCase().includes('lamp') ||
+                      (selectedCatObj?.id || '').toLowerCase().includes('lamp') ||
+                      (selectedCatObj?.name || '').toLowerCase().includes('light') ||
+                      (selectedCatObj?.slug || '').toLowerCase().includes('light') ||
+                      (selectedCatObj?.id || '').toLowerCase().includes('light') ||
+                      safeCatId.includes('lamp') ||
+                      safeCatId.includes('light') ||
+                      safeProdName.includes('lamp') ||
+                      safeProdName.includes('light') ||
+                      safeEditId.includes('lamp')
+                    );
+
+                    return (
+                    <form
+                      onSubmit={handleSaveProduct}
+                      className="bg-slate-800 border border-slate-700 rounded-2xl p-5 space-y-4 text-xs"
                     >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
+                      <div className="flex justify-between items-center border-b border-slate-700 pb-2">
+                        <h4 className="font-bold text-indigo-400 text-sm">
+                          {editingProductId ? 'Edit Product' : 'Add New Product'}
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => setShowProductModal(false)}
+                          className="text-slate-400 hover:text-white"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
 
-                  {productFormError && (
-                    <div className="bg-rose-500/20 border border-rose-500/40 text-rose-300 p-2.5 rounded-xl font-medium">
-                      {productFormError}
-                    </div>
-                  )}
+                      {productFormError && (
+                        <div className="bg-rose-500/20 border border-rose-500/40 text-rose-300 p-2.5 rounded-xl font-medium">
+                          {productFormError}
+                        </div>
+                      )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-slate-400 font-semibold mb-1">Product Name *</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Aerospace Carbon Fiber Housing"
-                        required
-                        value={prodName}
-                        onChange={(e) => setProdName(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-400 font-semibold mb-1">SKU *</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. AERO-HOUSING-X4"
-                        required
-                        value={prodSku}
-                        onChange={(e) => setProdSku(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-400 font-semibold mb-1">Category *</label>
-                      <select
-                        required
-                        value={prodCategoryId}
-                        onChange={(e) => setProdCategoryId(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white"
-                      >
-                        <option value="">Select Category...</option>
-                        {categories.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-slate-400 font-semibold mb-1">Product Name *</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Aerospace Carbon Fiber Housing"
+                            required
+                            value={prodName}
+                            onChange={(e) => setProdName(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-slate-400 font-semibold mb-1">SKU *</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. AERO-HOUSING-X4"
+                            required
+                            value={prodSku}
+                            onChange={(e) => setProdSku(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-slate-400 font-semibold mb-1">Category *</label>
+                          <select
+                            required
+                            value={prodCategoryId}
+                            onChange={(e) => setProdCategoryId(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white"
+                          >
+                            <option value="">Select Category...</option>
+                            {safeCategories.length > 0 ? (
+                              safeCategories.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
+                                </option>
+                              ))
+                            ) : (
+                              <option value="" disabled>
+                                No categories available. Please create a category first.
+                              </option>
+                            )}
+                          </select>
+                        </div>
+                      </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div>
@@ -1615,70 +2043,136 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     />
                   </div>
 
-                  {/* Stage 5: Product Image Gallery & Management */}
-                  {editingProductId && (
-                    <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h5 className="font-bold text-indigo-400 text-xs flex items-center gap-1.5">
-                            <Tag className="w-4 h-4" />
-                            <span>Product Gallery & Image Upload</span>
-                          </h5>
-                          <p className="text-[10px] text-slate-400">
-                            Upload high-res images (Cloudinary supported). Max 10 images.
-                          </p>
-                        </div>
-
-                        <label className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1 transition-colors">
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>{isUploadingImage ? 'Uploading...' : 'Upload Image File'}</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleUploadImageFile}
-                            disabled={isUploadingImage}
-                            className="hidden"
-                          />
-                        </label>
+                  {/* Stage 5: Product Image Gallery & Multi-Upload Management */}
+                  <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h5 className="font-bold text-indigo-400 text-xs flex items-center gap-1.5">
+                          <Tag className="w-4 h-4" />
+                          <span>Multiple Product Images Gallery</span>
+                        </h5>
+                        <p className="text-[10px] text-slate-400">
+                          Select multiple image files at once to upload to Cloudinary. Drag or reorder thumbnails.
+                        </p>
                       </div>
 
-                      {imageUploadError && (
-                        <div className="bg-rose-500/20 text-rose-300 text-xs p-2 rounded-xl border border-rose-500/30">
-                          {imageUploadError}
+                      <label className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl cursor-pointer flex items-center gap-1.5 transition-colors shadow-xs">
+                        <Plus className="w-4 h-4" />
+                        <span>{isUploadingImage ? 'Uploading...' : 'Select Multiple Images'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={handleUploadImageFiles}
+                          disabled={isUploadingImage}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+
+                    {imageUploadError && (
+                      <div className="bg-rose-500/20 text-rose-300 text-xs p-2 rounded-xl border border-rose-500/30">
+                        {imageUploadError}
+                      </div>
+                    )}
+
+                    {/* Image Thumbnails Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+                      {/* Saved Images for Existing Product */}
+                      {productImages.map((img, idx) => (
+                        <div
+                          key={img.id}
+                          className="relative aspect-[4/3] min-h-[120px] w-full bg-slate-800 rounded-xl overflow-hidden border border-slate-700 group shadow-xs"
+                        >
+                          <img src={img.url} alt={img.altText || 'Product'} className="w-full h-full object-cover" />
+
+                          {img.isPrimary && (
+                            <span className="absolute top-1.5 left-1.5 bg-emerald-500 text-slate-950 font-black text-[9px] px-1.5 py-0.5 rounded shadow-xs">
+                              PRIMARY
+                            </span>
+                          )}
+
+                          <div className="absolute inset-0 bg-slate-950/75 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 p-1">
+                            {idx > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => handleReorderImage(idx, 'left')}
+                                className="bg-slate-800 text-white text-[10px] font-bold px-1.5 py-1 rounded hover:bg-slate-700"
+                                title="Move Left"
+                              >
+                                &larr;
+                              </button>
+                            )}
+                            {idx < productImages.length - 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleReorderImage(idx, 'right')}
+                                className="bg-slate-800 text-white text-[10px] font-bold px-1.5 py-1 rounded hover:bg-slate-700"
+                                title="Move Right"
+                              >
+                                &rarr;
+                              </button>
+                            )}
+                            {!img.isPrimary && (
+                              <button
+                                type="button"
+                                onClick={() => handleSetPrimaryImage(img.id)}
+                                className="bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] font-bold px-2 py-1 rounded cursor-pointer"
+                                title="Set as primary product image"
+                              >
+                                Primary
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteImage(img.id)}
+                              className="bg-rose-600 hover:bg-rose-500 text-white p-1 rounded cursor-pointer"
+                              title="Delete image"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
-                      )}
+                      ))}
 
-                      {/* Image Thumbnails Grid */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
-                        {productImages.map((img) => (
+                      {/* Pending Images for New Product Creation */}
+                      {!editingProductId &&
+                        pendingProductImages.map((item, idx) => (
                           <div
-                            key={img.id}
-                            className="relative aspect-4/3 bg-slate-800 rounded-xl overflow-hidden border border-slate-700 group"
+                            key={idx}
+                            className="relative aspect-[4/3] min-h-[120px] w-full bg-slate-800 rounded-xl overflow-hidden border border-slate-700 group shadow-xs"
                           >
-                            <img src={img.url} alt={img.altText || 'Product'} className="w-full h-full object-cover" />
-
-                            {img.isPrimary && (
+                            <img src={item.url} alt={`Pending ${idx}`} className="w-full h-full object-cover" />
+                            {item.isPrimary && (
                               <span className="absolute top-1.5 left-1.5 bg-emerald-500 text-slate-950 font-black text-[9px] px-1.5 py-0.5 rounded shadow-xs">
                                 PRIMARY
                               </span>
                             )}
-
-                            <div className="absolute inset-0 bg-slate-950/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-1">
-                              {!img.isPrimary && (
+                            <div className="absolute inset-0 bg-slate-950/75 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 p-1">
+                              {idx > 0 && (
                                 <button
                                   type="button"
-                                  onClick={() => handleSetPrimaryImage(img.id)}
-                                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] font-bold px-2 py-1 rounded cursor-pointer"
-                                  title="Set as primary product image"
+                                  onClick={() => handleReorderImage(idx, 'left')}
+                                  className="bg-slate-800 text-white text-[10px] font-bold px-1.5 py-1 rounded hover:bg-slate-700"
                                 >
-                                  Make Primary
+                                  &larr;
+                                </button>
+                              )}
+                              {idx < pendingProductImages.length - 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleReorderImage(idx, 'right')}
+                                  className="bg-slate-800 text-white text-[10px] font-bold px-1.5 py-1 rounded hover:bg-slate-700"
+                                >
+                                  &rarr;
                                 </button>
                               )}
                               <button
                                 type="button"
-                                onClick={() => handleDeleteImage(img.id)}
-                                className="bg-rose-600 hover:bg-rose-500 text-white p-1 rounded cursor-pointer"
-                                title="Delete image"
+                                onClick={() =>
+                                  setPendingProductImages(pendingProductImages.filter((_, i) => i !== idx))
+                                }
+                                className="bg-rose-600 text-white p-1 rounded cursor-pointer"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -1686,162 +2180,232 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                         ))}
 
-                        {productImages.length === 0 && (
-                          <div className="col-span-full text-slate-500 text-xs italic p-3 text-center bg-slate-950/40 rounded-xl border border-dashed border-slate-800">
-                            No secondary gallery images uploaded yet.
-                          </div>
+                      {productImages.length === 0 && pendingProductImages.length === 0 && (
+                        <div className="col-span-full text-slate-500 text-xs italic p-4 text-center bg-slate-950/40 rounded-xl border border-dashed border-slate-800">
+                          No images attached yet. Click "Select Multiple Images" to add product photos.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Stage 6: Lamp Category Configurator & Variant Matrix Generator (ONLY shown for Lamp & Light category products) */}
+                  {isLampCategory && (
+                  <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h5 className="font-bold text-amber-400 text-xs flex items-center gap-1.5">
+                          <Layers className="w-4 h-4" />
+                          <span>Lamp Configurator & Variant Price Matrix</span>
+                        </h5>
+                        <p className="text-[10px] text-slate-400">
+                          Configure Lamp Colours (Warm White, Cool White, Neutral White) & Bulb Wattages (5W, 7W, 9W, 12W)
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleGenerateLampMatrix}
+                          className="bg-amber-600 hover:bg-amber-500 text-slate-950 font-black text-xs px-3 py-1.5 rounded-xl cursor-pointer shadow-xs"
+                        >
+                          Generate Matrix
+                        </button>
+                        {editingProductId && productVariants.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleSaveLampMatrix}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer shadow-xs"
+                          >
+                            Save Matrix to Database
+                          </button>
                         )}
                       </div>
                     </div>
-                  )}
 
-                  {/* Stage 5: Product Variants Management */}
-                  {editingProductId && (
-                    <div className="bg-slate-900 border border-slate-700/80 rounded-2xl p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h5 className="font-bold text-amber-400 text-xs flex items-center gap-1.5">
-                            <Layers className="w-4 h-4" />
-                            <span>Product Variants (Size, Color, Bundles)</span>
-                          </h5>
-                          <p className="text-[10px] text-slate-400">
-                            Configure distinct SKUs, prices, stock levels and attribute options
-                          </p>
-                        </div>
+                    {/* Colour Options Config */}
+                    <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 space-y-2">
+                      <span className="text-[11px] font-bold text-slate-300 block">Configured Lamp Colours:</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {lampColours.map((col, idx) => (
+                          <span
+                            key={idx}
+                            className="bg-slate-800 text-amber-300 border border-slate-700 text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5"
+                          >
+                            <span>{col}</span>
+                            <button
+                              type="button"
+                              onClick={() => setLampColours(lampColours.filter((_, i) => i !== idx))}
+                              className="text-slate-400 hover:text-rose-400 text-xs"
+                            >
+                              &times;
+                            </button>
+                          </span>
+                        ))}
+                      </div>
 
+                      <div className="flex gap-2 pt-1">
+                        <input
+                          type="text"
+                          placeholder="Add new colour option (e.g. RGB Multi-Colour)"
+                          value={newLampColourInput}
+                          onChange={(e) => setNewLampColourInput(e.target.value)}
+                          className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white flex-1"
+                        />
                         <button
                           type="button"
-                          onClick={() => setShowAddVariantForm(!showAddVariantForm)}
-                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1 border border-slate-700"
+                          onClick={() => {
+                            if (newLampColourInput.trim()) {
+                              setLampColours([...lampColours, newLampColourInput.trim()]);
+                              setNewLampColourInput('');
+                            }
+                          }}
+                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3 py-1 rounded-lg"
                         >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>{showAddVariantForm ? 'Cancel Variant' : 'Add Variant'}</span>
+                          + Add Colour
                         </button>
                       </div>
+                    </div>
 
-                      {/* Add Variant Sub-form */}
-                      {showAddVariantForm && (
-                        <div className="bg-slate-950/80 border border-slate-700 rounded-xl p-3 space-y-3">
-                          {variantError && (
-                            <div className="bg-rose-500/20 text-rose-300 text-xs p-2 rounded-lg">
-                              {variantError}
-                            </div>
-                          )}
-
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            <div>
-                              <label className="block text-[10px] text-slate-400 font-semibold mb-0.5">Variant SKU *</label>
-                              <input
-                                type="text"
-                                placeholder="e.g. VAR-RED-XL"
-                                value={varSku}
-                                onChange={(e) => setVarSku(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white text-xs font-mono"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] text-slate-400 font-semibold mb-0.5">Variant Name *</label>
-                              <input
-                                type="text"
-                                placeholder="e.g. Crimson Red - XL"
-                                value={varName}
-                                onChange={(e) => setVarName(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white text-xs"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] text-slate-400 font-semibold mb-0.5">Price (₹) *</label>
-                              <input
-                                type="number"
-                                placeholder="e.g. 4999"
-                                value={varPrice}
-                                onChange={(e) => setVarPrice(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white text-xs"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] text-slate-400 font-semibold mb-0.5">MRP (₹)</label>
-                              <input
-                                type="number"
-                                placeholder="e.g. 5999"
-                                value={varMrp}
-                                onChange={(e) => setVarMrp(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white text-xs"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] text-slate-400 font-semibold mb-0.5">Stock Qty</label>
-                              <input
-                                type="number"
-                                value={varStock}
-                                onChange={(e) => setVarStock(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white text-xs"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[10px] text-slate-400 font-semibold mb-0.5">Color Attribute</label>
-                              <input
-                                type="text"
-                                placeholder="e.g. Red"
-                                value={varColor}
-                                onChange={(e) => setVarColor(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-1.5 text-white text-xs"
-                              />
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={handleCreateVariant}
-                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-4 py-1.5 rounded-lg cursor-pointer"
+                    {/* Wattage Options Config */}
+                    <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 space-y-2">
+                      <span className="text-[11px] font-bold text-slate-300 block">Configured Bulb Wattages:</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {lampWattages.map((watt, idx) => (
+                          <span
+                            key={idx}
+                            className="bg-slate-800 text-amber-300 border border-slate-700 text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5"
                           >
-                            Save Variant
-                          </button>
-                        </div>
-                      )}
+                            <span>{watt}</span>
+                            <button
+                              type="button"
+                              onClick={() => setLampWattages(lampWattages.filter((_, i) => i !== idx))}
+                              className="text-slate-400 hover:text-rose-400 text-xs"
+                            >
+                              &times;
+                            </button>
+                          </span>
+                        ))}
+                      </div>
 
-                      {/* Existing Variants Table */}
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-[11px]">
-                          <thead>
-                            <tr className="text-slate-400 font-bold border-b border-slate-800">
-                              <th className="py-1.5">SKU</th>
-                              <th className="py-1.5">Name</th>
-                              <th className="py-1.5">Price</th>
-                              <th className="py-1.5">Stock</th>
-                              <th className="py-1.5 text-right">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {productVariants.map((v) => (
-                              <tr key={v.id} className="border-b border-slate-800/60 text-slate-200">
-                                <td className="py-1.5 font-mono text-indigo-300">{v.sku}</td>
-                                <td className="py-1.5 font-bold">{v.name}</td>
-                                <td className="py-1.5 font-semibold">₹{Number(v.price).toLocaleString('en-IN')}</td>
-                                <td className="py-1.5 font-medium">{v.stockQuantity}</td>
-                                <td className="py-1.5 text-right">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteVariant(v.id)}
-                                    className="text-rose-400 hover:text-rose-300 p-1 cursor-pointer"
-                                    title="Delete Variant"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                            {productVariants.length === 0 && (
-                              <tr>
-                                <td colSpan={5} className="py-2 text-slate-500 italic text-center">
-                                  No variants defined for this product yet.
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
+                      <div className="flex gap-2 pt-1">
+                        <input
+                          type="text"
+                          placeholder="Wattage (e.g. 4W)"
+                          value={newLampWattageInput}
+                          onChange={(e) => setNewLampWattageInput(e.target.value)}
+                          className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white flex-1"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Price Delta ₹ (e.g. 30)"
+                          value={newLampWattageDeltaInput}
+                          onChange={(e) => setNewLampWattageDeltaInput(e.target.value)}
+                          className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white w-32"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (newLampWattageInput.trim()) {
+                              const delta = newLampWattageDeltaInput.trim();
+                              const formatted = delta ? `${newLampWattageInput.trim()} (+₹${delta})` : newLampWattageInput.trim();
+                              setLampWattages([...lampWattages, formatted]);
+                              setNewLampWattageInput('');
+                              setNewLampWattageDeltaInput('');
+                            }
+                          }}
+                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3 py-1 rounded-lg cursor-pointer"
+                        >
+                          + Add Wattage
+                        </button>
                       </div>
                     </div>
+
+                    {variantError && (
+                      <div className="bg-rose-500/20 text-rose-300 text-xs p-2 rounded-lg border border-rose-500/30">
+                        {variantError}
+                      </div>
+                    )}
+
+                    {variantSuccess && (
+                      <div className="bg-emerald-500/20 text-emerald-300 text-xs p-2 rounded-lg border border-emerald-500/30 font-semibold">
+                        {variantSuccess}
+                      </div>
+                    )}
+
+                    {/* Variant Matrix Table */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-[11px]">
+                        <thead>
+                          <tr className="text-slate-400 font-bold border-b border-slate-800">
+                            <th className="py-1.5">SKU</th>
+                            <th className="py-1.5">Colour</th>
+                            <th className="py-1.5">Wattage</th>
+                            <th className="py-1.5">Price (₹)</th>
+                            <th className="py-1.5">Stock</th>
+                            <th className="py-1.5 text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {productVariants.map((v, idx) => (
+                            <tr key={v.id || idx} className="border-b border-slate-800/60 text-slate-200">
+                              <td className="py-1.5 font-mono text-indigo-300">{v.sku}</td>
+                              <td className="py-1.5 font-bold text-amber-300">{v.colour || v.attributes?.colour || 'Standard'}</td>
+                              <td className="py-1.5 font-bold text-amber-400">{v.wattage || v.attributes?.wattage || 'Base'}</td>
+                              <td className="py-1.5">
+                                <input
+                                  type="number"
+                                  value={v.price}
+                                  onChange={(e) => {
+                                    const val = Number(e.target.value);
+                                    const updated = [...productVariants];
+                                    updated[idx].price = val;
+                                    setProductVariants(updated);
+                                  }}
+                                  className="w-20 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs font-bold text-emerald-400"
+                                />
+                              </td>
+                              <td className="py-1.5 font-medium">
+                                <input
+                                  type="number"
+                                  value={v.stockQuantity}
+                                  onChange={(e) => {
+                                    const val = Number(e.target.value);
+                                    const updated = [...productVariants];
+                                    updated[idx].stockQuantity = val;
+                                    setProductVariants(updated);
+                                  }}
+                                  className="w-16 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white"
+                                />
+                              </td>
+                              <td className="py-1.5 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (v.id && editingProductId) {
+                                      handleDeleteVariant(v.id);
+                                    } else {
+                                      setProductVariants(productVariants.filter((_, i) => i !== idx));
+                                    }
+                                  }}
+                                  className="text-rose-400 hover:text-rose-300 p-1 cursor-pointer"
+                                  title="Delete Variant"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {productVariants.length === 0 && (
+                            <tr>
+                              <td colSpan={6} className="py-3 text-slate-500 italic text-center">
+                                No variants generated. Click "Generate Matrix" above to auto-create Colour & Wattage combinations.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                   )}
 
                   {/* Toggles */}
@@ -1882,7 +2446,52 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       />
                       <span>Best Seller</span>
                     </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-indigo-300 bg-indigo-950/60 border border-indigo-500/40 px-3 py-1 rounded-lg">
+                      <input
+                        type="checkbox"
+                        checked={prodRequiresCustomization}
+                        onChange={(e) => setProdRequiresCustomization(e.target.checked)}
+                        className="w-4 h-4 accent-indigo-500 rounded"
+                      />
+                      <span>Requires Custom Name ({prodRequiresCustomization ? 'YES' : 'NO'})</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-cyan-300 bg-cyan-950/60 border border-cyan-500/40 px-3 py-1 rounded-lg">
+                      <input
+                        type="checkbox"
+                        checked={prodRequiresImageUpload}
+                        onChange={(e) => setProdRequiresImageUpload(e.target.checked)}
+                        className="w-4 h-4 accent-cyan-500 rounded"
+                      />
+                      <span>Requires Photo Upload ({prodRequiresImageUpload ? 'YES' : 'NO'})</span>
+                    </label>
                   </div>
+
+                  {prodRequiresImageUpload && (
+                    <div className="bg-cyan-950/40 border border-cyan-500/30 rounded-xl p-3 grid grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <label className="block text-slate-300 font-bold mb-1">Minimum Photos Required</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={prodMinimumImageUploads}
+                          onChange={(e) => setProdMinimumImageUploads(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-300 font-bold mb-1">Maximum Photos Allowed</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={prodMaximumImageUploads}
+                          onChange={(e) => setProdMaximumImageUploads(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-bold"
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex space-x-2 pt-2">
                     <button
@@ -1900,7 +2509,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </button>
                   </div>
                 </form>
-              )}
+                );
+              })()}
+            </ErrorBoundary>
+          )}
 
               {/* Product List Table */}
               <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl overflow-x-auto text-xs">
@@ -1919,7 +2531,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     {(Array.isArray(products) ? products : []).map((p) => (
                       <tr key={p.id} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors">
                         <td className="p-3 flex items-center space-x-3">
-                          <img src={p.imageUrl || p.images[0]} alt={p.name || p.title} className="w-10 h-10 object-cover rounded-lg bg-slate-900 border border-slate-700" />
+                          <img
+                            src={
+                              p.imageUrl ||
+                              (typeof p.images?.[0] === 'string' ? p.images[0] : (p.images?.[0]?.url || 'https://images.unsplash.com/photo-1527977966376-1c8408f9f108?auto=format&fit=crop&q=80&w=800'))
+                            }
+                            alt={p.name || p.title}
+                            className="w-10 h-10 object-cover rounded-lg bg-slate-900 border border-slate-700"
+                          />
                           <div>
                             <span className="font-bold text-slate-100 block">{p.name || p.title}</span>
                             <span className="text-[10px] text-slate-400 font-mono">SKU: {p.sku} • {p.category?.name || 'Catalog'}</span>
@@ -1982,6 +2601,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {p.isFeatured && <span className="bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded text-[9px] font-bold">FEATURED</span>}
                             {p.isNewArrival && <span className="bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded text-[9px] font-bold">NEW</span>}
                             {p.isBestSeller && <span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded text-[9px] font-bold">BEST SELLER</span>}
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${p.requiresCustomization ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-slate-800 text-slate-400'}`}>
+                              Requires Custom Name: {p.requiresCustomization ? 'YES' : 'NO'}
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${p.requiresImageUpload ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-slate-800 text-slate-400'}`}>
+                              Photos: {p.requiresImageUpload ? `YES (${p.minimumImageUploads || 1}-${p.maximumImageUploads || 5})` : 'NO'}
+                            </span>
                           </div>
                         </td>
                         <td className="p-3 text-right">
@@ -2259,19 +2884,128 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* TAB 4: ORDERS MANAGEMENT */}
           {activeTab === 'orders' && (
             <div className="space-y-4 text-xs">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                <div>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                   <h3 className="text-sm font-bold text-slate-200">Customer Orders Control</h3>
-                  <p className="text-[11px] text-slate-400">All standard e-commerce orders and store pick-ups</p>
+
+                  {/* Fulfillment Filter Pills */}
+                  <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setOrderFulfillmentFilter('ALL')}
+                      className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                        orderFulfillmentFilter === 'ALL'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      All Orders ({adminOrders.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOrderFulfillmentFilter('PICKUP')}
+                      className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1 ${
+                        orderFulfillmentFilter === 'PICKUP'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-emerald-400/80 hover:text-emerald-300'
+                      }`}
+                    >
+                      <Building2 className="w-3 h-3" />
+                      <span>Store Pickup ({adminOrders.filter(checkIsStorePickup).length})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOrderFulfillmentFilter('DELIVERY')}
+                      className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1 ${
+                        orderFulfillmentFilter === 'DELIVERY'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-indigo-400/80 hover:text-indigo-300'
+                      }`}
+                    >
+                      <Truck className="w-3 h-3" />
+                      <span>Home Delivery ({adminOrders.filter(o => !checkIsStorePickup(o)).length})</span>
+                    </button>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                {/* Status Filter Pills */}
+                <div className="flex flex-wrap items-center gap-1.5 bg-slate-950/80 p-1.5 rounded-xl border border-slate-800/80">
                   <button
-                    onClick={() => setActiveTab('custom_orders')}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-indigo-600/30 active:scale-95 text-xs"
+                    type="button"
+                    onClick={() => setOrderStatusFilter('ALL')}
+                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                      orderStatusFilter === 'ALL'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
                   >
-                    <QrCode className="w-3.5 h-3.5" />
-                    <span>+ New Custom Order</span>
+                    All ({countAllOrders})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderStatusFilter('PENDING')}
+                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                      orderStatusFilter === 'PENDING'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'text-amber-400/80 hover:text-amber-300'
+                    }`}
+                  >
+                    Pending ({countPendingOrders})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderStatusFilter('CONFIRMED')}
+                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                      orderStatusFilter === 'CONFIRMED'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-blue-400/80 hover:text-blue-300'
+                    }`}
+                  >
+                    Confirmed ({countConfirmedOrders})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderStatusFilter('PROCESSING')}
+                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                      orderStatusFilter === 'PROCESSING'
+                        ? 'bg-purple-600 text-white shadow-xs'
+                        : 'text-purple-400/80 hover:text-purple-300'
+                    }`}
+                  >
+                    Processing ({countProcessingOrders})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderStatusFilter('SHIPPED')}
+                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                      orderStatusFilter === 'SHIPPED'
+                        ? 'bg-cyan-600 text-white shadow-xs'
+                        : 'text-cyan-400/80 hover:text-cyan-300'
+                    }`}
+                  >
+                    Shipped ({countShippedOrders})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderStatusFilter('DELIVERED')}
+                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                      orderStatusFilter === 'DELIVERED'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-emerald-400/80 hover:text-emerald-300'
+                    }`}
+                  >
+                    Delivered ({countDeliveredOrders})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderStatusFilter('CANCELLED')}
+                    className={`px-3 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                      orderStatusFilter === 'CANCELLED'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'text-rose-400/80 hover:text-rose-300'
+                    }`}
+                  >
+                    Cancelled ({countCancelledOrders})
                   </button>
                 </div>
               </div>
@@ -2279,82 +3013,267 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="space-y-3">
                 {displayOrders.length === 0 ? (
                   <div className="text-center py-8 bg-slate-800/40 border border-slate-700/50 rounded-2xl">
-                    <p className="text-slate-400 font-medium">No customer orders placed yet.</p>
+                    <p className="text-slate-400 font-medium">No matching orders found.</p>
                   </div>
                 ) : (
                   displayOrders.map((ord) => {
                     const custName = ord.customerName || (ord as any).user?.name || (ord as any).shippingAddress?.fullName || 'Customer';
                     const custEmail = ord.customerEmail || (ord as any).user?.email || (ord as any).shippingAddress?.email || 'N/A';
+                    const custPhone = (ord as any).shippingAddress?.phone || (ord as any).shippingAddress?.phoneNumber || (ord as any).user?.phone || 'N/A';
+                    const isPickup = checkIsStorePickup(ord);
+
                     return (
-                  <div key={ord.id || ord.orderNumber} className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 space-y-3">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-700 pb-2">
-                      <div>
-                        <span className="font-bold text-amber-400 text-sm font-mono">{ord.orderNumber}</span>
-                        <span className="text-slate-400 block">Customer: {custName} ({custEmail})</span>
-                      </div>
+                      <div key={ord.id || ord.orderNumber} className={`border rounded-2xl p-4 space-y-3 transition-all ${
+                        isPickup 
+                          ? 'bg-slate-800/90 border-emerald-500/40 hover:border-emerald-500/70' 
+                          : 'bg-slate-800/80 border-slate-700/80 hover:border-indigo-500/50'
+                      }`}>
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-700 pb-2.5">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-amber-400 text-sm font-mono">{ord.orderNumber}</span>
 
-                      <div className="flex items-center space-x-3">
-                        <span className="text-slate-200 font-bold">₹{Number(ord.totalAmount || 0).toLocaleString('en-IN')}</span>
+                              {/* Prominent Fulfillment Badge */}
+                              {isPickup ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse">
+                                  <Building2 className="w-3 h-3 text-emerald-400" />
+                                  🏪 PICKUP FROM STORE (Hyderabad)
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                                  <Truck className="w-3 h-3 text-indigo-400" />
+                                  🚚 HOME DELIVERY ADDRESS
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-slate-400 block text-xs">
+                              Customer: <strong className="text-slate-200">{custName}</strong> ({custEmail}) • 📞 {custPhone}
+                            </span>
+                          </div>
 
-                        {/* Order Status Select */}
-                        <select
-                          value={ord.orderStatus}
-                          onChange={(e) => handleUpdateOrderStatus(ord.id, e.target.value as OrderStatus)}
-                          className="bg-slate-900 border border-slate-700 text-indigo-400 font-bold text-xs rounded-xl px-2.5 py-1.5"
-                        >
-                          <option value="PENDING">PENDING</option>
-                          <option value="PROCESSING">PROCESSING</option>
-                          <option value="SHIPPED">SHIPPED / READY</option>
-                          <option value="OUT_FOR_DELIVERY">OUT FOR DELIVERY</option>
-                          <option value="DELIVERED">DELIVERED / COLLECTED</option>
-                          <option value="CANCELLED">CANCELLED</option>
-                        </select>
-                      </div>
-                    </div>
+                          <div className="flex items-center space-x-3">
+                            <span className="text-slate-200 font-extrabold text-sm font-mono">₹{Number(ord.totalAmount || 0).toLocaleString('en-IN')}</span>
 
-                    <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 gap-2">
-                      <div className="flex items-center gap-2">
-                        {ord.fulfillmentMethod === 'STORE_PICKUP' ? (
-                          <span className="bg-indigo-950 text-indigo-300 font-bold text-[10px] px-2 py-0.5 rounded-md border border-indigo-700/50">
-                            🏬 STORE PICKUP (Gachibowli)
-                          </span>
-                        ) : (
-                          <span className="bg-slate-900 text-slate-300 font-bold text-[10px] px-2 py-0.5 rounded-md border border-slate-700">
-                            🚚 HOME DELIVERY ({ord.shippingProvider || 'Delhivery'})
-                          </span>
+                            {/* Order Status Select */}
+                            <select
+                              value={ord.orderStatus}
+                              onChange={(e) => handleUpdateOrderStatus(ord.id, e.target.value as OrderStatus)}
+                              className="bg-slate-900 border border-slate-700 text-indigo-400 font-bold text-xs rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                            >
+                              <option value="PENDING">PENDING</option>
+                              <option value="CONFIRMED">CONFIRMED</option>
+                              <option value="PROCESSING">PROCESSING</option>
+                              <option value="SHIPPED">SHIPPED (Ready for Pickup)</option>
+                              <option value="OUT_FOR_DELIVERY">OUT_FOR_DELIVERY</option>
+                              <option value="DELIVERED">DELIVERED (Collected)</option>
+                              <option value="CANCELLED">CANCELLED</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Fulfillment Location Details Box */}
+                        {isPickup ? (() => {
+                          const isReady = ord.orderStatus === 'SHIPPED' || (ord as any).orderStatus === 'READY_FOR_PICKUP';
+                          const isCollected = ord.orderStatus === 'DELIVERED';
+
+                          return (
+                            <div className="bg-emerald-950/70 border border-emerald-500/50 rounded-xl p-3 text-xs space-y-2">
+                              <div className="flex items-center justify-between text-emerald-300 font-bold flex-wrap gap-2">
+                                <span className="flex items-center gap-1.5">
+                                  <Building2 className="w-4 h-4 text-emerald-400" /> Fulfillment Method: Store Collection
+                                </span>
+                                <span className="text-[10px] text-emerald-200 bg-emerald-900/90 px-2 py-0.5 rounded font-mono font-bold">
+                                  Store: Gachibowli, Hyderabad
+                                </span>
+                              </div>
+
+                              {/* Live Status Indicator Banner */}
+                              {isReady && (
+                                <div className="bg-slate-950 border border-emerald-400/80 rounded-lg p-2 text-emerald-300 font-extrabold text-[11px] flex items-center justify-between">
+                                  <span className="flex items-center gap-1.5">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                                    <span>STATUS UPDATED: Order is READY FOR PICKUP</span>
+                                  </span>
+                                  <span className="text-[10px] text-emerald-400/80 font-normal">📧 Customer Notified</span>
+                                </div>
+                              )}
+
+                              {isCollected && (
+                                <div className="bg-slate-950 border border-indigo-400/80 rounded-lg p-2 text-indigo-300 font-extrabold text-[11px] flex items-center justify-between">
+                                  <span className="flex items-center gap-1.5">
+                                    <Package className="w-4 h-4 text-indigo-400 shrink-0" />
+                                    <span>STATUS COMPLETED: Handed Over / Collected</span>
+                                  </span>
+                                  <span className="text-[10px] text-indigo-400/80 font-normal">🎉 Order Finished</span>
+                                </div>
+                              )}
+
+                              <p className="text-emerald-100/90 text-[11px] leading-relaxed">
+                                📍 <strong>Collection Location:</strong> NEXRA 3D Store, Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500032, Telangana
+                                <span className="block mt-0.5 text-emerald-300 font-medium">Customer Contact: {custPhone} • Registered Email: {custEmail}</span>
+                              </p>
+                            </div>
+                          );
+                        })() : (
+                          <div className="bg-slate-900/60 border border-slate-700/60 rounded-xl p-3 text-xs space-y-1">
+                            <div className="flex items-center justify-between text-indigo-300 font-bold">
+                              <span className="flex items-center gap-1.5"><Truck className="w-4 h-4 text-indigo-400" /> Fulfillment Method: Courier Delivery</span>
+                              <span className="text-[10px] text-slate-300 bg-slate-800 px-2 py-0.5 rounded font-mono">{(ord as any).shippingProvider || 'Courier Partner'}</span>
+                            </div>
+                            <p className="text-slate-300 text-[11px] leading-relaxed">
+                              🏠 <strong>Ship To Address:</strong> {ord.shippingAddress?.streetAddress || (ord.shippingAddress as any)?.addressLine1 || 'Address details logged'}, {ord.shippingAddress?.city}, {ord.shippingAddress?.state} - {ord.shippingAddress?.postalCode || (ord.shippingAddress as any)?.pincode}
+                            </p>
+                          </div>
                         )}
-                        <span>
-                          {ord.fulfillmentMethod === 'STORE_PICKUP' ? 'Store Counter Collection' : `${ord.shippingAddress?.streetAddress || ''}, ${ord.shippingAddress?.city || ''}`} • Payment: {ord.paymentMethod}
-                        </span>
-                      </div>
 
-                      {ord.fulfillmentMethod !== 'STORE_PICKUP' && (
-                        <button
-                          onClick={() => {
-                            setSelectedOrderForShipment(ord);
-                            setShowCreateShipmentModal(true);
-                          }}
-                          className="bg-indigo-600/80 hover:bg-indigo-600 text-white font-bold text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
-                        >
-                          <Truck className="w-3 h-3" />
-                          <span>Dispatch Shipment</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
+                        <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-400 gap-2 pt-1 border-t border-slate-800">
+                          <span>
+                            Payment: <strong>{ord.paymentMethod}</strong> • Payment ID: <span className="font-mono text-emerald-400 font-bold">{(ord as any).razorpayPaymentId || (ord as any).paymentId || 'N/A'}</span>
+                          </span>
+
+                          <div className="flex items-center gap-1.5">
+                            {ord.orderStatus !== 'CANCELLED' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCancelOrderModal({
+                                    isOpen: true,
+                                    order: ord,
+                                    reason: '',
+                                    isSubmitting: false,
+                                    error: null
+                                  });
+                                }}
+                                className="font-bold text-[11px] px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer transition-colors bg-rose-950/80 hover:bg-rose-900 border border-rose-500/40 text-rose-300 hover:text-white"
+                                title="Cancel Order and Restore Stock"
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                                <span>Cancel Order</span>
+                              </button>
+                            )}
+
+                            {isPickup && (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateOrderStatus(ord.id, 'SHIPPED')}
+                                className={`font-bold text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1 transition-all shadow-xs cursor-pointer ${
+                                  ord.orderStatus === 'SHIPPED'
+                                    ? 'bg-slate-950 border border-emerald-400 text-emerald-300 font-extrabold shadow-inner'
+                                    : 'bg-emerald-700 hover:bg-emerald-600 text-white'
+                                }`}
+                              >
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>{ord.orderStatus === 'SHIPPED' ? '✅ Ready for Pickup' : 'Mark Ready'}</span>
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => {
+                                setSelectedOrderForShipment(ord);
+                                setShowCreateShipmentModal(true);
+                              }}
+                              className={`font-bold text-[11px] px-3 py-1.5 rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm ${
+                                isPickup 
+                                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white' 
+                                  : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                              }`}
+                            >
+                              {isPickup ? <Building2 className="w-3.5 h-3.5" /> : <Truck className="w-3.5 h-3.5" />}
+                              <span>{isPickup ? '🏪 Manage Store Pickup' : '🚚 Dispatch Shipment'}</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {(ord.items || []).length > 0 && (
+                          <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-2.5 space-y-1.5">
+                            <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Items / Personalization</div>
+                            {(ord.items || []).map((item: any) => {
+                              const itemTitle = item.productTitle || item.product?.name || item.product?.title || 'Product';
+                              const customName = item.customizationText || ((item.productTitle || '').includes('• For:') ? (item.productTitle || '').split('• For:')[1]?.trim() : null);
+                              const sku = item.skuSnapshot || item.variant?.sku || item.product?.sku || 'N/A';
+                              const unitPrice = Number(item.price || 0);
+                              const qty = Number(item.quantity || 1);
+                              const subtotal = Number(item.totalPrice ?? item.total ?? item.subtotal ?? (unitPrice * qty));
+                              const colour = item.selectedColour || item.variant?.colour || (item.variant?.attributes as any)?.colour;
+                              const wattage = item.selectedWattage || item.variant?.wattage || (item.variant?.attributes as any)?.wattage;
+
+                              return (
+                                <div key={item.id || `${ord.id}-${item.productId}`} className="bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 space-y-1">
+                                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-100">
+                                    <span className="text-slate-100 font-extrabold">{itemTitle}</span>
+                                    <span className="text-slate-300 font-mono text-[11px]">
+                                      Quantity: {qty} • Unit Price: ₹{unitPrice.toLocaleString('en-IN')} • Subtotal: ₹{subtotal.toLocaleString('en-IN')}
+                                    </span>
+                                  </div>
+
+                                  <div className="text-[11px] text-slate-400">
+                                    SKU: <strong className="text-slate-200 font-mono">{sku}</strong>
+                                  </div>
+
+                                  {customName && (
+                                    <div className="bg-indigo-950/90 border border-indigo-500/60 rounded-md px-2.5 py-1 text-xs font-bold text-indigo-200 flex items-center gap-2 my-1">
+                                      <span className="text-indigo-400 font-extrabold uppercase text-[10px] tracking-wider">CUSTOM NAME:</span>
+                                      <span className="text-white font-black text-sm tracking-wide bg-indigo-900/80 px-2 py-0.5 rounded border border-indigo-400/50">{customName}</span>
+                                    </div>
+                                  )}
+
+                                  {((item as any).customizationImages || []).length > 0 && (
+                                    <div className="bg-slate-950/80 border border-indigo-500/40 rounded-lg p-2.5 my-1.5 space-y-2">
+                                      <div className="flex items-center justify-between text-[11px] font-bold text-indigo-300">
+                                        <span>📷 CUSTOMER UPLOADED PHOTOS ({((item as any).customizationImages || []).length}):</span>
+                                        <span className="text-[10px] text-slate-400 font-normal">Click thumbnail to view full-resolution image</span>
+                                      </div>
+                                      <div className="flex flex-wrap gap-2.5">
+                                        {((item as any).customizationImages || []).map((cImg: any, cIdx: number) => {
+                                          const imgUrl = cImg.imageUrl || cImg.url;
+                                          return (
+                                            <div key={cImg.id || cIdx} className="bg-slate-900 rounded-lg border border-slate-700 p-1.5 flex flex-col items-center">
+                                              <a
+                                                href={imgUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="block overflow-hidden rounded border border-slate-700 hover:border-indigo-400 transition-all group"
+                                              >
+                                                <img
+                                                  src={imgUrl}
+                                                  alt={`Customer Photo ${cIdx + 1}`}
+                                                  className="w-16 h-16 object-cover rounded group-hover:scale-105 transition-transform"
+                                                />
+                                              </a>
+                                              <div className="flex items-center justify-between w-full mt-1.5 px-0.5">
+                                                <span className="text-[9px] font-mono text-indigo-300 font-black">Photo #{cIdx + 1}</span>
+                                                <a
+                                                  href={imgUrl}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="text-[9px] text-cyan-400 hover:text-cyan-300 font-extrabold underline"
+                                                >
+                                                  View / Download
+                                                </a>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {(colour || wattage) && (
+                                    <div className="text-[10px] font-bold text-amber-300 bg-amber-950/40 border border-amber-800/60 rounded px-2 py-0.5 w-fit">
+                                      {[colour && `Colour: ${colour}`, wattage && `Wattage: ${wattage}`].filter(Boolean).join(' | ')}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
                   })
                 )}
               </div>
             </div>
-          )}
-
-          {/* TAB 4.1: CUSTOM ORDERS & RAZORPAY PAYMENT QR */}
-          {activeTab === 'custom_orders' && (
-            <CustomOrdersPanel
-              getAuthHeaders={getAuthHeaders}
-              onOrderPaid={onRefreshData}
-            />
           )}
 
           {/* TAB 4.5: SHIPMENTS & LOGISTICS */}
@@ -2605,63 +3524,310 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {activeTab === 'coupons' && (
             <div className="space-y-4 text-xs">
               <div className="flex justify-between items-center">
-                <h3 className="text-sm font-bold text-slate-200">Discount Coupons</h3>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-200">Discount Coupons & Promotional Offers</h3>
+                  <p className="text-[11px] text-slate-400">Manage promotional coupons, discount rules, usage caps, and validity dates</p>
+                </div>
                 <button
-                  onClick={() => setShowAddCouponModal(true)}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer"
+                  onClick={handleOpenCreateCoupon}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Add Coupon
+                  <Plus className="w-4 h-4" /> Add Coupon
                 </button>
               </div>
 
+              {/* Add / Edit Coupon Modal Panel */}
               {showAddCouponModal && (
-                <form onSubmit={handleCreateCoupon} className="bg-slate-800 p-4 rounded-2xl border border-slate-700 space-y-3">
-                  <div className="grid grid-cols-3 gap-3">
-                    <input
-                      type="text"
-                      placeholder="Code (e.g. FESTIVE20)"
-                      required
-                      value={coupCode}
-                      onChange={(e) => setCoupCode(e.target.value)}
-                      className="bg-slate-900 border border-slate-700 rounded-xl p-2 text-white uppercase font-mono font-bold"
-                    />
-                    <select
-                      value={coupType}
-                      onChange={(e) => setCoupType(e.target.value as any)}
-                      className="bg-slate-900 border border-slate-700 rounded-xl p-2 text-white font-bold"
+                <div className="bg-slate-800/95 p-5 rounded-2xl border border-indigo-500/40 space-y-4 shadow-xl">
+                  <div className="flex justify-between items-center border-b border-slate-700/80 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Tag className="w-4 h-4 text-indigo-400" />
+                      <h4 className="text-sm font-bold text-slate-100">
+                        {editingCouponId ? `Edit Coupon (${coupCode})` : 'Create New Promotional Coupon'}
+                      </h4>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCouponModal(false)}
+                      className="text-slate-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
                     >
-                      <option value="PERCENTAGE">PERCENTAGE %</option>
-                      <option value="FIXED">FIXED AMOUNT ₹</option>
-                    </select>
-                    <input
-                      type="number"
-                      placeholder="Discount Value"
-                      required
-                      value={coupVal}
-                      onChange={(e) => setCoupVal(e.target.value)}
-                      className="bg-slate-900 border border-slate-700 rounded-xl p-2 text-white"
-                    />
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button type="submit" className="bg-emerald-600 text-white font-bold px-4 py-2 rounded-xl">
-                    Save Coupon
-                  </button>
-                </form>
+
+                  <form onSubmit={handleSaveCoupon} className="space-y-4">
+                    {coupError && (
+                      <div className="bg-rose-500/20 border border-rose-500/50 text-rose-300 p-3 rounded-xl text-xs font-semibold flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                        <span>{coupError}</span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-slate-400 font-bold mb-1 text-[11px]">Coupon Code *</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. FESTIVE20"
+                          required
+                          value={coupCode}
+                          onChange={(e) => setCoupCode(e.target.value.toUpperCase())}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white uppercase font-mono font-bold focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 font-bold mb-1 text-[11px]">Discount Type *</label>
+                        <select
+                          value={coupType}
+                          onChange={(e) => setCoupType(e.target.value as any)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-bold focus:border-indigo-500 focus:outline-hidden"
+                        >
+                          <option value="PERCENTAGE">PERCENTAGE (% OFF)</option>
+                          <option value="FIXED">FIXED AMOUNT (₹ OFF)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 font-bold mb-1 text-[11px]">
+                          Discount Value * {coupType === 'PERCENTAGE' ? '(%)' : '(₹)'}
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder={coupType === 'PERCENTAGE' ? 'e.g. 15' : 'e.g. 500'}
+                          required
+                          value={coupVal}
+                          onChange={(e) => setCoupVal(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-bold focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-slate-400 font-bold mb-1 text-[11px]">Minimum Order Amount (₹)</label>
+                        <input
+                          type="number"
+                          placeholder="0 for no minimum"
+                          value={coupMinOrder}
+                          onChange={(e) => setCoupMinOrder(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-white focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 font-bold mb-1 text-[11px]">
+                          Maximum Discount Cap (₹) {coupType === 'PERCENTAGE' ? '' : '(Optional)'}
+                        </label>
+                        <input
+                          type="number"
+                          placeholder="Optional max cap"
+                          value={coupMaxDiscount}
+                          onChange={(e) => setCoupMaxDiscount(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-white focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 font-bold mb-1 text-[11px]">Usage Limit (Total Times)</label>
+                        <input
+                          type="number"
+                          placeholder="Leave blank for unlimited"
+                          value={coupUsageLimit}
+                          onChange={(e) => setCoupUsageLimit(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-white focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-400 font-bold mb-1 text-[11px]">Description (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Festive discount on orders above ₹1,000"
+                        value={coupDescription}
+                        onChange={(e) => setCoupDescription(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-white focus:border-indigo-500 focus:outline-hidden"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-400 font-bold mb-1 text-[11px]">Start Date & Time (Optional)</label>
+                        <input
+                          type="datetime-local"
+                          value={coupStartDate}
+                          onChange={(e) => setCoupStartDate(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-white focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 font-bold mb-1 text-[11px]">Expiry Date & Time (Optional)</label>
+                        <input
+                          type="datetime-local"
+                          value={coupEndDate}
+                          onChange={(e) => setCoupEndDate(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2 text-white focus:border-indigo-500 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2 pt-1">
+                      <input
+                        type="checkbox"
+                        id="coupIsActiveInput"
+                        checked={coupIsActive}
+                        onChange={(e) => setCoupIsActive(e.target.checked)}
+                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-700 bg-slate-900"
+                      />
+                      <label htmlFor="coupIsActiveInput" className="text-slate-200 font-bold text-xs cursor-pointer">
+                        Active & Available for Checkout
+                      </label>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2 border-t border-slate-700/80">
+                      <button
+                        type="button"
+                        onClick={() => setShowAddCouponModal(false)}
+                        className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold rounded-xl transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingCoupon}
+                        className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        {isSavingCoupon ? 'Saving...' : editingCouponId ? 'Update Coupon' : 'Create Coupon'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {coupons.map((c) => (
-                  <div key={c.id} className="bg-slate-800/80 border border-slate-700 p-3 rounded-2xl space-y-1">
-                    <div className="flex justify-between items-center">
-                      <span className="font-mono font-black text-amber-400 text-sm">{c.code}</span>
-                      <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded">
-                        ACTIVE
-                      </span>
+              {/* Coupon List Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {coupons.map((c) => {
+                  const isPct = c.discountType === 'PERCENTAGE' || (c as any).type === 'PERCENTAGE';
+                  const minAmt = Number(c.minOrderAmount ?? c.minimumOrderAmount ?? 0);
+                  const maxCap = c.maxDiscount || c.maximumDiscountAmount ? Number(c.maxDiscount || c.maximumDiscountAmount) : null;
+                  const used = Number(c.usageCount ?? c.usedCount ?? 0);
+                  const limit = c.usageLimit ? Number(c.usageLimit) : null;
+                  const startDateStr = c.startDate || c.startsAt;
+                  const endDateStr = c.endDate || c.expiresAt || c.expiryDate;
+
+                  return (
+                    <div
+                      key={c.id}
+                      className={`bg-slate-800/90 border ${
+                        c.isActive ? 'border-slate-700 hover:border-indigo-500/50' : 'border-slate-800 opacity-60'
+                      } p-4 rounded-2xl space-y-3 shadow-sm transition-all flex flex-col justify-between`}
+                    >
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="font-mono font-black text-amber-400 text-base tracking-wide bg-amber-400/10 px-2.5 py-0.5 rounded-lg border border-amber-400/20">
+                              {c.code}
+                            </span>
+                          </div>
+                          <span
+                            className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md uppercase tracking-wider ${
+                              c.isActive
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                : 'bg-slate-700 text-slate-400 border border-slate-600'
+                            }`}
+                          >
+                            {c.isActive ? 'ACTIVE' : 'INACTIVE'}
+                          </span>
+                        </div>
+
+                        {c.description && (
+                          <p className="text-slate-300 text-xs font-medium line-clamp-2">{c.description}</p>
+                        )}
+
+                        <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-700/60 space-y-1 text-[11px]">
+                          <div className="flex justify-between font-bold text-slate-200">
+                            <span>Discount:</span>
+                            <span className="text-emerald-400">
+                              {isPct ? `${c.discountValue}% OFF` : `₹${c.discountValue} FLAT OFF`}
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between text-slate-400">
+                            <span>Min Order:</span>
+                            <span className="text-slate-300 font-semibold">{minAmt > 0 ? `₹${minAmt}` : 'No Minimum'}</span>
+                          </div>
+
+                          {maxCap && (
+                            <div className="flex justify-between text-slate-400">
+                              <span>Max Discount Cap:</span>
+                              <span className="text-slate-300 font-semibold">₹{maxCap}</span>
+                            </div>
+                          )}
+
+                          <div className="flex justify-between text-slate-400">
+                            <span>Usage Counter:</span>
+                            <span className="text-slate-300 font-semibold">
+                              {used} / {limit ? limit : '∞ Unlimited'}
+                            </span>
+                          </div>
+
+                          {(startDateStr || endDateStr) && (
+                            <div className="flex justify-between text-slate-400 pt-1 border-t border-slate-800 text-[10px]">
+                              <span>Validity:</span>
+                              <span className="text-slate-300 font-medium">
+                                {startDateStr ? new Date(startDateStr).toLocaleDateString() : 'Now'} - {endDateStr ? new Date(endDateStr).toLocaleDateString() : 'No Expiry'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Card Action Controls */}
+                      <div className="flex items-center justify-between gap-1.5 pt-2 border-t border-slate-700/60">
+                        <button
+                          onClick={() => handleToggleCouponStatus(c)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
+                            c.isActive
+                              ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                              : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          }`}
+                        >
+                          {c.isActive ? 'Deactivate' : 'Activate'}
+                        </button>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleOpenEditCoupon(c)}
+                            className="p-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition-colors cursor-pointer"
+                            title="Edit Coupon"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteCoupon(c.id, c.code)}
+                            className="p-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 border border-rose-500/30 rounded-lg transition-colors cursor-pointer"
+                            title="Delete Coupon"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-slate-400">
-                      {c.discountType === 'PERCENTAGE' ? `${c.discountValue}% OFF` : `₹${c.discountValue} OFF`} on orders &gt; ₹{c.minOrderAmount}
-                    </p>
+                  );
+                })}
+
+                {coupons.length === 0 && (
+                  <div className="col-span-full bg-slate-800/50 border border-slate-700/80 rounded-2xl p-8 text-center text-slate-400 space-y-2">
+                    <Tag className="w-8 h-8 text-slate-500 mx-auto" />
+                    <p className="font-bold text-slate-300">No discount coupons created yet.</p>
+                    <p className="text-xs text-slate-400">Click "Add Coupon" above to create promotional codes for your customers.</p>
                   </div>
-                ))}
+                )}
               </div>
             </div>
           )}
@@ -2752,7 +3918,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </td>
                         <td className="p-3 font-semibold text-slate-300">{o.paymentMethod}</td>
                         <td className="p-3 font-mono text-[11px] text-slate-300">{o.razorpayOrderId || 'N/A'}</td>
-                        <td className="p-3 font-mono text-[11px] text-slate-300">{o.paymentId || 'N/A'}</td>
+                        <td className="p-3 font-mono text-[11px] text-slate-300">{(o as any).razorpayPaymentId || o.paymentId || 'N/A'}</td>
                         <td className="p-3 font-extrabold text-slate-100">₹{Number(o.totalAmount || 0).toLocaleString('en-IN')}</td>
                         <td className="p-3">
                           <span className={`inline-block font-extrabold text-[10px] px-2 py-0.5 rounded ${
@@ -2876,461 +4042,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
           )}
-
-          {/* TAB 10: SECURITY POSTURE & THREAT DETECTION */}
-          {activeTab === 'security' && (
-            <div className="space-y-6 text-xs">
-              {/* Header & Quick Action */}
-              <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-800/80 border border-slate-700/80 p-5 rounded-2xl">
-                <div>
-                  <div className="flex items-center gap-2 text-emerald-400 font-extrabold text-sm mb-1">
-                    <ShieldCheck className="w-5 h-5" />
-                    <span>Deployment Security Posture & Threat Detection</span>
-                  </div>
-                  <p className="text-slate-400 text-[11px]">
-                    Real-time monitoring of HTTPS enforcement, database protection, secret strength, authentication audits, and anomaly traffic probes.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={fetchSecurityData}
-                    disabled={isLoadingSecurity}
-                    className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-md transition-all"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${isLoadingSecurity ? 'animate-spin' : ''}`} />
-                    <span>Refresh Security Telemetry</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Metric Stat Cards */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-slate-800/80 border border-slate-700/80 p-4 rounded-2xl space-y-1">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">Total Security Events</span>
-                  <div className="text-2xl font-black text-slate-100">
-                    {securityMetrics?.totalEvents ?? securityLogs.length}
-                  </div>
-                  <span className="text-[10px] text-emerald-400 flex items-center gap-1">
-                    <Activity className="w-3 h-3" /> Continuous Event Auditing
-                  </span>
-                </div>
-
-                <div className="bg-slate-800/80 border border-slate-700/80 p-4 rounded-2xl space-y-1">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">Auth Successes</span>
-                  <div className="text-2xl font-black text-emerald-400">
-                    {securityMetrics?.byType?.AUTH_SUCCESS ?? securityLogs.filter((l) => l.type === 'AUTH_SUCCESS').length}
-                  </div>
-                  <span className="text-[10px] text-slate-500">Verified Sessions</span>
-                </div>
-
-                <div className="bg-slate-800/80 border border-slate-700/80 p-4 rounded-2xl space-y-1">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">Rate Limit Violations</span>
-                  <div className="text-2xl font-black text-amber-400">
-                    {(securityMetrics?.byType?.RATE_LIMIT_EXCEEDED || 0) + (securityLogs.filter((l) => l.type === 'RATE_LIMIT_EXCEEDED').length)}
-                  </div>
-                  <span className="text-[10px] text-amber-400/80">Active Multi-Tier Limiters</span>
-                </div>
-
-                <div className="bg-slate-800/80 border border-slate-700/80 p-4 rounded-2xl space-y-1">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase">Blocked Bot / Malicious IPs</span>
-                  <div className="text-2xl font-black text-rose-400">
-                    {abuseStats?.blacklistedIpsCount || 0}
-                  </div>
-                  <span className="text-[10px] text-rose-400/80">Honeypots & Blacklists Active</span>
-                </div>
-              </div>
-
-              {/* SECTION: MULTI-TIER RATE LIMITERS & BOT MITIGATION */}
-              <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-5 space-y-4">
-                <div className="flex flex-wrap justify-between items-center gap-2 border-b border-slate-700/80 pb-3">
-                  <div>
-                    <h4 className="font-extrabold text-sm text-slate-100 flex items-center gap-2">
-                      <Shield className="w-4 h-4 text-indigo-400" />
-                      <span>Multi-Tier Abuse Protection & Sliding-Window Limiters</span>
-                    </h4>
-                    <p className="text-slate-400 text-[11px] mt-0.5">
-                      Engineered sliding window throttling protecting authentication endpoints, product scraping, quote generators, and AI token utilization.
-                    </p>
-                  </div>
-                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                    6 Limiters Active
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                  {(abuseStats?.limiters || [
-                    { name: 'auth_login', activeThrottledIps: 0, windowMinutes: 15, maxAttempts: 5 },
-                    { name: 'account_creation', activeThrottledIps: 0, windowMinutes: 60, maxAttempts: 5 },
-                    { name: 'password_reset', activeThrottledIps: 0, windowMinutes: 15, maxAttempts: 3 },
-                    { name: 'ai_generation', activeThrottledIps: 0, windowMinutes: 10, maxAttempts: 10 },
-                    { name: 'anti_scraping_catalog', activeThrottledIps: 0, windowMinutes: 1, maxAttempts: 60 },
-                    { name: 'general_api', activeThrottledIps: 0, windowMinutes: 1, maxAttempts: 120 }
-                  ]).map((lim: any) => {
-                    const titles: Record<string, { label: string; desc: string; badge: string }> = {
-                      auth_login: { label: 'Login Protection', desc: 'Brute-force lockout & credential stuffing defense', badge: '5 / 15m' },
-                      account_creation: { label: 'Account Registration', desc: 'Prevents mass spam registration bot farms', badge: '5 / 1h' },
-                      password_reset: { label: 'Password Reset', desc: 'Protects mailbox flooding & reset exhaustion', badge: '3 / 15m' },
-                      ai_generation: { label: 'AI Generation & Quotes', desc: 'LLM inference quota & cost protection', badge: '10 / 10m' },
-                      anti_scraping_catalog: { label: 'Anti-Scraping Catalog', desc: 'Restricts automated product catalog harvesters', badge: '60 / 1m' },
-                      general_api: { label: 'General REST Burst', desc: 'IP surge protection for all /api endpoints', badge: '120 / 1m' }
-                    };
-                    const meta = titles[lim.name] || { label: lim.name, desc: 'API rate limiter', badge: `${lim.maxAttempts} max` };
-
-                    return (
-                      <div key={lim.name} className="bg-slate-950/80 border border-slate-800 p-3.5 rounded-xl space-y-2">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <span className="font-bold text-slate-200 text-xs block">{meta.label}</span>
-                            <span className="text-[10px] text-slate-500 font-mono">{lim.name}</span>
-                          </div>
-                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-800 text-indigo-300 border border-slate-700">
-                            {meta.badge}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-400 leading-tight">{meta.desc}</p>
-                        <div className="flex justify-between items-center text-[10px] pt-1 border-t border-slate-800/80">
-                          <span className="text-slate-400">Throttled IPs:</span>
-                          <span className={`font-bold font-mono px-1.5 py-0.5 rounded ${lim.activeThrottledIps > 0 ? 'bg-amber-500/20 text-amber-300' : 'text-emerald-400'}`}>
-                            {lim.activeThrottledIps} Active
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Honeypots & Bot Signature Guard details */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
-                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-1.5">
-                    <div className="flex items-center gap-2 text-indigo-300 font-bold text-xs">
-                      <Terminal className="w-3.5 h-3.5" />
-                      <span>Honeypot Trap Routes (24h Auto-Blacklist)</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400">
-                      Automated scanners hitting decoy paths (<code className="text-amber-400">/.env</code>, <code className="text-amber-400">/.git</code>, <code className="text-amber-400">/wp-login.php</code>, <code className="text-amber-400">/api/v1/users/export</code>) are automatically caught and banned.
-                    </p>
-                  </div>
-
-                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-1.5">
-                    <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs">
-                      <ShieldAlert className="w-3.5 h-3.5" />
-                      <span>Bot & Headless Scraper Signature Inspection</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400">
-                      Detects CLI user-agents (curl, python-requests, scrapy, puppeteer, selenium, sqlmap, gobuster) on API queries, allowing verified search indexers (Googlebot, Bingbot).
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* SECTION: BLACKLISTED IPS MANAGEMENT */}
-              <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-5 space-y-4">
-                <div className="flex flex-wrap justify-between items-center gap-2">
-                  <div>
-                    <h4 className="font-extrabold text-sm text-slate-100 flex items-center gap-2">
-                      <ShieldAlert className="w-4 h-4 text-rose-400" />
-                      <span>Blacklisted IP Addresses ({abuseStats?.blacklistedIpsCount || 0})</span>
-                    </h4>
-                    <p className="text-slate-400 text-[11px] mt-0.5">
-                      IP addresses prohibited from API execution due to honeypot triggers, malicious probes, or administrator actions.
-                    </p>
-                  </div>
-                  {abuseStats?.blacklistedIpsCount > 0 && (
-                    <button
-                      onClick={handleClearBlacklist}
-                      className="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                    >
-                      Clear All Blacklisted IPs
-                    </button>
-                  )}
-                </div>
-
-                {/* Form to manually blacklist an IP */}
-                <form onSubmit={handleManualBlockIp} className="flex flex-wrap items-center gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800">
-                  <input
-                    type="text"
-                    placeholder="Enter IP Address (e.g. 192.168.1.10)"
-                    value={manualIpToBlock}
-                    onChange={(e) => setManualIpToBlock(e.target.value)}
-                    className="flex-1 min-w-[200px] bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 text-xs font-mono focus:outline-none focus:border-rose-500"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Reason (optional)"
-                    value={manualBlockReason}
-                    onChange={(e) => setManualBlockReason(e.target.value)}
-                    className="flex-1 min-w-[200px] bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-rose-500"
-                  />
-                  <button
-                    type="submit"
-                    className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-bold text-xs cursor-pointer shadow transition-colors"
-                  >
-                    Blacklist IP (24h)
-                  </button>
-                </form>
-
-                {/* Blacklisted IPs List Table */}
-                {abuseStats?.blacklistedIpsList && abuseStats.blacklistedIpsList.length > 0 ? (
-                  <div className="overflow-x-auto rounded-xl border border-slate-800">
-                    <table className="w-full text-left font-mono text-[11px]">
-                      <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 uppercase text-[10px]">
-                        <tr>
-                          <th className="p-3">IP Address</th>
-                          <th className="p-3">Block Reason</th>
-                          <th className="p-3">Expires At</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-800 bg-slate-900/50">
-                        {abuseStats.blacklistedIpsList.map((item: any) => (
-                          <tr key={item.ip} className="hover:bg-slate-800/40">
-                            <td className="p-3 font-bold text-rose-400">{item.ip}</td>
-                            <td className="p-3 text-slate-300 font-sans">{item.reason}</td>
-                            <td className="p-3 text-slate-400">{item.expiresAt ? new Date(item.expiresAt).toLocaleString('en-IN') : '24 Hours'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="p-4 bg-slate-950/60 border border-slate-800/80 rounded-xl text-center text-slate-400 text-xs">
-                    No active IP blacklists. All requests passing standard rate-limiting filters.
-                  </div>
-                )}
-              </div>
-
-              {/* 4 Pillars of Deployment Security */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Pillar 1: HTTPS & Transport */}
-                <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 space-y-3">
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-2">
-                      <Lock className="w-4 h-4 text-emerald-400" />
-                      <h4 className="font-extrabold text-sm text-slate-100">1. HTTPS & Transport Security</h4>
-                    </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                      Enforced
-                    </span>
-                  </div>
-                  <p className="text-slate-400 text-[11px]">
-                    Automatic redirection of HTTP traffic to HTTPS via reverse-proxy header inspection with 1-Year HSTS Preload.
-                  </p>
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1 font-mono text-[11px] text-slate-300">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">HSTS Header:</span>
-                      <span className="text-emerald-400 font-bold">max-age=31536000; includeSubDomains</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Security Headers:</span>
-                      <span className="text-indigo-400 font-bold">nosniff, SAMEORIGIN, X-XSS-1</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Pillar 2: Database Isolation */}
-                <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 space-y-3">
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-2">
-                      <Server className="w-4 h-4 text-indigo-400" />
-                      <h4 className="font-extrabold text-sm text-slate-100">2. Database Isolation & TLS</h4>
-                    </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-                      Restricted
-                    </span>
-                  </div>
-                  <p className="text-slate-400 text-[11px]">
-                    Direct public internet access is restricted. Database connections use server-side Prisma connection pooling with TLS/SSL encryption.
-                  </p>
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1 font-mono text-[11px] text-slate-300">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Connection Mode:</span>
-                      <span className="text-indigo-400 font-bold">{securityPosture?.databaseSecurity?.provider || 'PostgreSQL Connection Pooling'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">SSL Enforcement:</span>
-                      <span className="text-emerald-400 font-bold">Enforced (sslmode=require)</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Pillar 3: Secrets & Token Entropy */}
-                <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 space-y-3">
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-2">
-                      <Shield className="w-4 h-4 text-amber-400" />
-                      <h4 className="font-extrabold text-sm text-slate-100">3. Secrets & Key Security</h4>
-                    </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                      Sanitized
-                    </span>
-                  </div>
-                  <p className="text-slate-400 text-[11px]">
-                    Environment variables are strictly loaded server-side. Secrets are masked in logs and client responses.
-                  </p>
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1 font-mono text-[11px] text-slate-300">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">JWT Secret Entropy:</span>
-                      <span className="text-emerald-400 font-bold">256-Bit Cryptographic HMAC</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Log Redaction:</span>
-                      <span className="text-emerald-400 font-bold">Active (Passwords & Keys Redacted)</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Pillar 4: Threat Defense */}
-                <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 space-y-3">
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-2">
-                      <Terminal className="w-4 h-4 text-rose-400" />
-                      <h4 className="font-extrabold text-sm text-slate-100">4. Anomaly & Payload Defense</h4>
-                    </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                      Armed
-                    </span>
-                  </div>
-                  <p className="text-slate-400 text-[11px]">
-                    Live inspection of requests to drop scanner probes (.env, path traversal), sanitize SQLi/XSS, and limit rate surges.
-                  </p>
-                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1 font-mono text-[11px] text-slate-300">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">IDOR Resource Guards:</span>
-                      <span className="text-emerald-400 font-bold">Enforced (Ownership Checks on all APIs)</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Brute-force Lockout:</span>
-                      <span className="text-emerald-400 font-bold">Active (IP & Account Lockout)</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Live Security Audit Log Viewer */}
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-                      <Activity className="w-4 h-4 text-indigo-400" />
-                      <span>Security & Authentication Audit Trail ({securityLogs.length} Events)</span>
-                    </h3>
-                    <p className="text-slate-400 text-[11px]">
-                      Structured log of all authentication events, authorization checks, API exceptions, and threat mitigation actions.
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <select
-                      value={securityFilterLevel}
-                      onChange={(e) => setSecurityFilterLevel(e.target.value)}
-                      className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-300 text-xs focus:outline-none focus:border-indigo-500"
-                    >
-                      <option value="ALL">All Severities</option>
-                      <option value="INFO">INFO</option>
-                      <option value="WARN">WARN</option>
-                      <option value="ERROR">ERROR</option>
-                      <option value="SECURITY_ALERT">SECURITY_ALERT</option>
-                    </select>
-
-                    <select
-                      value={securityFilterType}
-                      onChange={(e) => setSecurityFilterType(e.target.value)}
-                      className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-300 text-xs focus:outline-none focus:border-indigo-500"
-                    >
-                      <option value="ALL">All Event Types</option>
-                      <option value="AUTH_SUCCESS">AUTH_SUCCESS</option>
-                      <option value="AUTH_FAILURE">AUTH_FAILURE</option>
-                      <option value="AUTH_REGISTER">AUTH_REGISTER</option>
-                      <option value="SECURITY_PROBE">SECURITY_PROBE</option>
-                      <option value="RATE_LIMIT_EXCEEDED">RATE_LIMIT_EXCEEDED</option>
-                      <option value="ACCESS_DENIED_403">ACCESS_DENIED_403</option>
-                      <option value="API_ERROR_500">API_ERROR_500</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl overflow-x-auto shadow-inner">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="bg-slate-950 text-slate-400 font-bold uppercase border-b border-slate-700 text-[10px]">
-                        <th className="p-3">Timestamp</th>
-                        <th className="p-3">Severity</th>
-                        <th className="p-3">Event Type</th>
-                        <th className="p-3">Client IP</th>
-                        <th className="p-3">Target / Method</th>
-                        <th className="p-3">Details & Message</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800 font-mono text-[11px]">
-                      {securityLogs
-                        .filter((log) => (securityFilterLevel === 'ALL' || log.level === securityFilterLevel) && (securityFilterType === 'ALL' || log.type === securityFilterType))
-                        .map((log) => {
-                          let badgeBg = 'bg-slate-700 text-slate-300';
-                          if (log.level === 'INFO') badgeBg = 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30';
-                          if (log.level === 'WARN') badgeBg = 'bg-amber-500/20 text-amber-300 border border-amber-500/30';
-                          if (log.level === 'ERROR') badgeBg = 'bg-rose-500/20 text-rose-300 border border-rose-500/30';
-                          if (log.level === 'SECURITY_ALERT') badgeBg = 'bg-red-600/30 text-red-300 border border-red-500 font-black animate-pulse';
-
-                          const timeFormatted = log.timestamp ? new Date(log.timestamp).toLocaleTimeString('en-IN', { hour12: false }) : '';
-                          const dateFormatted = log.timestamp ? new Date(log.timestamp).toISOString().split('T')[0] : '';
-
-                          return (
-                            <tr key={log.id} className="hover:bg-slate-700/30 transition-colors">
-                              <td className="p-3 whitespace-nowrap text-slate-400">
-                                <span className="block font-bold text-slate-300">{timeFormatted}</span>
-                                <span className="text-[10px] text-slate-500">{dateFormatted}</span>
-                              </td>
-                              <td className="p-3 whitespace-nowrap">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${badgeBg}`}>
-                                  {log.level}
-                                </span>
-                              </td>
-                              <td className="p-3 whitespace-nowrap">
-                                <span className="text-slate-200 font-semibold">{log.type}</span>
-                                {log.userEmail && (
-                                  <span className="block text-[10px] text-slate-400">{log.userEmail}</span>
-                                )}
-                              </td>
-                              <td className="p-3 whitespace-nowrap text-slate-300 font-mono">
-                                {log.ip || '127.0.0.1'}
-                              </td>
-                              <td className="p-3 whitespace-nowrap">
-                                {log.method && (
-                                  <span className="text-[10px] font-bold text-indigo-400 mr-1.5 px-1.5 py-0.5 bg-indigo-950/60 rounded border border-indigo-800">
-                                    {log.method}
-                                  </span>
-                                )}
-                                <span className="text-slate-300">{log.path || '/'}</span>
-                              </td>
-                              <td className="p-3 text-slate-300 max-w-md break-words font-sans">
-                                {log.message}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      {securityLogs.length === 0 && (
-                        <tr>
-                          <td colSpan={6} className="p-6 text-center text-slate-400 font-sans">
-                            No security events recorded in the active buffer. System is running cleanly.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* MODAL: CREATE SHIPMENT */}
         {showCreateShipmentModal && (
           <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-700 w-full max-w-md rounded-2xl p-6 space-y-4 text-xs text-slate-100 shadow-2xl">
+            <div className="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-2xl p-6 space-y-4 text-xs text-slate-100 shadow-2xl">
               <div className="flex justify-between items-center border-b border-slate-800 pb-3">
                 <h3 className="font-extrabold text-sm text-indigo-400 flex items-center gap-2">
                   <Truck className="w-4 h-4" />
-                  <span>Create Courier Shipment</span>
+                  <span>Fulfillment & Shipment Control</span>
                 </h3>
                 <button
                   onClick={() => setShowCreateShipmentModal(false)}
@@ -3340,29 +4061,154 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </div>
 
-              <form onSubmit={handleCreateShipmentSubmit} className="space-y-3">
-                <div>
-                  <label className="block text-slate-400 font-medium mb-1">Select Order *</label>
-                  <select
-                    value={selectedOrderForShipment?.id || selectedOrderForShipment?.orderNumber || (adminOrders[0]?.id || '')}
-                    onChange={(e) => {
-                      const activeList = adminOrders;
-                      const o = activeList.find((ord) => ord.id === e.target.value || ord.orderNumber === e.target.value);
-                      if (o) setSelectedOrderForShipment(o);
-                    }}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono text-xs focus:outline-none focus:border-indigo-500"
-                  >
-                    {displayOrders.map((o) => {
-                      const displayName = o.customerName || (o as any).user?.name || (o as any).shippingAddress?.fullName || 'Customer';
-                      return (
-                        <option key={o.id || o.orderNumber} value={o.id || o.orderNumber}>
-                          {o.orderNumber} - {displayName} (₹{Number(o.totalAmount || 0).toLocaleString('en-IN')})
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
+              {/* Order Selection */}
+              <div>
+                <label className="block text-slate-400 font-medium mb-1">Select Customer Order *</label>
+                <select
+                  value={selectedOrderForShipment?.id || selectedOrderForShipment?.orderNumber || (adminOrders[0]?.id || '')}
+                  onChange={(e) => {
+                    const activeList = adminOrders;
+                    const o = activeList.find((ord) => ord.id === e.target.value || ord.orderNumber === e.target.value);
+                    if (o) setSelectedOrderForShipment(o);
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 font-mono text-xs focus:outline-none focus:border-indigo-500"
+                >
+                  {adminOrders.map((o) => {
+                    const displayName = o.customerName || (o as any).user?.name || (o as any).shippingAddress?.fullName || 'Customer';
+                    const isPick = checkIsStorePickup(o);
+                    return (
+                      <option key={o.id || o.orderNumber} value={o.id || o.orderNumber}>
+                        {isPick ? '🏪 [STORE PICKUP]' : '🚚 [DELIVERY]'} {o.orderNumber} - {displayName} (₹{Number(o.totalAmount || 0).toLocaleString('en-IN')})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
 
+              {/* STORE PICKUP ORDER HIGHLIGHT & QUICK ACTIONS */}
+              {selectedOrderForShipment && checkIsStorePickup(selectedOrderForShipment) && (() => {
+                const isReady = selectedOrderForShipment.orderStatus === 'SHIPPED' || (selectedOrderForShipment as any).orderStatus === 'READY_FOR_PICKUP';
+                const isCollected = selectedOrderForShipment.orderStatus === 'DELIVERED';
+                const regEmail = (selectedOrderForShipment as any).shippingAddress?.email || selectedOrderForShipment.customerEmail || (selectedOrderForShipment as any).user?.email || 'registered email';
+
+                return (
+                  <div className="bg-emerald-950/90 border border-emerald-500/60 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between border-b border-emerald-800/60 pb-2">
+                      <div className="flex items-center gap-2 text-emerald-300 font-extrabold text-sm">
+                        <Building2 className="w-5 h-5 text-emerald-400 animate-pulse" />
+                        <span>🏪 STORE PICKUP ORDER (Gachibowli, Hyderabad)</span>
+                      </div>
+                      {isReady && (
+                        <span className="bg-emerald-950 border border-emerald-400 text-emerald-300 text-[10px] font-extrabold px-2.5 py-1 rounded-lg">
+                          ✅ STATUS: READY FOR PICKUP
+                        </span>
+                      )}
+                      {isCollected && (
+                        <span className="bg-indigo-950 border border-indigo-400 text-indigo-300 text-[10px] font-extrabold px-2.5 py-1 rounded-lg">
+                          🎉 STATUS: COLLECTED
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-emerald-100/90 leading-relaxed">
+                      This customer selected <strong>Pickup from Store</strong>. Updating status below immediately emails live notifications to registered email (<strong>{regEmail}</strong>):
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`/api/admin/orders/${selectedOrderForShipment.id}/status`, {
+                              method: 'PUT',
+                              headers: getAuthHeaders(),
+                              body: JSON.stringify({
+                                status: 'SHIPPED',
+                                title: 'Ready for Store Pickup',
+                                description: 'Your order is ready for collection at NEXRA 3D Store (Plot no 484, TNGOs Colony, Gachibowli, Hyderabad - 500032). Helpline: +91 8886159998.'
+                              })
+                            });
+                            const data = await res.json().catch(() => ({}));
+                            if (res.ok) {
+                              const eStat = data.emailStatus;
+                              let emailMsg = `Notification email sent to ${regEmail}!`;
+                              if (eStat?.simulated) {
+                                emailMsg = `⚠️ Note: RESEND_API_KEY environment variable is missing on the server. Email was simulated.\nPlease set RESEND_API_KEY in app Settings menu to send real emails.`;
+                              } else if (eStat?.error) {
+                                emailMsg = `⚠️ Email delivery notice from Resend:\n${eStat.error}`;
+                              } else if (eStat?.fromUsed) {
+                                emailMsg = `Live notification email sent to ${regEmail} from ${eStat.fromUsed}!`;
+                              }
+                              alert(`Order #${selectedOrderForShipment.orderNumber} status updated to "Ready for Store Pickup".\n\n${emailMsg}`);
+                              setShowCreateShipmentModal(false);
+                              onRefreshData();
+                            } else {
+                              alert('Failed to update status');
+                            }
+                          } catch (err: any) {
+                            alert(err.message);
+                          }
+                        }}
+                        className={`font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 text-xs transition-all shadow-md cursor-pointer ${
+                          isReady 
+                            ? 'bg-slate-950 border-2 border-emerald-400 text-emerald-300 shadow-inner' 
+                            : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                        }`}
+                      >
+                        <CheckCircle2 className={`w-4 h-4 ${isReady ? 'text-emerald-400' : ''}`} />
+                        <span>{isReady ? '✅ Status Updated: Ready for Pickup' : 'Mark Ready for Store Pickup'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`/api/admin/orders/${selectedOrderForShipment.id}/status`, {
+                              method: 'PUT',
+                              headers: getAuthHeaders(),
+                              body: JSON.stringify({
+                                status: 'DELIVERED',
+                                title: 'Collected from Store',
+                                description: 'Order handed over to customer at NEXRA 3D Store counter in Hyderabad.'
+                              })
+                            });
+                            const data = await res.json().catch(() => ({}));
+                            if (res.ok) {
+                              const eStat = data.emailStatus;
+                              let emailMsg = `Notification email sent to ${regEmail}!`;
+                              if (eStat?.simulated) {
+                                emailMsg = `⚠️ Note: RESEND_API_KEY environment variable is missing on the server. Email was simulated.\nPlease set RESEND_API_KEY in app Settings menu to send real emails.`;
+                              } else if (eStat?.error) {
+                                emailMsg = `⚠️ Email delivery notice from Resend:\n${eStat.error}`;
+                              } else if (eStat?.fromUsed) {
+                                emailMsg = `Live notification email sent to ${regEmail} from ${eStat.fromUsed}!`;
+                              }
+                              alert(`Order #${selectedOrderForShipment.orderNumber} marked as "Collected / Delivered".\n\n${emailMsg}`);
+                              setShowCreateShipmentModal(false);
+                              onRefreshData();
+                            } else {
+                              alert('Failed to update status');
+                            }
+                          } catch (err: any) {
+                            alert(err.message);
+                          }
+                        }}
+                        className={`font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 text-xs transition-all shadow-md cursor-pointer ${
+                          isCollected 
+                            ? 'bg-slate-950 border-2 border-indigo-400 text-indigo-300 shadow-inner' 
+                            : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                        }`}
+                      >
+                        <Package className={`w-4 h-4 ${isCollected ? 'text-indigo-400' : ''}`} />
+                        <span>{isCollected ? '✅ Status Updated: Handed Over' : 'Mark Handed Over / Collected'}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <form onSubmit={handleCreateShipmentSubmit} className="space-y-3 pt-2 border-t border-slate-800">
+                <div className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">Courier Dispatch (For Home Delivery Orders)</div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-slate-400 font-medium mb-1">Courier Provider</label>
@@ -3533,7 +4379,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <button
                   onClick={() => setShowLabelModal(false)}
-                  className="text-slate-400 hover:text-slate-700 p-1"
+                  className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -3544,7 +4390,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="flex justify-between items-start border-b-2 border-slate-900 pb-3">
                   <div>
                     <h4 className="font-black text-lg text-slate-900 tracking-tight">NEXRA 3D LOGISTICS</h4>
-                    <span className="text-[10px] text-slate-500 font-mono block">ORIGIN: PUNE INDUSTRIAL COMPLEX, MH - 411057</span>
+                    <span className="text-[10px] text-slate-500 font-mono block">ORIGIN: NEXRA 3D HUB, GACHIBOWLI, HYDERABAD - 500032</span>
                   </div>
                   <div className="text-right">
                     <span className="bg-slate-900 text-white text-[10px] font-bold px-2 py-0.5 rounded">EXPRESS</span>
@@ -3586,6 +4432,81 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 >
                   <Printer className="w-4 h-4" />
                   <span>Print Label Now</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: CANCEL ORDER CONFIRMATION */}
+        {cancelOrderModal.isOpen && cancelOrderModal.order && (
+          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-rose-500/40 w-full max-w-md rounded-2xl p-6 text-slate-100 shadow-2xl space-y-4">
+              <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2 text-rose-400">
+                  <AlertCircle className="w-5 h-5" />
+                  <h3 className="font-bold text-base">Cancel Order Confirmation</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCancelOrderModal({ isOpen: false, order: null, reason: '', isSubmitting: false, error: null })}
+                  className="text-slate-400 hover:text-white p-1 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div className="bg-rose-950/40 border border-rose-500/30 rounded-xl p-3.5 space-y-1.5">
+                  <p className="font-bold text-rose-200">
+                    Are you sure you want to cancel order <span className="font-mono text-amber-400 font-bold">{cancelOrderModal.order.orderNumber}</span>?
+                  </p>
+                  <p className="text-slate-300 text-[11px] leading-relaxed">
+                    This action will mark the order as <strong className="text-rose-300">CANCELLED</strong> and <strong className="text-emerald-400">automatically restore the reserved product stock</strong> in the inventory database.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-slate-300 font-medium block">Reason for Cancellation (Optional):</label>
+                  <input
+                    type="text"
+                    value={cancelOrderModal.reason}
+                    onChange={(e) => setCancelOrderModal((prev) => ({ ...prev, reason: e.target.value }))}
+                    placeholder="e.g., Customer requested cancellation, out of stock, etc."
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 text-xs focus:outline-none focus:border-rose-500"
+                  />
+                </div>
+
+                {cancelOrderModal.error && (
+                  <div className="bg-rose-900/50 border border-rose-500 text-rose-200 p-2.5 rounded-xl text-xs">
+                    {cancelOrderModal.error}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setCancelOrderModal({ isOpen: false, order: null, reason: '', isSubmitting: false, error: null })}
+                  disabled={cancelOrderModal.isSubmitting}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl cursor-pointer disabled:opacity-50"
+                >
+                  No, Keep Order
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmCancelOrder}
+                  disabled={cancelOrderModal.isSubmitting}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm"
+                >
+                  {cancelOrderModal.isSubmitting ? (
+                    <span>Cancelling & Restoring Stock...</span>
+                  ) : (
+                    <>
+                      <XCircle className="w-4 h-4" />
+                      <span>Yes, Cancel & Restore Stock</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

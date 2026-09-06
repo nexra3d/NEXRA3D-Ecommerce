@@ -97,7 +97,7 @@ export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
 
           {/* Service Main Preview Image & Gallery */}
           <div className="space-y-4">
-            <div className="aspect-16/10 rounded-2xl overflow-hidden shadow-2xl border border-slate-700 bg-slate-950 relative">
+            <div className="aspect-[16/10] min-h-[250px] w-full rounded-2xl overflow-hidden shadow-2xl border border-slate-700 bg-slate-950 relative">
               <img
                 src={selectedImage}
                 alt={service.name}

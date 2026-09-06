@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, Circle, Clock, MapPin, Truck, Package, Home, Store, AlertCircle, ShieldAlert } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, MapPin, Truck, Package, Home, ArrowRight } from 'lucide-react';
 
 export interface TrackingStep {
   key: string;
@@ -8,29 +8,19 @@ export interface TrackingStep {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-const HOME_DELIVERY_MILESTONES: TrackingStep[] = [
+const TRACKING_MILESTONES: TrackingStep[] = [
   { key: 'CONFIRMED', label: 'Order Confirmed', description: 'Payment verified & order acknowledged', icon: CheckCircle2 },
   { key: 'PACKED', label: 'Packed', description: 'Item securely packed at fulfillment facility', icon: Package },
-  { key: 'PICKUP_SCHEDULED', label: 'Pickup Scheduled', description: 'Courier partner agent assigned', icon: Clock },
-  { key: 'PICKED_UP', label: 'Picked Up', description: 'Handed over to courier logistics team', icon: Truck },
-  { key: 'IN_TRANSIT', label: 'In Transit', description: 'En route through logistics express hub', icon: Truck },
+  { key: 'PICKUP_SCHEDULED', label: 'Pickup Scheduled', description: 'Delhivery courier agent assigned', icon: Clock },
+  { key: 'PICKED_UP', label: 'Picked Up', description: 'Handed over to Delhivery logistics team', icon: Truck },
+  { key: 'IN_TRANSIT', label: 'In Transit', description: 'En route through Delhivery express hub', icon: Truck },
   { key: 'REACHED_HUB', label: 'Reached Hub', description: 'Arrived at local destination sorting facility', icon: MapPin },
   { key: 'OUT_FOR_DELIVERY', label: 'Out For Delivery', description: 'Out with delivery agent for doorstep drop', icon: Truck },
   { key: 'DELIVERED', label: 'Delivered', description: 'Successfully delivered to customer', icon: Home }
 ];
 
-const STORE_PICKUP_MILESTONES: TrackingStep[] = [
-  { key: 'CONFIRMED', label: 'Order Confirmed', description: 'Payment verified & order acknowledged', icon: CheckCircle2 },
-  { key: 'PROCESSING', label: 'Order Processing', description: 'Items being prepared and packaged at Gachibowli facility', icon: Package },
-  { key: 'READY_FOR_PICKUP', label: 'Ready for Pickup', description: 'Order packaged & available at store pickup counter', icon: Store },
-  { key: 'COMPLETED', label: 'Pickup Completed', description: 'Order handed over & verified with customer', icon: CheckCircle2 }
-];
-
 interface TrackingTimelineProps {
   currentStatus?: string;
-  fulfillmentMethod?: 'HOME_DELIVERY' | 'STORE_PICKUP';
-  isPickup?: boolean;
-  courierProvider?: string;
   trackingHistory?: Array<{ date?: string; status?: string; location?: string; remark?: string }>;
   awbNumber?: string;
   expectedDelivery?: string;
@@ -39,88 +29,45 @@ interface TrackingTimelineProps {
 
 export const TrackingTimeline: React.FC<TrackingTimelineProps> = ({
   currentStatus = 'CONFIRMED',
-  fulfillmentMethod = 'HOME_DELIVERY',
-  isPickup = false,
-  courierProvider = 'Delhivery',
   trackingHistory = [],
   awbNumber,
   expectedDelivery,
   className = ''
 }) => {
-  const isStorePickup = isPickup || fulfillmentMethod === 'STORE_PICKUP';
+  // Normalize current status index
   const normalizedStatus = String(currentStatus || 'CONFIRMED').toUpperCase();
-  const isCancelled = normalizedStatus === 'CANCELLED';
 
-  // Calculate active index based on fulfillment mode
   let activeIndex = 0;
-  if (isStorePickup) {
-    if (normalizedStatus === 'DELIVERED' || normalizedStatus === 'COMPLETED' || normalizedStatus === 'PICKED_UP') {
-      activeIndex = 3;
-    } else if (normalizedStatus === 'SHIPPED' || normalizedStatus === 'OUT_FOR_DELIVERY' || normalizedStatus.includes('READY')) {
-      activeIndex = 2;
-    } else if (normalizedStatus === 'PROCESSING' || normalizedStatus === 'PACKED') {
-      activeIndex = 1;
-    } else {
-      activeIndex = 0;
-    }
-  } else {
-    if (normalizedStatus.includes('DELIVERED')) activeIndex = 7;
-    else if (normalizedStatus.includes('OUT_FOR_DELIVERY') || normalizedStatus.includes('OUT FOR DELIVERY')) activeIndex = 6;
-    else if (normalizedStatus.includes('REACHED') || normalizedStatus.includes('HUB')) activeIndex = 5;
-    else if (normalizedStatus.includes('IN_TRANSIT') || normalizedStatus.includes('TRANSIT')) activeIndex = 4;
-    else if (normalizedStatus.includes('PICKED_UP') || normalizedStatus.includes('PICKED')) activeIndex = 3;
-    else if (normalizedStatus.includes('PICKUP') || normalizedStatus.includes('SCHEDULED')) activeIndex = 2;
-    else if (normalizedStatus.includes('PACKED') || normalizedStatus.includes('PROCESSING')) activeIndex = 1;
-    else activeIndex = 0;
-  }
-
-  const milestones = isStorePickup ? STORE_PICKUP_MILESTONES : HOME_DELIVERY_MILESTONES;
+  if (normalizedStatus.includes('DELIVERED')) activeIndex = 7;
+  else if (normalizedStatus.includes('OUT_FOR_DELIVERY') || normalizedStatus.includes('OUT FOR DELIVERY')) activeIndex = 6;
+  else if (normalizedStatus.includes('REACHED') || normalizedStatus.includes('HUB')) activeIndex = 5;
+  else if (normalizedStatus.includes('IN_TRANSIT') || normalizedStatus.includes('TRANSIT')) activeIndex = 4;
+  else if (normalizedStatus.includes('PICKED_UP') || normalizedStatus.includes('PICKED')) activeIndex = 3;
+  else if (normalizedStatus.includes('PICKUP') || normalizedStatus.includes('SCHEDULED')) activeIndex = 2;
+  else if (normalizedStatus.includes('PACKED') || normalizedStatus.includes('PROCESSING')) activeIndex = 1;
+  else activeIndex = 0;
 
   return (
     <div className={`bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-sm ${className}`}>
       {/* Header Info */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-5 border-b border-slate-100">
         <div>
-          <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wider block">
-            {isStorePickup ? 'Store Fulfillment Status' : 'Live Shipment Tracking'}
-          </span>
-          <h3 className="text-lg font-bold text-slate-900 mt-0.5">
-            {isStorePickup ? 'Store Pickup Timeline' : `${courierProvider} Courier Timeline`}
-          </h3>
+          <span className="text-xs font-semibold text-indigo-600 uppercase tracking-wider block">Live Shipment Tracking</span>
+          <h3 className="text-lg font-bold text-slate-900 mt-0.5">Delhivery Courier Timeline</h3>
         </div>
-
-        {!isStorePickup && awbNumber && (
+        {awbNumber && (
           <div className="bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl flex items-center gap-2 text-xs">
             <span className="text-slate-500 font-medium">AWB:</span>
             <span className="font-mono font-bold text-slate-800">{awbNumber}</span>
           </div>
         )}
-
-        {isStorePickup && (
-          <div className="bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs text-indigo-800 font-bold">
-            <Store className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Gachibowli Hub Pickup</span>
-          </div>
-        )}
       </div>
 
-      {/* Cancelled State Banner */}
-      {isCancelled && (
-        <div className="mb-6 bg-rose-50 border border-rose-200 rounded-xl p-3.5 flex items-center gap-3 text-xs text-rose-900">
-          <ShieldAlert className="w-5 h-5 text-rose-600 shrink-0" />
-          <div>
-            <span className="font-bold block text-sm">Order Cancelled</span>
-            <span className="text-rose-700">This order has been cancelled and will not proceed further in fulfillment.</span>
-          </div>
-        </div>
-      )}
-
-      {/* Expected Date or Hours */}
-      {expectedDelivery && !isCancelled && (
+      {expectedDelivery && (
         <div className="mb-6 bg-indigo-50/70 border border-indigo-100/80 rounded-xl p-3.5 flex items-center gap-3 text-xs text-indigo-900">
           <Clock className="w-4 h-4 text-indigo-600 shrink-0" />
           <div>
-            <span className="font-semibold">{isStorePickup ? 'Estimated Availability: ' : 'Estimated Delivery Date: '}</span>
+            <span className="font-semibold">Estimated Delivery Date: </span>
             <span>{expectedDelivery}</span>
           </div>
         </div>
@@ -128,9 +75,9 @@ export const TrackingTimeline: React.FC<TrackingTimelineProps> = ({
 
       {/* Progress Steps Visualizer */}
       <div className="relative pl-6 sm:pl-8 space-y-6 before:absolute before:left-2.5 sm:before:left-3.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
-        {milestones.map((step, idx) => {
-          const isDone = !isCancelled && idx <= activeIndex;
-          const isCurrent = !isCancelled && idx === activeIndex;
+        {TRACKING_MILESTONES.map((step, idx) => {
+          const isDone = idx <= activeIndex;
+          const isCurrent = idx === activeIndex;
           const StepIcon = step.icon;
 
           return (
@@ -138,9 +85,7 @@ export const TrackingTimeline: React.FC<TrackingTimelineProps> = ({
               {/* Step Circle Indicator */}
               <div
                 className={`absolute -left-6 sm:-left-8 top-0.5 w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center transition-all ${
-                  isCancelled
-                    ? 'bg-slate-100 text-slate-400 border border-slate-300'
-                    : isCurrent
+                  isCurrent
                     ? 'bg-indigo-600 text-white ring-4 ring-indigo-100 scale-110 z-10'
                     : isDone
                     ? 'bg-emerald-500 text-white z-10'
@@ -162,7 +107,7 @@ export const TrackingTimeline: React.FC<TrackingTimelineProps> = ({
                   </h4>
                   {isCurrent && (
                     <span className="bg-indigo-600 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">
-                      Current Step
+                      Active
                     </span>
                   )}
                 </div>
@@ -175,8 +120,8 @@ export const TrackingTimeline: React.FC<TrackingTimelineProps> = ({
         })}
       </div>
 
-      {/* Detailed Tracking Logs History (Courier Only) */}
-      {!isStorePickup && trackingHistory && trackingHistory.length > 0 && (
+      {/* Detailed Tracking Logs History */}
+      {trackingHistory && trackingHistory.length > 0 && (
         <div className="mt-6 pt-5 border-t border-slate-100">
           <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Courier Scan History</h4>
           <div className="space-y-2.5 text-xs">

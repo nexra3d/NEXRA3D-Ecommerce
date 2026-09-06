@@ -13,6 +13,7 @@ const getEnvVar = (key: string): string => {
 
 const supabaseUrl = getEnvVar('VITE_SUPABASE_URL') || getEnvVar('SUPABASE_URL') || '';
 const supabaseAnonKey = getEnvVar('VITE_SUPABASE_PUBLISHABLE_KEY') || getEnvVar('VITE_SUPABASE_ANON_KEY') || getEnvVar('SUPABASE_ANON_KEY') || '';
+const supabaseServiceKey = getEnvVar('SUPABASE_SERVICE_ROLE_KEY') || '';
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
@@ -20,7 +21,7 @@ export const isSupabaseConfigured = Boolean(
   !supabaseUrl.includes('example.supabase.co')
 );
 
-// Anonymous client for public/client operations with anon key
+// Anonymous client for public/client operations
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
@@ -30,6 +31,11 @@ export const supabase = isSupabaseConfigured
       }
     })
   : null;
+
+// Service Role client for administrative backend operations (bypasses RLS)
+export const supabaseAdmin = (isSupabaseConfigured && supabaseServiceKey)
+  ? createClient(supabaseUrl, supabaseServiceKey)
+  : supabase;
 
 export async function testSupabaseConnection() {
   if (!isSupabaseConfigured || !supabase) {
