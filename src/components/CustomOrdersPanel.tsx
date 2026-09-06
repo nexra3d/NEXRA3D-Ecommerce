@@ -212,7 +212,7 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
     if (!activeQrOrder?.qrImageUrl) return;
     const link = document.createElement('a');
     link.href = activeQrOrder.qrImageUrl;
-    link.download = `Nexra3D-CustomOrder-QR-${activeQrOrder.id.slice(-6)}.png`;
+    link.download = `Nexra3D-CustomOrder-${activeQrOrder.id}.png`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -487,7 +487,7 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
                       {/* ID & Date */}
                       <td className="p-3.5">
                         <div className="font-mono font-bold text-amber-400 text-xs">
-                          #CO-{order.id.slice(-6).toUpperCase()}
+                          {order.id}
                         </div>
                         <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
                           <Clock className="w-3 h-3 text-slate-500" />
@@ -887,7 +887,7 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
                   ₹{Number(activeQrOrder.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 </span>
                 <span className="text-[11px] text-slate-400 block mt-0.5">
-                  Order #CO-{activeQrOrder.id.slice(-6).toUpperCase()} • {activeQrOrder.customerName}
+                  Order <strong className="text-amber-400 font-mono">{activeQrOrder.id}</strong> • {activeQrOrder.customerName}
                 </span>
               </div>
 

@@ -65,6 +65,7 @@ describe('Checkout, COD Order, Razorpay Order, 10 Consecutive Orders & Order Iso
 
     expect([200, 201]).toContain(res.status);
     expect(res.body.order).toBeDefined();
+    expect(res.body.order.orderNumber).toMatch(/^N3D-\d{4}\s\d{8}$/);
     expect(res.body.order.paymentStatus).toBe('COD');
     expect(['PROCESSING', 'PENDING', 'CONFIRMED']).toContain(res.body.order.status);
 

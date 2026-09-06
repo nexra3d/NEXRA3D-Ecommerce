@@ -47,7 +47,7 @@ export async function generateRazorpayCustomOrderQr(params: {
   // Standard UPI URI for instant fallback / mobile link
   // Uses Nexra 3D official handle or Razorpay virtual VPA
   const upiPayUri = `upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=${amount.toFixed(2)}&cu=INR&tn=${encodeURIComponent(
-    `Custom Order ${orderDbId.slice(-6)} - ${customerName}`
+    `Custom Order ${orderDbId} - ${customerName}`
   )}`;
 
   let razorpayOrderId = `order_sim_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -63,7 +63,7 @@ export async function generateRazorpayCustomOrderQr(params: {
       const orderRes = await rzpInstance.orders.create({
         amount: amountInPaise,
         currency: 'INR',
-        receipt: `co_${orderDbId.slice(-8)}`,
+        receipt: orderDbId.slice(0, 40),
         notes: {
           custom_order_id: orderDbId,
           customer_name: customerName,
@@ -84,7 +84,7 @@ export async function generateRazorpayCustomOrderQr(params: {
         usage: 'single_use',
         fixed_amount: true,
         payment_amount: amountInPaise,
-        description: (description || `Custom Order for ${customerName}`).slice(0, 100),
+        description: (description || `Custom Order ${orderDbId} - ${customerName}`).slice(0, 100),
         notes: {
           custom_order_id: orderDbId,
           razorpay_order_id: razorpayOrderId,

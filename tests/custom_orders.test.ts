@@ -65,6 +65,7 @@ describe('Custom Orders & Razorpay Dynamic QR REST API', () => {
     expect(order).toHaveProperty('qrImageUrl');
     expect(order).toHaveProperty('paymentLink');
     expect(order.qrImageUrl).toContain('data:image/png;base64,');
+    expect(order.id).toMatch(/^N3D-CO-\d{4}-\d{8}$/);
     createdOrderId = order.id;
   });
 

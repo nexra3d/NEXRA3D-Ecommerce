@@ -4564,6 +4564,82 @@ app.delete('/api/wishlist', requireAuthMiddleware, async (req: AuthenticatedRequ
 // 10. CHECKOUT & ORDERS
 // ==================================================
 
+export async function generateNextOrderNumber(): Promise<string> {
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, '0');
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy = now.getFullYear();
+  const dateSuffix = `${dd}${mm}${yyyy}`;
+
+  try {
+    const totalOrdersCount = await prisma.order.count();
+    let nextSeq = totalOrdersCount + 1;
+
+    // Inspect recent orders to see the highest sequence number used so far
+    const recentOrders = await prisma.order.findMany({
+      where: { orderNumber: { startsWith: 'N3D-' } },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: { orderNumber: true }
+    });
+
+    for (const ord of recentOrders) {
+      if (!ord.orderNumber) continue;
+      // Match N3D-0001 (up to 5 digits so old 6-digit random orders don't inflate the sequence)
+      const match = ord.orderNumber.match(/^N3D-(\d{1,5})/i);
+      if (match) {
+        const val = parseInt(match[1], 10);
+        if (!isNaN(val) && val >= nextSeq && val < 100000) {
+          nextSeq = val + 1;
+        }
+      }
+    }
+
+    const seqPadded = String(nextSeq).padStart(4, '0');
+    return `N3D-${seqPadded} ${dateSuffix}`;
+  } catch (err) {
+    const fallbackSeq = String(Math.floor(1 + Math.random() * 99)).padStart(4, '0');
+    return `N3D-${fallbackSeq} ${dateSuffix}`;
+  }
+}
+
+export async function generateNextCustomOrderNumber(): Promise<string> {
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, '0');
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy = now.getFullYear();
+  const dateSuffix = `${dd}${mm}${yyyy}`;
+
+  try {
+    const totalCustomOrders = await (prisma as any).customOrder.count();
+    let nextSeq = totalCustomOrders + 1;
+
+    const recentCustomOrders = await (prisma as any).customOrder.findMany({
+      where: { id: { startsWith: 'N3D-CO-' } },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: { id: true }
+    });
+
+    for (const ord of recentCustomOrders) {
+      if (!ord.id) continue;
+      const match = ord.id.match(/^N3D-CO-(\d{1,5})/i);
+      if (match) {
+        const val = parseInt(match[1], 10);
+        if (!isNaN(val) && val >= nextSeq && val < 100000) {
+          nextSeq = val + 1;
+        }
+      }
+    }
+
+    const seqPadded = String(nextSeq).padStart(4, '0');
+    return `N3D-CO-${seqPadded}-${dateSuffix}`;
+  } catch (err) {
+    const fallbackSeq = String(Math.floor(1 + Math.random() * 99)).padStart(4, '0');
+    return `N3D-CO-${fallbackSeq}-${dateSuffix}`;
+  }
+}
+
 app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user.id;
   const { addressId, shippingAddress: customAddress, paymentMethod = 'RAZORPAY', couponCode, items: clientItems } = req.body;
@@ -4773,12 +4849,7 @@ app.post('/api/checkout', requireAuthMiddleware, async (req: AuthenticatedReques
     console.log(`[Checkout] Discount: ₹${discountAmount}`);
     console.log(`[Checkout] Grand Total: ₹${totalAmount}`);
 
-    const now = new Date();
-    const dd = String(now.getDate()).padStart(2, '0');
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const yyyy = now.getFullYear();
-    const randNum = Math.floor(100000 + Math.random() * 900000);
-    const orderNumber = `N3D-${randNum} ${dd}${mm}${yyyy}`;
+    const orderNumber = await generateNextOrderNumber();
 
     const isCod = paymentMethod === 'COD' || paymentMethod === 'CASH_ON_DELIVERY';
 
@@ -5463,13 +5534,19 @@ app.get('/api/orders', requireAuthMiddleware, async (req: AuthenticatedRequest, 
 app.get('/api/orders/:id', requireAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
   const decodedId = decodeURIComponent(id || '').trim();
+  const spaceVariant = decodedId.replace(/-/g, ' ');
+  const hyphenVariant = decodedId.replace(/\s+/g, '-');
   try {
     const order = await prisma.order.findFirst({
       where: {
         OR: [
           { id: decodedId },
           { orderNumber: decodedId },
-          { orderNumber: { equals: decodedId, mode: 'insensitive' } }
+          { orderNumber: { equals: decodedId, mode: 'insensitive' } },
+          { orderNumber: spaceVariant },
+          { orderNumber: hyphenVariant },
+          { orderNumber: { equals: spaceVariant, mode: 'insensitive' } },
+          { orderNumber: { equals: hyphenVariant, mode: 'insensitive' } }
         ]
       },
       include: {
@@ -5508,9 +5585,18 @@ async function cancelOrderAndRestoreInventory(
   isAdmin: boolean = false,
   reason?: string
 ) {
+  const spaceVariant = orderIdentifier.replace(/-/g, ' ');
+  const hyphenVariant = orderIdentifier.replace(/\s+/g, '-');
   return await prisma.$transaction(async (tx) => {
     const order = await tx.order.findFirst({
-      where: { OR: [{ id: orderIdentifier }, { orderNumber: orderIdentifier }] },
+      where: {
+        OR: [
+          { id: orderIdentifier },
+          { orderNumber: orderIdentifier },
+          { orderNumber: spaceVariant },
+          { orderNumber: hyphenVariant }
+        ]
+      },
       include: {
         items: { include: { product: true } },
         user: true,
@@ -7164,7 +7250,7 @@ app.post('/api/admin/custom-orders', requireAdminMiddleware, async (req: Request
       return res.status(400).json({ error: 'Amount must be at least ₹1.' });
     }
 
-    const orderDbId = `co-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const orderDbId = await generateNextCustomOrderNumber();
 
     // Generate Dynamic Razorpay QR Code & UPI payment link
     const qrResult = await generateRazorpayCustomOrderQr({
