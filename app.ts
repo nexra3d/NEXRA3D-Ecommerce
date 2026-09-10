@@ -7346,7 +7346,7 @@ app.get('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Requ
 // 3. Create custom order and generate Razorpay QR (Admin)
 app.post('/api/admin/custom-orders', requireAdminMiddleware, async (req: Request, res: Response) => {
   try {
-    const { customerName, phone, email, description, amount, deliveryType, notes } = req.body;
+    const { customerName, phone, email, description, amount, deliveryType, notes, customOrderName, imageUrl, isPublic } = req.body;
 
     if (!customerName || typeof customerName !== 'string' || customerName.trim().length < 2) {
       return res.status(400).json({ error: 'Customer Name is required (min 2 characters).' });
@@ -7383,6 +7383,9 @@ app.post('/api/admin/custom-orders', requireAdminMiddleware, async (req: Request
         phone: cleanPhone,
         email: email ? String(email).trim() : null,
         description: description ? String(description).trim() : null,
+        customOrderName: customOrderName ? String(customOrderName).trim() : null,
+        imageUrl: imageUrl ? String(imageUrl).trim() : null,
+        isPublic: Boolean(isPublic),
         amount: numAmount,
         deliveryType: deliveryType === 'HOME_DELIVERY' ? 'HOME_DELIVERY' : 'STORE_PICKUP',
         notes: notes ? String(notes).trim() : null,
@@ -7563,6 +7566,319 @@ app.delete('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: R
     return res.status(500).json({ error: err.message || 'Failed to delete custom order' });
   }
 });
+
+// 8. Update Custom Order Showcase Details (Admin)
+app.patch('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { customOrderName, imageUrl, isPublic } = req.body;
+
+    const existing = await (prisma as any).customOrder.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Custom order not found' });
+    }
+
+    const updateData: any = {
+      updatedAt: new Date().toISOString()
+    };
+    if (customOrderName !== undefined) {
+      updateData.customOrderName = customOrderName ? String(customOrderName).trim() : null;
+    }
+    if (imageUrl !== undefined) {
+      updateData.imageUrl = imageUrl ? String(imageUrl).trim() : null;
+    }
+    if (isPublic !== undefined) {
+      updateData.isPublic = Boolean(isPublic);
+    }
+
+    const updated = await (prisma as any).customOrder.update({
+      where: { id },
+      data: updateData
+    });
+
+    return res.json({
+      customOrder: updated,
+      message: 'Showcase settings updated successfully.'
+    });
+  } catch (err: any) {
+    console.error('Error updating custom order showcase settings:', err);
+    return res.status(500).json({ error: err.message || 'Failed to update custom order' });
+  }
+});
+
+// 9. Upload Custom Order Image (Admin)
+app.post('/api/admin/custom-orders/upload-image', requireAdminMiddleware, upload.single('image') as any, async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Please choose an image file to upload.' });
+    }
+
+    // Try Cloudinary upload first
+    try {
+      const cloudResult = await uploadImageToCloudinary(req.file.buffer, req.file.mimetype || 'image/jpeg', 'custom-orders');
+      if (cloudResult && cloudResult.url) {
+        return res.json({ success: true, url: cloudResult.url });
+      }
+    } catch (cErr) {
+      console.warn('Cloudinary upload warning for custom order image, falling back to base64 data URI:', cErr);
+    }
+
+    // High fidelity data URI fallback
+    const mime = req.file.mimetype || 'image/jpeg';
+    const base64Uri = `data:${mime};base64,${req.file.buffer.toString('base64')}`;
+    return res.json({ success: true, url: base64Uri });
+  } catch (err: any) {
+    console.error('Error uploading custom order image:', err);
+    return res.status(500).json({ error: err.message || 'Failed to upload image' });
+  }
+});
+
+// In-memory rate limiting map for unauthenticated public review submissions
+const customOrderReviewRateLimits = new Map<string, number[]>();
+
+function checkCustomOrderReviewRateLimit(clientIp: string): boolean {
+  const now = Date.now();
+  const windowMs = 10 * 60 * 1000; // 10 minutes
+  const maxSubmissions = 5;
+  const timestamps = (customOrderReviewRateLimits.get(clientIp) || []).filter((t) => now - t < windowMs);
+
+  if (timestamps.length >= maxSubmissions) {
+    return false;
+  }
+  timestamps.push(now);
+  customOrderReviewRateLimits.set(clientIp, timestamps);
+  return true;
+}
+
+// 10. Public Showcase Gallery API (Public - No login required)
+// Returns strictly sanitized showcase info: id, customOrderName, imageUrl, approved reviews.
+// Strictly omits customer name, phone, email, amount, payment status, QR, notes, order number.
+app.get('/api/custom-orders/public', async (_req: Request, res: Response) => {
+  try {
+    // 1. Fetch only orders explicitly published by admin
+    const publicOrders = await (prisma as any).customOrder.findMany({
+      where: { isPublic: true },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // 2. Fetch approved reviews for these custom orders
+    const orderIds = (publicOrders || []).map((o: any) => o.id);
+    let reviews: any[] = [];
+    if (orderIds.length > 0) {
+      try {
+        reviews = await (prisma as any).customOrderReview.findMany({
+          where: {
+            customOrderId: { in: orderIds },
+            isApproved: true
+          },
+          orderBy: { createdAt: 'desc' }
+        });
+      } catch (_) {
+        reviews = [];
+      }
+    }
+
+    const reviewsByOrderId: Record<string, any[]> = {};
+    for (const r of reviews) {
+      if (!reviewsByOrderId[r.customOrderId]) {
+        reviewsByOrderId[r.customOrderId] = [];
+      }
+      reviewsByOrderId[r.customOrderId].push({
+        id: r.id,
+        reviewerName: r.userName || r.reviewerName || 'Anonymous',
+        rating: r.rating,
+        title: r.title || null,
+        comment: r.comment,
+        createdAt: r.createdAt
+      });
+    }
+
+    // 3. Transform to strict, privacy-safe showcase response
+    const showcaseGallery = (publicOrders || []).map((order: any) => ({
+      id: order.id,
+      customOrderName: order.customOrderName || order.description || 'Bespoke 3D Creation',
+      imageUrl: order.imageUrl || null,
+      reviews: reviewsByOrderId[order.id] || []
+    }));
+
+    return res.json(showcaseGallery);
+  } catch (err: any) {
+    console.error('Error fetching public custom orders showcase:', err);
+    return res.status(500).json({ error: 'Failed to load public custom creations gallery' });
+  }
+});
+
+// 11. Public Unauthenticated Review Submission for Custom Orders
+// Rule: Completely open to any visitor. NO login, NO account, NO OTP, NO email/phone verification,
+// NO purchase verification, NO order verification required.
+// Submissions default to isApproved = false (PENDING moderation).
+app.post('/api/custom-orders/:id/reviews', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const clientIp = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'visitor-ip');
+
+    // 1. Rate Limiting Protection (5 reviews per 10 mins per IP)
+    if (!checkCustomOrderReviewRateLimit(clientIp)) {
+      return res.status(429).json({
+        error: 'Too many reviews submitted from your connection. Please wait a few minutes before submitting again.'
+      });
+    }
+
+    // 2. Input extraction and validation
+    const reviewerName = String(req.body.name || req.body.reviewerName || '').trim();
+    if (!reviewerName || reviewerName.length < 2 || reviewerName.length > 50) {
+      return res.status(400).json({ error: 'Please enter a valid Name (2 to 50 characters).' });
+    }
+
+    const numRating = Number(req.body.rating);
+    if (!numRating || numRating < 1 || numRating > 5) {
+      return res.status(400).json({ error: 'Please select a valid Rating between 1 and 5 stars.' });
+    }
+
+    const reviewText = String(req.body.review || req.body.comment || '').trim();
+    if (!reviewText || reviewText.length < 5 || reviewText.length > 1000) {
+      return res.status(400).json({ error: 'Please write your Review (between 5 and 1000 characters).' });
+    }
+
+    // 3. Basic spam protection (reject spam links, bots, and URLs)
+    const hasSpamLink = /(https?:\/\/|www\.|bit\.ly|t\.co|tinyurl|\.xyz|\.top)/i.test(reviewText) ||
+      /(https?:\/\/|www\.)/i.test(reviewerName);
+    if (hasSpamLink) {
+      return res.status(400).json({ error: 'External links, advertisements, and promotional URLs are not permitted in reviews.' });
+    }
+
+    // 4. Verify custom order exists
+    const order = await (prisma as any).customOrder.findUnique({ where: { id } });
+    if (!order) {
+      return res.status(404).json({ error: 'Custom order creation not found.' });
+    }
+
+    // 5. Store review as PENDING moderation (isApproved: false)
+    const review = await (prisma as any).customOrderReview.create({
+      data: {
+        customOrderId: id,
+        userName: reviewerName,
+        rating: Math.round(numRating),
+        title: null,
+        comment: reviewText,
+        isApproved: false, // Default to PENDING moderation
+        status: 'PENDING',
+        createdAt: new Date().toISOString()
+      }
+    });
+
+    return res.status(201).json({
+      success: true,
+      review: {
+        id: review.id,
+        reviewerName,
+        rating: review.rating,
+        comment: review.comment,
+        status: 'PENDING',
+        isApproved: false,
+        createdAt: review.createdAt
+      },
+      message: 'Thank you! Your review has been submitted for moderation and will appear once approved by an admin.'
+    });
+  } catch (err: any) {
+    console.error('Error submitting custom order review:', err);
+    return res.status(500).json({ error: err.message || 'Failed to submit review' });
+  }
+});
+
+// 12. Admin Review Moderation APIs
+// Get all custom order reviews for moderation (Admin only)
+app.get('/api/admin/custom-orders/reviews', requireAdminMiddleware, async (_req: Request, res: Response) => {
+  try {
+    const reviews = await (prisma as any).customOrderReview.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const orderIds = Array.from(new Set(reviews.map((r: any) => r.customOrderId)));
+    let orderMap = new Map<string, any>();
+    if (orderIds.length > 0) {
+      const orders = await (prisma as any).customOrder.findMany({
+        where: { id: { in: orderIds } }
+      });
+      orderMap = new Map((orders || []).map((o: any) => [o.id, o]));
+    }
+
+    const formatted = (reviews || []).map((r: any) => {
+      const ord = orderMap.get(r.customOrderId);
+      const currentStatus = r.status || (r.isApproved ? 'APPROVED' : 'PENDING');
+      return {
+        id: r.id,
+        customOrderId: r.customOrderId,
+        customOrderName: ord?.customOrderName || ord?.description || r.customOrderId,
+        reviewerName: r.userName || r.reviewerName || 'Anonymous',
+        rating: r.rating,
+        comment: r.comment,
+        status: currentStatus,
+        isApproved: Boolean(r.isApproved),
+        createdAt: r.createdAt
+      };
+    });
+
+    return res.json(formatted);
+  } catch (err: any) {
+    console.error('Error fetching reviews for moderation:', err);
+    return res.status(500).json({ error: 'Failed to fetch reviews for moderation' });
+  }
+});
+
+// Update review moderation status (Approve, Hide, or set Pending) (Admin only)
+app.patch('/api/admin/custom-orders/reviews/:id', requireAdminMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status, isApproved: reqIsApproved } = req.body;
+
+    let isApproved = false;
+    let newStatus = 'PENDING';
+
+    if (status === 'APPROVED' || reqIsApproved === true) {
+      isApproved = true;
+      newStatus = 'APPROVED';
+    } else if (status === 'HIDDEN' || reqIsApproved === false) {
+      isApproved = false;
+      newStatus = 'HIDDEN';
+    } else {
+      isApproved = false;
+      newStatus = 'PENDING';
+    }
+
+    const updated = await (prisma as any).customOrderReview.update({
+      where: { id },
+      data: {
+        isApproved,
+        status: newStatus
+      }
+    });
+
+    return res.json({
+      success: true,
+      review: updated,
+      message: `Review has been marked as ${newStatus}.`
+    });
+  } catch (err: any) {
+    console.error('Error updating review status:', err);
+    return res.status(500).json({ error: err.message || 'Failed to update review status' });
+  }
+});
+
+// Delete review (Admin only)
+app.delete('/api/admin/custom-orders/reviews/:id', requireAdminMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await (prisma as any).customOrderReview.delete({
+      where: { id }
+    });
+    return res.json({ success: true, message: 'Review deleted successfully.' });
+  } catch (err: any) {
+    console.error('Error deleting review:', err);
+    return res.status(500).json({ error: err.message || 'Failed to delete review' });
+  }
+});
+
 
 // ==========================================
 // DELHIVERY SHIPPING REST APIs

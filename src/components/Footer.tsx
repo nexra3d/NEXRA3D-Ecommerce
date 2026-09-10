@@ -12,6 +12,7 @@ interface FooterProps {
   onNavigateContact?: () => void;
   onNavigatePrivacyPolicy?: () => void;
   onRequestQuoteClick?: () => void;
+  onNavigateCustomOrders?: () => void;
 }
 
 export const Footer: React.FC<FooterProps> = ({
@@ -21,7 +22,8 @@ export const Footer: React.FC<FooterProps> = ({
   onNavigateAbout,
   onNavigateContact,
   onNavigatePrivacyPolicy,
-  onRequestQuoteClick
+  onRequestQuoteClick,
+  onNavigateCustomOrders
 }) => {
   return (
     <footer className="bg-slate-900 text-slate-300 border-t border-slate-800 pt-16 pb-8 font-footer">
@@ -167,6 +169,11 @@ export const Footer: React.FC<FooterProps> = ({
               <li>
                 <button onClick={onNavigateShop} className="hover:text-white transition-colors cursor-pointer">
                   Shop Products
+                </button>
+              </li>
+              <li>
+                <button onClick={onNavigateCustomOrders} className="hover:text-white transition-colors cursor-pointer text-cyan-400 font-semibold">
+                  Custom Orders Showcase
                 </button>
               </li>
               <li>

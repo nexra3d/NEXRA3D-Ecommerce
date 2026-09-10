@@ -48,6 +48,9 @@ export async function ensureDbSchema(): Promise<void> {
         "phone" TEXT NOT NULL,
         "email" TEXT,
         "description" TEXT,
+        "customOrderName" TEXT,
+        "imageUrl" TEXT,
+        "isPublic" BOOLEAN NOT NULL DEFAULT false,
         "amount" DECIMAL(10,2) NOT NULL,
         "deliveryType" TEXT NOT NULL DEFAULT 'STORE_PICKUP',
         "notes" TEXT,
@@ -68,10 +71,49 @@ export async function ensureDbSchema(): Promise<void> {
 
     try {
       await rawPrisma.$executeRawUnsafe(`
+        ALTER TABLE "custom_orders" ADD COLUMN IF NOT EXISTS "customOrderName" TEXT;
+        ALTER TABLE "custom_orders" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT;
+        ALTER TABLE "custom_orders" ADD COLUMN IF NOT EXISTS "isPublic" BOOLEAN NOT NULL DEFAULT false;
+      `);
+    } catch (_) {}
+
+    try {
+      await rawPrisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "custom_order_reviews" (
+          "id" TEXT NOT NULL,
+          "customOrderId" TEXT NOT NULL,
+          "userId" TEXT,
+          "userName" TEXT,
+          "rating" INTEGER NOT NULL DEFAULT 5,
+          "title" TEXT,
+          "comment" TEXT NOT NULL,
+          "isApproved" BOOLEAN NOT NULL DEFAULT false,
+          "status" TEXT NOT NULL DEFAULT 'PENDING',
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "custom_order_reviews_pkey" PRIMARY KEY ("id")
+        );
+      `);
+    } catch (_) {}
+
+    try {
+      await rawPrisma.$executeRawUnsafe(`
+        ALTER TABLE "custom_order_reviews" ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT 'PENDING';
+        ALTER TABLE "custom_order_reviews" ADD COLUMN IF NOT EXISTS "userName" TEXT;
+      `);
+    } catch (_) {}
+
+    try {
+      await rawPrisma.$executeRawUnsafe(`
         CREATE INDEX IF NOT EXISTS "custom_orders_phone_idx" ON "custom_orders"("phone");
       `);
       await rawPrisma.$executeRawUnsafe(`
         CREATE INDEX IF NOT EXISTS "custom_orders_paymentStatus_idx" ON "custom_orders"("paymentStatus");
+      `);
+      await rawPrisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS "custom_orders_isPublic_idx" ON "custom_orders"("isPublic");
+      `);
+      await rawPrisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS "custom_order_reviews_order_idx" ON "custom_order_reviews"("customOrderId");
       `);
     } catch (_) {}
 

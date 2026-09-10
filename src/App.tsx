@@ -48,6 +48,7 @@ import {
 } from './types';
 
 import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
+import { CustomOrdersShowcasePage } from './components/CustomOrdersShowcasePage';
 import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { useSEO } from './hooks/useSEO';
 
@@ -57,6 +58,7 @@ type ViewType =
   | 'aerospace'
   | 'services'
   | 'service-detail'
+  | 'custom-orders'
   | 'about'
   | 'contact'
   | 'privacy-policy'
@@ -90,6 +92,10 @@ const VIEW_METADATA: Record<ViewType, { title: string; description: string }> = 
   'service-detail': {
     title: 'Service Details | NEXRA 3D',
     description: 'Explore custom 3D printing and personalized manufacturing solutions tailored for high precision creations.'
+  },
+  'custom-orders': {
+    title: 'Custom Orders Showcase | NEXRA 3D',
+    description: 'Explore completed bespoke 3D-printed creations crafted by NEXRA 3D, including lithophanes, engineering prototypes, and verified customer reviews.'
   },
   about: {
     title: 'About Us | NEXRA 3D',
@@ -147,6 +153,7 @@ const viewToPathMap: Record<ViewType, string> = {
   aerospace: '/aerospace',
   services: '/services',
   'service-detail': '/services',
+  'custom-orders': '/custom-orders',
   about: '/about',
   contact: '/contact',
   'privacy-policy': '/privacy-policy',
@@ -173,6 +180,7 @@ const getViewFromPath = (pathname: string, hash: string = ''): ViewType => {
 
   if (cleanPath === '/admin') return 'admin';
   if (cleanPath === '/shop') return 'shop';
+  if (cleanPath === '/custom-orders' || cleanPath === '/customorders') return 'custom-orders';
   if (cleanPath === '/aerospace') return 'aerospace';
   if (cleanPath === '/services') return 'services';
   if (cleanPath === '/about') return 'about';
@@ -1254,6 +1262,10 @@ export default function App() {
           setQuickViewProduct(null);
           setCurrentView('contact');
         }}
+        onNavigateCustomOrders={() => {
+          setQuickViewProduct(null);
+          setCurrentView('custom-orders');
+        }}
         onRequestQuoteClick={() => {
           setQuoteService(null);
           setIsQuoteModalOpen(true);
@@ -1466,6 +1478,16 @@ export default function App() {
         />
       )}
 
+      {currentView === 'custom-orders' && (
+        <CustomOrdersShowcasePage
+          onRequestQuoteClick={() => {
+            setQuoteService(null);
+            setIsQuoteModalOpen(true);
+          }}
+          onNavigateHome={() => setCurrentView('home')}
+        />
+      )}
+
       {currentView === 'services' && (
         <ServicesPage
           services={services}
@@ -1578,6 +1600,10 @@ export default function App() {
         onNavigatePrivacyPolicy={() => {
           setQuickViewProduct(null);
           setCurrentView('privacy-policy');
+        }}
+        onNavigateCustomOrders={() => {
+          setQuickViewProduct(null);
+          setCurrentView('custom-orders');
         }}
         onRequestQuoteClick={() => {
           setQuoteService(null);

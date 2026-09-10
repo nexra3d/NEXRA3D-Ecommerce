@@ -44,7 +44,8 @@ class MemoryStore {
     customerUpload: [],
     privacyRequest: [],
     securityEvent: [],
-    customOrder: []
+    customOrder: [],
+    customOrderReview: []
   };
 
   constructor() {
@@ -332,6 +333,9 @@ class MemoryStore {
         qrImageUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent('upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=1450.00&cu=INR&tn=Custom%20Order%20CO-1001'),
         paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=1450.00&cu=INR&tn=Custom%20Order%20CO-1001',
         isSimulated: true,
+        customOrderName: 'Custom Carbon-Fiber Drone Bracket',
+        imageUrl: 'https://images.unsplash.com/photo-1527977966376-1c8408f9f108?auto=format&fit=crop&w=800&q=80',
+        isPublic: true,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
         paidAt: null,
         createdAt: new Date().toISOString(),
@@ -343,6 +347,9 @@ class MemoryStore {
         phone: '9812345678',
         email: 'priya.p@example.com',
         description: 'Personalized curved lithophane bedside lamp with wooden base',
+        customOrderName: 'Ghost Rider Moto Sign',
+        imageUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=800&q=80',
+        isPublic: true,
         amount: 2200,
         deliveryType: 'HOME_DELIVERY',
         notes: 'Gift wrap requested with message card',
@@ -356,6 +363,54 @@ class MemoryStore {
         paidAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
         createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
         updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString()
+      },
+      {
+        id: 'co-demo-1003',
+        customerName: 'Vikram Mehta',
+        phone: '9823456789',
+        email: 'vikram.m@example.com',
+        description: 'Architectural Corinthian custom pillar for dioramas',
+        customOrderName: 'Custom Pillar',
+        imageUrl: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=800&q=80',
+        isPublic: true,
+        amount: 3500,
+        deliveryType: 'STORE_PICKUP',
+        notes: 'High resolution 0.12mm layer height',
+        paymentStatus: 'PAID',
+        razorpayOrderId: 'order_demo_1003',
+        razorpayQrId: 'qr_demo_1003',
+        qrImageUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent('upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=3500.00&cu=INR&tn=Custom%20Order%20CO-1003'),
+        paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=3500.00&cu=INR&tn=Custom%20Order%20CO-1003',
+        isSimulated: true,
+        expiresAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        paidAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+        createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+        updatedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString()
+      }
+    ];
+
+    this.collections.customOrderReview = [
+      {
+        id: 'cor-demo-1',
+        customOrderId: 'co-demo-1002',
+        userName: 'Praneeth',
+        rating: 5,
+        title: 'Outstanding Finishing',
+        comment: 'Excellent work and finishing. The custom detailing is spot on!',
+        isApproved: true,
+        status: 'APPROVED',
+        createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      },
+      {
+        id: 'cor-demo-2',
+        customOrderId: 'co-demo-1003',
+        userName: 'Anjali',
+        rating: 5,
+        title: 'Superb Quality',
+        comment: 'Very good quality. Clean layer lines and sturdy print.',
+        isApproved: true,
+        status: 'APPROVED',
+        createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
       }
     ];
   }

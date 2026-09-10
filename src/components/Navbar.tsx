@@ -60,6 +60,7 @@ interface NavbarProps {
   onNavigateLogin?: () => void;
   onNavigateRegister?: () => void;
   onNavigateAccount?: () => void;
+  onNavigateCustomOrders?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -89,7 +90,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onRequestQuoteClick,
   onNavigateLogin,
   onNavigateRegister,
-  onNavigateAccount
+  onNavigateAccount,
+  onNavigateCustomOrders
 }) => {
   const [isMegaMenuOpen, setIsMegaMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -405,6 +407,13 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
 
               <button
+                onClick={onNavigateCustomOrders}
+                className="px-3 py-2 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer text-cyan-600 font-bold"
+              >
+                CUSTOM ORDERS
+              </button>
+
+              <button
                 onClick={onNavigateServices}
                 className="px-3 py-2 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
               >
@@ -456,6 +465,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Send className="w-3.5 h-3.5" />
               <span>Get Quote</span>
+            </button>
+
+            {/* Custom Orders Icon (Public Showcase - NO login required) */}
+            <button
+              onClick={onNavigateCustomOrders}
+              className="relative p-1.5 sm:p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer shrink-0"
+              title="Custom Orders"
+            >
+              <Layers className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
 
             {/* Wishlist Icon */}
@@ -563,6 +581,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100"
               >
                 ALL PRODUCTS
+              </button>
+
+              <button
+                onClick={() => {
+                  if (onNavigateCustomOrders) onNavigateCustomOrders();
+                  setIsMobileMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 font-bold text-cyan-600 flex items-center gap-2"
+              >
+                <Layers className="w-4 h-4" />
+                <span>CUSTOM ORDERS</span>
               </button>
 
               {/* Mobile Category Accordion */}

@@ -476,6 +476,9 @@ export interface CustomOrder {
   phone: string;
   email?: string | null;
   description?: string | null;
+  customOrderName?: string | null;
+  imageUrl?: string | null;
+  isPublic?: boolean;
   amount: number;
   deliveryType: CustomOrderDeliveryType;
   notes?: string | null;
@@ -490,4 +493,33 @@ export interface CustomOrder {
   createdAt: string;
   updatedAt?: string;
 }
+
+export interface PublicCustomOrderReview {
+  id: string;
+  reviewerName: string;
+  rating: number;
+  title?: string | null;
+  comment: string;
+  createdAt: string;
+}
+
+export interface AdminCustomOrderReview {
+  id: string;
+  customOrderId: string;
+  customOrderName: string;
+  reviewerName: string;
+  rating: number;
+  comment: string;
+  status: 'PENDING' | 'APPROVED' | 'HIDDEN';
+  isApproved: boolean;
+  createdAt: string;
+}
+
+export interface PublicCustomOrder {
+  id: string;
+  customOrderName: string;
+  imageUrl?: string | null;
+  reviews: PublicCustomOrderReview[];
+}
+
 

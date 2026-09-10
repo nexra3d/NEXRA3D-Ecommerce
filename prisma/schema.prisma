@@ -774,6 +774,9 @@ model CustomOrder {
   phone           String
   email           String?
   description     String?
+  customOrderName String?
+  imageUrl        String?
+  isPublic        Boolean   @default(false)
   amount          Decimal   @db.Decimal(10, 2)
   deliveryType    String    @default("STORE_PICKUP")
   notes           String?
@@ -787,9 +790,28 @@ model CustomOrder {
   paidAt          DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+  reviews         CustomOrderReview[]
 
   @@index([phone])
   @@index([paymentStatus])
+  @@index([isPublic])
   @@map("custom_orders")
 }
+
+model CustomOrderReview {
+  id            String      @id @default(uuid())
+  customOrderId String
+  customOrder   CustomOrder @relation(fields: [customOrderId], references: [id], onDelete: Cascade)
+  userId        String?
+  userName      String?
+  rating        Int         @default(5)
+  title         String?
+  comment       String
+  isApproved    Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+
+  @@index([customOrderId])
+  @@map("custom_order_reviews")
+}
+
 
