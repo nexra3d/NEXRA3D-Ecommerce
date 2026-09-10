@@ -332,7 +332,7 @@ class MemoryStore {
         qrImageUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent('upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=1450.00&cu=INR&tn=Custom%20Order%20CO-1001'),
         paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=1450.00&cu=INR&tn=Custom%20Order%20CO-1001',
         isSimulated: true,
-        expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
         paidAt: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()

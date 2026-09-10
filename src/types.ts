@@ -357,6 +357,11 @@ export interface SalesReport {
   revenueByDay: { date: string; revenue: number; orders: number }[];
   topSellingProducts: { productId: string; title: string; quantitySold: number; totalRevenue: number }[];
   categoryBreakdown: { categoryName: string; percentage: number; revenue: number }[];
+  customOrdersRevenue?: number;
+  customOrdersPaidCount?: number;
+  totalCustomOrders?: number;
+  customOrdersAwaitingCount?: number;
+  customOrdersCancelledCount?: number;
 }
 
 export interface Service {

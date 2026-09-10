@@ -22,25 +22,29 @@ import {
   Ban,
   ArrowRight,
   ShieldCheck,
-  Receipt
+  Receipt,
+  Trash2
 } from 'lucide-react';
 import { CustomOrder, CustomOrderDeliveryType, CustomOrderPaymentStatus } from '../types';
 
 interface CustomOrdersPanelProps {
   getAuthHeaders: (extra?: Record<string, string>) => Record<string, string>;
   onOrderPaid?: () => void;
+  onOrdersChange?: () => void;
   initialCreateOpen?: boolean;
 }
 
 export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
   getAuthHeaders,
   onOrderPaid,
+  onOrdersChange,
   initialCreateOpen = false
 }) => {
   const [customOrders, setCustomOrders] = useState<CustomOrder[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | CustomOrderPaymentStatus>('ALL');
+  const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
 
   // Create Modal State
   const [showCreateModal, setShowCreateModal] = useState(initialCreateOpen);
@@ -190,6 +194,7 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
         setActiveQrOrder(data.customOrder);
         setActionFeedback('Payment QR generated successfully! Settlement linked to your Razorpay account.');
         setTimeout(() => setActionFeedback(null), 5000);
+        if (onOrdersChange) onOrdersChange();
       }
     } catch (err: any) {
       setFormError(err.message || 'Error generating Razorpay QR code.');
@@ -235,6 +240,7 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
         }
         setActionFeedback(data.message || 'Payment status updated.');
         setTimeout(() => setActionFeedback(null), 4000);
+        if (onOrdersChange) onOrdersChange();
         if (data.customOrder.paymentStatus === 'PAID' && onOrderPaid) {
           onOrderPaid();
         }
@@ -270,6 +276,7 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
         }
         setActionFeedback('QR Code deactivated successfully.');
         setTimeout(() => setActionFeedback(null), 3000);
+        if (onOrdersChange) onOrdersChange();
       }
     } catch (err: any) {
       alert('Error cancelling order: ' + err.message);
@@ -296,10 +303,45 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
         }
         setActionFeedback('Custom order marked as Paid ✅');
         setTimeout(() => setActionFeedback(null), 4000);
+        if (onOrdersChange) onOrdersChange();
         if (onOrderPaid) onOrderPaid();
       }
     } catch (err: any) {
       alert('Error marking as paid: ' + err.message);
+    }
+  };
+
+  // Delete Expired or Cancelled Custom Order
+  // Permanently removes the record and releases its order sequence number for reuse
+  const handleDeleteOrder = async (orderId: string) => {
+    if (!window.confirm(`Are you sure you want to permanently delete custom order ${orderId}?\n\nIts sequence number will be released for reuse in subsequent orders.`)) {
+      return;
+    }
+
+    setIsDeletingId(orderId);
+    try {
+      const res = await fetch(`/api/admin/custom-orders/${orderId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCustomOrders((prev) => prev.filter((o) => o.id !== orderId));
+        if (activeQrOrder?.id === orderId) {
+          setActiveQrOrder(null);
+        }
+        setActionFeedback(`Order ${orderId} deleted. Sequence number released for reuse.`);
+        setTimeout(() => setActionFeedback(null), 4000);
+        if (onOrdersChange) onOrdersChange();
+        if (onOrderPaid) onOrderPaid();
+      } else {
+        alert(data.error || 'Failed to delete custom order');
+      }
+    } catch (err: any) {
+      alert('Error deleting custom order: ' + err.message);
+    } finally {
+      setIsDeletingId(null);
     }
   };
 
@@ -322,7 +364,7 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
   const awaitingCount = customOrders.filter((o) => o.paymentStatus === 'AWAITING_PAYMENT').length;
   const paidOrders = customOrders.filter((o) => o.paymentStatus === 'PAID');
   const paidCount = paidOrders.length;
-  const totalSettled = paidOrders.reduce((sum, o) => sum + (o.amount || 0), 0);
+  const totalSettled = paidOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
 
   return (
     <div className="space-y-6 text-xs text-slate-200">
@@ -478,9 +520,12 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
                 </tr>
               ) : (
                 filteredOrders.map((order) => {
-                  const isAwaiting = order.paymentStatus === 'AWAITING_PAYMENT';
                   const isPaid = order.paymentStatus === 'PAID';
-                  const isCancelled = order.paymentStatus === 'CANCELLED' || order.paymentStatus === 'EXPIRED';
+                  const isPastExpiry = Boolean(order.expiresAt && new Date(order.expiresAt).getTime() <= Date.now());
+                  const isExpired = order.paymentStatus === 'EXPIRED' || (order.paymentStatus === 'AWAITING_PAYMENT' && isPastExpiry);
+                  const isCancelled = order.paymentStatus === 'CANCELLED';
+                  const isAwaiting = order.paymentStatus === 'AWAITING_PAYMENT' && !isPastExpiry;
+                  const canBeDeleted = isCancelled || isExpired;
 
                   return (
                     <tr key={order.id} className="hover:bg-slate-750/40 transition-colors">
@@ -554,16 +599,30 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
                         )}
 
                         {isAwaiting && (
-                          <span className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold animate-pulse">
-                            <Clock className="w-3.5 h-3.5 text-amber-400" />
-                            <span>Awaiting Payment</span>
+                          <div className="space-y-0.5">
+                            <span className="inline-flex items-center gap-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-full text-[10px] font-bold animate-pulse">
+                              <Clock className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Awaiting Payment</span>
+                            </span>
+                            {order.expiresAt && (
+                              <span className="block text-[9px] text-amber-400/80 font-mono">
+                                1h expiry: {new Date(order.expiresAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {isExpired && (
+                          <span className="inline-flex items-center gap-1 bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2.5 py-1 rounded-full text-[10px] font-semibold">
+                            <Clock className="w-3.5 h-3.5 text-rose-400" />
+                            <span>Expired</span>
                           </span>
                         )}
 
-                        {isCancelled && (
+                        {isCancelled && !isExpired && (
                           <span className="inline-flex items-center gap-1 bg-slate-700/40 text-slate-400 border border-slate-700 px-2.5 py-1 rounded-full text-[10px] font-semibold">
                             <Ban className="w-3.5 h-3.5 text-slate-400" />
-                            <span>Cancelled / Expired</span>
+                            <span>Cancelled</span>
                           </span>
                         )}
                       </td>
@@ -612,6 +671,19 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
                               title="Deactivate / Expire QR code"
                             >
                               <Ban className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {/* Delete button for Cancelled / Expired orders */}
+                          {canBeDeleted && (
+                            <button
+                              onClick={() => handleDeleteOrder(order.id)}
+                              disabled={isDeletingId === order.id}
+                              className="p-1.5 bg-rose-500/10 hover:bg-rose-500/25 text-rose-400 border border-rose-500/30 rounded-lg transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
+                              title="Delete expired/cancelled custom order & release order number for reuse"
+                            >
+                              <Trash2 className={`w-3.5 h-3.5 ${isDeletingId === order.id ? 'animate-spin' : ''}`} />
+                              <span>Delete</span>
                             </button>
                           )}
                         </div>
@@ -868,15 +940,25 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
                     <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                     <span>Payment Received & Settled ✅</span>
                   </div>
+                ) : activeQrOrder.paymentStatus === 'EXPIRED' || (activeQrOrder.paymentStatus === 'AWAITING_PAYMENT' && activeQrOrder.expiresAt && new Date(activeQrOrder.expiresAt).getTime() <= Date.now()) ? (
+                  <div className="inline-flex items-center gap-1.5 bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3 py-1 rounded-full text-xs font-semibold">
+                    <Clock className="w-4 h-4" />
+                    <span>QR Code Expired (1-Hour Limit)</span>
+                  </div>
                 ) : activeQrOrder.paymentStatus === 'CANCELLED' ? (
                   <div className="inline-flex items-center gap-1.5 bg-slate-700/40 text-slate-400 border border-slate-700 px-3 py-1 rounded-full text-xs font-semibold">
                     <Ban className="w-4 h-4" />
-                    <span>QR Code Deactivated / Expired</span>
+                    <span>QR Code Deactivated</span>
                   </div>
                 ) : (
                   <div className="inline-flex items-center gap-1.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-bold">
                     <Clock className="w-3.5 h-3.5 text-amber-400 animate-spin" />
                     <span>Awaiting UPI Payment Scan</span>
+                    {activeQrOrder.expiresAt && (
+                      <span className="text-[11px] font-normal text-amber-300/80 ml-1 font-mono">
+                        (Expires {new Date(activeQrOrder.expiresAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })})
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -962,7 +1044,8 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
 
               {/* Live Status Checks & Footer Buttons */}
               <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
-                {activeQrOrder.paymentStatus === 'AWAITING_PAYMENT' ? (
+                {activeQrOrder.paymentStatus === 'AWAITING_PAYMENT' &&
+                 !(activeQrOrder.expiresAt && new Date(activeQrOrder.expiresAt).getTime() <= Date.now()) ? (
                   <>
                     <button
                       onClick={() => handleVerifyStatus(activeQrOrder.id)}
@@ -980,10 +1063,24 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
                       Mark as Paid (Cash/Direct)
                     </button>
                   </>
-                ) : (
+                ) : activeQrOrder.paymentStatus === 'PAID' ? (
                   <span className="text-[11px] text-slate-400">
                     Settlement recorded on {new Date(activeQrOrder.paidAt || Date.now()).toLocaleDateString('en-IN')}
                   </span>
+                ) : (
+                  <div className="w-full flex items-center justify-between">
+                    <span className="text-[11px] text-slate-400">
+                      {activeQrOrder.paymentStatus === 'CANCELLED' ? 'Order cancelled' : 'Payment window expired (60 mins)'}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteOrder(activeQrOrder.id)}
+                      disabled={isDeletingId === activeQrOrder.id}
+                      className="px-2.5 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Trash2 className={`w-3 h-3 ${isDeletingId === activeQrOrder.id ? 'animate-spin' : ''}`} />
+                      <span>Delete Order</span>
+                    </button>
+                  </div>
                 )}
               </div>
             </div>

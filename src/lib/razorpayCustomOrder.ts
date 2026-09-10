@@ -33,7 +33,7 @@ export async function generateRazorpayCustomOrderQr(params: {
     description,
     amount,
     deliveryType,
-    validityMinutes = 15
+    validityMinutes = 60
   } = params;
 
   const amountInPaise = Math.round(amount * 100);

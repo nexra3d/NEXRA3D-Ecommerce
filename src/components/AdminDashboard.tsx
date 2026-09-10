@@ -31,7 +31,9 @@ import {
   MapPin,
   Clock,
   ExternalLink,
-  Building2
+  Building2,
+  QrCode,
+  ArrowRight
 } from 'lucide-react';
 import { ErrorBoundary } from './ErrorBoundary';
 import {
@@ -48,7 +50,7 @@ import {
 
 import { AdminPrivacyTab } from './AdminPrivacyTab';
 import { CustomOrdersPanel } from './CustomOrdersPanel';
-import { Shield, QrCode } from 'lucide-react';
+import { Shield } from 'lucide-react';
 
 interface AdminDashboardProps {
   isOpen: boolean;
@@ -383,11 +385,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [varSize, setVarSize] = useState('');
   const [variantError, setVariantError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    fetchAdminOrders();
-    fetchShipments();
-
+  const fetchAnalytics = () => {
     fetch('/api/admin/analytics', { headers: getAuthHeaders(), credentials: 'include' })
       .then((res) => res.json())
       .then((data) => {
@@ -396,6 +394,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       })
       .catch((err) => console.error(err));
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetchAdminOrders();
+    fetchShipments();
+    fetchAnalytics();
 
     fetch('/api/admin/customers', { headers: getAuthHeaders(), credentials: 'include' })
       .then((res) => res.json())
@@ -1682,7 +1687,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {activeTab === 'custom-orders' && (
             <CustomOrdersPanel
               getAuthHeaders={getAuthHeaders}
+              onOrdersChange={() => {
+                fetchAnalytics();
+                onRefreshData();
+              }}
               onOrderPaid={() => {
+                fetchAnalytics();
                 onRefreshData();
               }}
             />
@@ -1697,13 +1707,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="text-2xl font-black text-emerald-400">
                     ₹{Number(overviewRevenue).toLocaleString('en-IN')}
                   </div>
-                  <span className="text-[10px] text-slate-500">+18% vs last month</span>
+                  <span className="text-[10px] text-slate-500">Online store direct orders</span>
                 </div>
 
                 <div className="bg-slate-800/80 border border-slate-700/80 p-4 rounded-2xl space-y-1">
                   <span className="text-[11px] font-bold text-slate-400 uppercase">Total Orders</span>
                   <div className="text-2xl font-black text-amber-400">{overviewOrdersCount}</div>
-                  <span className="text-[10px] text-slate-500">100% processed</span>
+                  <span className="text-[10px] text-slate-500">Store checkout orders</span>
                 </div>
 
                 <div className="bg-slate-800/80 border border-slate-700/80 p-4 rounded-2xl space-y-1">
@@ -1718,6 +1728,66 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <span className="text-[11px] font-bold text-slate-400 uppercase">Registered Customers</span>
                   <div className="text-2xl font-black text-purple-400">{overviewCustomersCount}</div>
                   <span className="text-[10px] text-slate-500">Active users</span>
+                </div>
+              </div>
+
+              {/* Custom Orders (QR) Stat Cards Section */}
+              <div className="bg-slate-800/60 border border-slate-700/80 rounded-2xl p-4 sm:p-5 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-indigo-600/20 text-indigo-400 rounded-lg border border-indigo-500/30">
+                      <QrCode className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                        Custom Orders (QR) Overview
+                      </h3>
+                      <p className="text-[11px] text-slate-400">
+                        Razorpay Dynamic UPI QR payments & counter orders (1-hour auto-expiry)
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('custom-orders')}
+                    className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <span>Open Custom Orders</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+                  <div className="bg-slate-900/80 border border-slate-700/80 p-3.5 rounded-xl space-y-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Custom Order Revenue</span>
+                    <div className="text-xl font-black text-emerald-400">
+                      ₹{Number(analytics?.customOrdersRevenue ?? 0).toLocaleString('en-IN')}
+                    </div>
+                    <span className="text-[10px] text-emerald-500/80">Paid & settled orders only</span>
+                  </div>
+
+                  <div className="bg-slate-900/80 border border-slate-700/80 p-3.5 rounded-xl space-y-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Paid / Completed</span>
+                    <div className="text-xl font-black text-indigo-400">
+                      {analytics?.customOrdersPaidCount ?? 0}
+                    </div>
+                    <span className="text-[10px] text-slate-500">Credited to Razorpay</span>
+                  </div>
+
+                  <div className="bg-slate-900/80 border border-slate-700/80 p-3.5 rounded-xl space-y-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Awaiting Payment</span>
+                    <div className="text-xl font-black text-amber-400">
+                      {analytics?.customOrdersAwaitingCount ?? 0}
+                    </div>
+                    <span className="text-[10px] text-amber-500/80">Active UPI QR</span>
+                  </div>
+
+                  <div className="bg-slate-900/80 border border-slate-700/80 p-3.5 rounded-xl space-y-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Cancelled / Expired</span>
+                    <div className="text-xl font-black text-rose-400">
+                      {analytics?.customOrdersCancelledCount ?? 0}
+                    </div>
+                    <span className="text-[10px] text-slate-500">Deactivated or timed out</span>
+                  </div>
                 </div>
               </div>
 

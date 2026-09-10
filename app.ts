@@ -4611,28 +4611,29 @@ export async function generateNextCustomOrderNumber(): Promise<string> {
   const dateSuffix = `${dd}${mm}${yyyy}`;
 
   try {
-    const totalCustomOrders = await (prisma as any).customOrder.count();
-    let nextSeq = totalCustomOrders + 1;
-
-    const recentCustomOrders = await (prisma as any).customOrder.findMany({
-      where: { id: { startsWith: 'N3D-CO-' } },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
+    const existingOrders = await (prisma as any).customOrder.findMany({
       select: { id: true }
     });
 
-    for (const ord of recentCustomOrders) {
-      if (!ord.id) continue;
-      const match = ord.id.match(/^N3D-CO-(\d{1,5})/i);
+    const usedSeqNumbers = new Set<number>();
+    for (const ord of (existingOrders || [])) {
+      if (!ord?.id) continue;
+      const match = String(ord.id).match(/^N3D-CO-(\d{1,5})/i);
       if (match) {
-        const val = parseInt(match[1], 10);
-        if (!isNaN(val) && val >= nextSeq && val < 100000) {
-          nextSeq = val + 1;
+        const seqVal = parseInt(match[1], 10);
+        if (!isNaN(seqVal) && seqVal > 0) {
+          usedSeqNumbers.add(seqVal);
         }
       }
     }
 
-    const seqPadded = String(nextSeq).padStart(4, '0');
+    // Find the lowest positive integer sequence number not in use (reusing gaps from deleted expired orders)
+    let candidateSeq = 1;
+    while (usedSeqNumbers.has(candidateSeq)) {
+      candidateSeq++;
+    }
+
+    const seqPadded = String(candidateSeq).padStart(4, '0');
     return `N3D-CO-${seqPadded}-${dateSuffix}`;
   } catch (err) {
     const fallbackSeq = String(Math.floor(1 + Math.random() * 99)).padStart(4, '0');
@@ -6717,9 +6718,38 @@ app.get('/api/banners', async (req: Request, res: Response) => {
   }
 });
 
+// Auto-expire custom orders past validity
+export async function autoExpirePendingCustomOrders(): Promise<void> {
+  try {
+    const awaitingOrders = await (prisma as any).customOrder.findMany({
+      where: { paymentStatus: 'AWAITING_PAYMENT' }
+    });
+
+    const now = Date.now();
+    for (const ord of (awaitingOrders || [])) {
+      if (ord?.expiresAt && new Date(ord.expiresAt).getTime() <= now) {
+        if (ord.razorpayQrId) {
+          deactivateRazorpayQrCode(ord.razorpayQrId).catch(() => {});
+        }
+        await (prisma as any).customOrder.update({
+          where: { id: ord.id },
+          data: {
+            paymentStatus: 'EXPIRED',
+            updatedAt: new Date().toISOString()
+          }
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('Auto-expire custom orders check warning:', err);
+  }
+}
+
 // Admin Analytics
 app.get('/api/admin/analytics', requireAdminMiddleware, async (req: Request, res: Response) => {
   try {
+    await autoExpirePendingCustomOrders();
+
     const totalOrders = await prisma.order.count();
     const totalProducts = await prisma.product.count();
     const totalUsers = await prisma.user.count();
@@ -6732,6 +6762,18 @@ app.get('/api/admin/analytics', requireAdminMiddleware, async (req: Request, res
 
     const totalRevenue = orders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
     const averageOrderValue = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
+
+    // Custom Orders (QR) Analytics - Kept strictly separate from Direct Orders
+    const customOrders = await (prisma as any).customOrder.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+    const totalCustomOrders = customOrders.length;
+    const paidCustomOrders = customOrders.filter((co: any) => co.paymentStatus === 'PAID');
+    const customOrdersPaidCount = paidCustomOrders.length;
+    // Business rule: "Custom Order Revenue" includes Paid/Completed orders, but excludes Awaiting Payment, Cancelled/Expired, and Deleted orders.
+    const customOrdersRevenue = paidCustomOrders.reduce((sum: number, co: any) => sum + Number(co.amount || 0), 0);
+    const customOrdersAwaitingCount = customOrders.filter((co: any) => co.paymentStatus === 'AWAITING_PAYMENT').length;
+    const customOrdersCancelledCount = customOrders.filter((co: any) => co.paymentStatus === 'CANCELLED' || co.paymentStatus === 'EXPIRED').length;
 
     // 7 days revenue trend
     const days: { [date: string]: { date: string; revenue: number; orders: number } } = {};
@@ -6807,7 +6849,12 @@ app.get('/api/admin/analytics', requireAdminMiddleware, async (req: Request, res
       revenueByDay,
       categoryBreakdown,
       topSellingProducts,
-      recentOrders: orders.slice(0, 5)
+      recentOrders: orders.slice(0, 5),
+      customOrdersRevenue,
+      customOrdersPaidCount,
+      totalCustomOrders,
+      customOrdersAwaitingCount,
+      customOrdersCancelledCount
     });
   } catch (err: any) {
     return res.status(500).json({ error: 'Failed to fetch analytics' });
@@ -7268,6 +7315,7 @@ app.post('/api/admin/orders/:id/reconcile', requireAdminMiddleware, async (req: 
 // 1. Get all custom orders (Admin)
 app.get('/api/admin/custom-orders', requireAdminMiddleware, async (_req: Request, res: Response) => {
   try {
+    await autoExpirePendingCustomOrders();
     const orders = await (prisma as any).customOrder.findMany({
       orderBy: { createdAt: 'desc' }
     });
@@ -7316,7 +7364,7 @@ app.post('/api/admin/custom-orders', requireAdminMiddleware, async (req: Request
 
     const orderDbId = await generateNextCustomOrderNumber();
 
-    // Generate Dynamic Razorpay QR Code & UPI payment link
+    // Generate Dynamic Razorpay QR Code & UPI payment link (valid for 1 hour / 60 minutes)
     const qrResult = await generateRazorpayCustomOrderQr({
       orderDbId,
       customerName: customerName.trim(),
@@ -7325,7 +7373,7 @@ app.post('/api/admin/custom-orders', requireAdminMiddleware, async (req: Request
       description: description ? String(description).trim() : null,
       amount: numAmount,
       deliveryType: deliveryType === 'HOME_DELIVERY' ? 'HOME_DELIVERY' : 'STORE_PICKUP',
-      validityMinutes: 30
+      validityMinutes: 60
     });
 
     const customOrder = await (prisma as any).customOrder.create({
@@ -7353,8 +7401,8 @@ app.post('/api/admin/custom-orders', requireAdminMiddleware, async (req: Request
     return res.status(201).json({
       customOrder,
       message: qrResult.isSimulated
-        ? 'Custom order created with dynamic QR (Simulated UPI mode).'
-        : 'Custom order created and Razorpay QR activated.'
+        ? 'Custom order created with dynamic QR (Simulated UPI mode, 1h validity).'
+        : 'Custom order created and Razorpay QR activated (1h validity).'
     });
   } catch (err: any) {
     console.error('Error creating custom order:', err);
@@ -7470,6 +7518,49 @@ app.post('/api/admin/custom-orders/:id/mark-paid', requireAdminMiddleware, async
   } catch (err: any) {
     console.error('Error marking custom order as paid:', err);
     return res.status(500).json({ error: err.message || 'Failed to mark custom order as paid' });
+  }
+});
+
+// 7. Delete Expired or Cancelled Custom Order (Admin)
+// Releases the order sequence number for reuse
+app.delete('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const order = await (prisma as any).customOrder.findUnique({ where: { id } });
+    if (!order) {
+      return res.status(404).json({ error: 'Custom order not found' });
+    }
+
+    const isPastExpiry = order.expiresAt && new Date(order.expiresAt).getTime() <= Date.now();
+    const isCancelledOrExpired = order.paymentStatus === 'CANCELLED' || order.paymentStatus === 'EXPIRED' || isPastExpiry;
+
+    if (!isCancelledOrExpired) {
+      if (order.paymentStatus === 'PAID') {
+        return res.status(400).json({
+          error: 'Paid custom orders cannot be deleted as they represent settled financial transactions.'
+        });
+      }
+      return res.status(400).json({
+        error: 'Active custom order cannot be deleted. Deactivate or expire the QR code first.'
+      });
+    }
+
+    // Deactivate in Razorpay if still active
+    if (order.razorpayQrId) {
+      await deactivateRazorpayQrCode(order.razorpayQrId).catch(() => {});
+    }
+
+    await (prisma as any).customOrder.delete({
+      where: { id }
+    });
+
+    return res.json({
+      success: true,
+      message: `Custom order ${id} deleted successfully. Its sequence number has been released for reuse.`
+    });
+  } catch (err: any) {
+    console.error('Error deleting custom order:', err);
+    return res.status(500).json({ error: err.message || 'Failed to delete custom order' });
   }
 });
 
