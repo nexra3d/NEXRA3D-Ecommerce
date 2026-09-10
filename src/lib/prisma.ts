@@ -1,15 +1,56 @@
+import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+
+dotenv.config();
+
+try {
+  const devEnvPath = path.resolve('/app/.dev.env.json');
+  if (fs.existsSync(devEnvPath)) {
+    const raw = JSON.parse(fs.readFileSync(devEnvPath, 'utf8'));
+    for (const [k, v] of Object.entries(raw)) {
+      if (!process.env[k] && typeof v === 'string') {
+        process.env[k] = v;
+      }
+    }
+  }
+} catch (_) {}
+
 import { PrismaClient } from '@prisma/client';
 import { memoryStore } from './memoryDb.js';
+import { supabaseAdmin, isSupabaseConfigured } from './supabase.js';
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };
+
+const dbUrl = (
+  process.env.DATABASE_URL ||
+  process.env.DIRECT_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.POSTGRES_PRISMA_URL ||
+  process.env.SUPABASE_DB_URL ||
+  ''
+).trim();
+
+const isPlaceholderDbUrl =
+  !dbUrl ||
+  dbUrl.includes('user:password') ||
+  dbUrl.startsWith('file:') ||
+  dbUrl.includes('sample');
+
+const hasDatabaseUrl = !isPlaceholderDbUrl;
+
+if (hasDatabaseUrl && !process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = dbUrl;
+}
 
 let rawPrisma: any;
 try {
   rawPrisma =
     globalForPrisma.prisma ??
     new PrismaClient({
+      datasources: hasDatabaseUrl ? { db: { url: dbUrl } } : undefined,
       log: ['error'],
     });
 } catch (e) {
@@ -20,17 +61,6 @@ try {
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = rawPrisma;
 }
-
-const dbUrl = (process.env.DATABASE_URL || '').trim();
-const isPlaceholderDbUrl =
-  !dbUrl ||
-  dbUrl.includes('user:password') ||
-  dbUrl.includes('localhost') ||
-  dbUrl.includes('127.0.0.1') ||
-  dbUrl.startsWith('file:') ||
-  dbUrl.includes('sample');
-
-const hasDatabaseUrl = !isPlaceholderDbUrl;
 
 let dbSchemaEnsured = false;
 
@@ -137,6 +167,94 @@ function createModelProxy(modelName: string | symbol) {
       }
       return async (...args: any[]) => {
         if (!hasDatabaseUrl) {
+          // Direct Supabase PostgREST adapter for custom orders and reviews if Supabase client is configured
+          if (isSupabaseConfigured && supabaseAdmin && modelName === 'customOrder') {
+            try {
+              if (prop === 'findMany') {
+                let query = (supabaseAdmin as any).from('custom_orders').select('*');
+                const filter = args[0]?.where;
+                if (filter?.isPublic !== undefined) {
+                  query = query.eq('isPublic', filter.isPublic);
+                }
+                if (filter?.paymentStatus !== undefined) {
+                  query = query.eq('paymentStatus', filter.paymentStatus);
+                }
+                if (args[0]?.orderBy?.createdAt === 'desc') {
+                  query = query.order('createdAt', { ascending: false });
+                }
+                const { data, error } = await query;
+                if (!error && Array.isArray(data)) {
+                  return data;
+                }
+              } else if (prop === 'findUnique' || prop === 'findFirst') {
+                const where = args[0]?.where;
+                if (where?.id) {
+                  const { data, error } = await (supabaseAdmin as any).from('custom_orders').select('*').eq('id', where.id).maybeSingle();
+                  if (!error && data) return data;
+                }
+              } else if (prop === 'create') {
+                const itemData = args[0]?.data;
+                const { data: created, error } = await (supabaseAdmin as any).from('custom_orders').insert(itemData).select().maybeSingle();
+                if (!error && created) return created;
+              } else if (prop === 'update') {
+                const where = args[0]?.where;
+                const itemData = args[0]?.data;
+                if (where?.id) {
+                  const { data: updated, error } = await (supabaseAdmin as any).from('custom_orders').update(itemData).eq('id', where.id).select().maybeSingle();
+                  if (!error && updated) return updated;
+                }
+              } else if (prop === 'delete') {
+                const where = args[0]?.where;
+                if (where?.id) {
+                  await (supabaseAdmin as any).from('custom_orders').delete().eq('id', where.id);
+                  return { id: where.id };
+                }
+              }
+            } catch (supaErr) {
+              console.warn('[Supabase Direct Bridge] Custom order query warning:', supaErr);
+            }
+          }
+
+          if (isSupabaseConfigured && supabaseAdmin && modelName === 'customOrderReview') {
+            try {
+              if (prop === 'findMany') {
+                let query = (supabaseAdmin as any).from('custom_order_reviews').select('*');
+                const filter = args[0]?.where;
+                if (filter?.customOrderId?.in && Array.isArray(filter.customOrderId.in)) {
+                  query = query.in('customOrderId', filter.customOrderId.in);
+                } else if (filter?.customOrderId) {
+                  query = query.eq('customOrderId', filter.customOrderId);
+                }
+                if (filter?.isApproved !== undefined) {
+                  query = query.eq('isApproved', filter.isApproved);
+                }
+                const { data, error } = await query;
+                if (!error && Array.isArray(data)) {
+                  return data;
+                }
+              } else if (prop === 'create') {
+                const itemData = args[0]?.data;
+                const { data: created, error } = await (supabaseAdmin as any).from('custom_order_reviews').insert(itemData).select().maybeSingle();
+                if (!error && created) return created;
+              } else if (prop === 'update') {
+                const where = args[0]?.where;
+                const itemData = args[0]?.data;
+                if (where?.id) {
+                  const { data: updated, error } = await (supabaseAdmin as any).from('custom_order_reviews').update(itemData).eq('id', where.id).select().maybeSingle();
+                  if (!error && updated) return updated;
+                }
+              } else if (prop === 'delete') {
+                const where = args[0]?.where;
+                if (where?.id) {
+                  await (supabaseAdmin as any).from('custom_order_reviews').delete().eq('id', where.id);
+                  return { id: where.id };
+                }
+              }
+            } catch (supaErr) {
+              console.warn('[Supabase Direct Bridge] Custom order review query warning:', supaErr);
+            }
+          }
+
           const fn = (memoryHandler as any)[prop];
           if (typeof fn === 'function') {
             return fn(...args);

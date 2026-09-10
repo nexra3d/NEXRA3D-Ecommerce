@@ -1,5 +1,22 @@
-import express, { Request, Response } from 'express';
+import dotenv from 'dotenv';
+import fs from 'fs';
 import path from 'path';
+
+dotenv.config();
+
+try {
+  const devEnvPath = path.resolve('/app/.dev.env.json');
+  if (fs.existsSync(devEnvPath)) {
+    const raw = JSON.parse(fs.readFileSync(devEnvPath, 'utf8'));
+    for (const [k, v] of Object.entries(raw)) {
+      if (!process.env[k] && typeof v === 'string') {
+        process.env[k] = v;
+      }
+    }
+  }
+} catch (_) {}
+
+import express, { Request, Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import app from './app.js';
 import { ensureDbSchema } from './src/lib/prisma.js';

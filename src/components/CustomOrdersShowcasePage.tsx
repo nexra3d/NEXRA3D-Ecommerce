@@ -75,7 +75,7 @@ export const CustomOrdersShowcasePage: React.FC<CustomOrdersShowcasePageProps> =
   });
 
   const handleOpenReviewModal = (orderId?: string) => {
-    const selectedId = orderId || (orders.length > 0 ? orders[0].id : '');
+    const selectedId = orderId || 'general';
     setTargetOrderId(selectedId);
     setReviewerName('');
     setReviewRating(5);
@@ -86,10 +86,6 @@ export const CustomOrdersShowcasePage: React.FC<CustomOrdersShowcasePageProps> =
 
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!targetOrderId.trim()) {
-      setReviewMessage({ type: 'error', text: 'Please select a custom creation to review.' });
-      return;
-    }
     if (!reviewerName.trim() || reviewerName.trim().length < 2) {
       setReviewMessage({ type: 'error', text: 'Please enter your Name (at least 2 characters).' });
       return;
@@ -102,11 +98,14 @@ export const CustomOrdersShowcasePage: React.FC<CustomOrdersShowcasePageProps> =
     setIsSubmittingReview(true);
     setReviewMessage(null);
 
+    const chosenOrderId = targetOrderId && targetOrderId.trim() ? targetOrderId.trim() : 'general';
+
     try {
-      const res = await fetch(`/api/custom-orders/${targetOrderId.trim()}/reviews`, {
+      const res = await fetch(`/api/custom-orders/${chosenOrderId}/reviews`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          customOrderId: chosenOrderId,
           name: reviewerName.trim(),
           rating: reviewRating,
           review: reviewComment.trim()
@@ -558,29 +557,24 @@ export const CustomOrdersShowcasePage: React.FC<CustomOrdersShowcasePageProps> =
 
             <form onSubmit={handleSubmitReview} className="mt-5 space-y-4">
               {/* Order target selection if opened from header */}
-              {orders.length > 1 ? (
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Custom Creation *
-                  </label>
-                  <select
-                    value={targetOrderId}
-                    onChange={(e) => setTargetOrderId(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                  >
-                    {orders.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.customOrderName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : targetOrderId && orders.find((o) => o.id === targetOrderId) ? (
-                <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-600 dark:text-cyan-400 font-semibold flex items-center gap-2">
-                  <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">Reviewing: {orders.find((o) => o.id === targetOrderId)?.customOrderName}</span>
-                </div>
-              ) : null}
+              {/* Custom Order Selection (Optional - General Review or Specific Creation) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Custom Creation <span className="font-normal text-slate-400 dark:text-slate-500">(Optional)</span>
+                </label>
+                <select
+                  value={targetOrderId || 'general'}
+                  onChange={(e) => setTargetOrderId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-pointer"
+                >
+                  <option value="general">⭐ General Review / Overall Experience with NEXRA 3D</option>
+                  {orders.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      Custom Creation: {o.customOrderName}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               {/* Name */}
               <div>

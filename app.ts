@@ -7712,9 +7712,9 @@ app.get('/api/custom-orders/public', async (_req: Request, res: Response) => {
 // Rule: Completely open to any visitor. NO login, NO account, NO OTP, NO email/phone verification,
 // NO purchase verification, NO order verification required.
 // Submissions default to isApproved = false (PENDING moderation).
-app.post('/api/custom-orders/:id/reviews', async (req: Request, res: Response) => {
+app.post(['/api/custom-orders/:id/reviews', '/api/custom-orders/reviews'], async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id || req.body.customOrderId || req.body.orderId || 'general';
     const clientIp = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'visitor-ip');
 
     // 1. Rate Limiting Protection (5 reviews per 10 mins per IP)
@@ -7747,16 +7747,19 @@ app.post('/api/custom-orders/:id/reviews', async (req: Request, res: Response) =
       return res.status(400).json({ error: 'External links, advertisements, and promotional URLs are not permitted in reviews.' });
     }
 
-    // 4. Verify custom order exists
-    const order = await (prisma as any).customOrder.findUnique({ where: { id } });
-    if (!order) {
-      return res.status(404).json({ error: 'Custom order creation not found.' });
+    // 4. Resolve custom order (Order is completely OPTIONAL - supports general reviews for any visitor)
+    let finalOrderId = 'general';
+    if (id && id !== 'general') {
+      const order = await (prisma as any).customOrder.findUnique({ where: { id } }).catch(() => null);
+      if (order) {
+        finalOrderId = order.id;
+      }
     }
 
     // 5. Store review as PENDING moderation (isApproved: false)
     const review = await (prisma as any).customOrderReview.create({
       data: {
-        customOrderId: id,
+        customOrderId: finalOrderId,
         userName: reviewerName,
         rating: Math.round(numRating),
         title: null,
@@ -7809,7 +7812,7 @@ app.get('/api/admin/custom-orders/reviews', requireAdminMiddleware, async (_req:
       return {
         id: r.id,
         customOrderId: r.customOrderId,
-        customOrderName: ord?.customOrderName || ord?.description || r.customOrderId,
+        customOrderName: r.customOrderId === 'general' ? '⭐ General Review / NEXRA 3D' : (ord?.customOrderName || ord?.description || r.customOrderId),
         reviewerName: r.userName || r.reviewerName || 'Anonymous',
         rating: r.rating,
         comment: r.comment,

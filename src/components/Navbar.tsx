@@ -407,13 +407,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
 
               <button
-                onClick={onNavigateCustomOrders}
-                className="px-3 py-2 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer text-cyan-600 font-bold"
-              >
-                CUSTOM ORDERS
-              </button>
-
-              <button
                 onClick={onNavigateServices}
                 className="px-3 py-2 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
               >
@@ -470,8 +463,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Custom Orders Icon (Public Showcase - NO login required) */}
             <button
               onClick={onNavigateCustomOrders}
-              className="relative p-1.5 sm:p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer shrink-0"
+              className="relative p-1.5 sm:p-2 text-slate-600 hover:text-cyan-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer shrink-0"
               title="Custom Orders"
+              aria-label="Custom Orders"
             >
               <Layers className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>

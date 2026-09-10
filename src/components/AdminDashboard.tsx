@@ -1766,11 +1766,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
 
                   <div className="bg-slate-900/80 border border-slate-700/80 p-3.5 rounded-xl space-y-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Paid / Completed</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Custom Orders</span>
                     <div className="text-xl font-black text-indigo-400">
                       {analytics?.customOrdersPaidCount ?? 0}
                     </div>
-                    <span className="text-[10px] text-slate-500">Credited to Razorpay</span>
+                    <span className="text-[10px] text-indigo-400/80">Paid & settled orders</span>
                   </div>
 
                   <div className="bg-slate-900/80 border border-slate-700/80 p-3.5 rounded-xl space-y-1">
