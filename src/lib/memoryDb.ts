@@ -1017,6 +1017,16 @@ class MemoryStore {
           ...updateData,
           updatedAt: new Date()
         };
+        // Synchronize camelCase to snake_case and vice-versa
+        for (const [k, v] of Object.entries(updateData)) {
+          if (/[A-Z]/.test(k)) {
+            const snakeKey = k.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+            updated[snakeKey] = v;
+          } else if (k.includes('_')) {
+            const camelKey = k.replace(/_([a-z])/g, (_, l) => l.toUpperCase());
+            updated[camelKey] = v;
+          }
+        }
         store[itemIndex] = updated;
         this.persistToSnapshot();
         return this.attachIncludes(updated, modelName, args.include);
@@ -1044,6 +1054,15 @@ class MemoryStore {
         if (existingIndex !== -1) {
           const updateData = this.processDataRelations(args.update || {});
           const updated = { ...store[existingIndex], ...updateData, updatedAt: new Date() };
+          for (const [k, v] of Object.entries(updateData)) {
+            if (/[A-Z]/.test(k)) {
+              const snakeKey = k.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+              updated[snakeKey] = v;
+            } else if (k.includes('_')) {
+              const camelKey = k.replace(/_([a-z])/g, (_, l) => l.toUpperCase());
+              updated[camelKey] = v;
+            }
+          }
           store[existingIndex] = updated;
           this.persistToSnapshot();
           return this.attachIncludes(updated, modelName, args.include);

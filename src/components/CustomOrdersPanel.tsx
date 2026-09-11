@@ -104,20 +104,36 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // Track recently saved orders to prevent race conditions or stale cache overwrite
+  const recentlySavedRef = useRef<Map<string, { order: CustomOrder; timestamp: number }>>(new Map());
 
   // Fetch Custom Orders from server
   const fetchCustomOrders = async () => {
     setIsLoading(true);
     setFetchError(null);
     try {
-      const res = await fetch('/api/admin/custom-orders', {
-        headers: getAuthHeaders(),
+      const res = await fetch(`/api/admin/custom-orders?_t=${Date.now()}`, {
+        headers: {
+          ...getAuthHeaders(),
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        },
+        cache: 'no-store',
         credentials: 'include'
       });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          setCustomOrders(data);
+          setCustomOrders((prev) => {
+            const now = Date.now();
+            return data.map((fetchedOrder: CustomOrder) => {
+              const saved = recentlySavedRef.current.get(fetchedOrder.id);
+              if (saved && (now - saved.timestamp < 30000)) {
+                return { ...fetchedOrder, ...saved.order };
+              }
+              return fetchedOrder;
+            });
+          });
         }
       } else {
         const errJson = await res.json().catch(() => ({}));
@@ -208,11 +224,17 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
 
   // Real-time polling when a QR modal is open and in AWAITING_PAYMENT status
   useEffect(() => {
-    if (activeQrOrder && activeQrOrder.paymentStatus === 'AWAITING_PAYMENT') {
+    if (activeQrOrder && activeQrOrder.paymentStatus === 'AWAITING_PAYMENT' && !showcaseModalOrder && !isSavingShowcase) {
       pollIntervalRef.current = setInterval(async () => {
+        if (isSavingShowcase || showcaseModalOrder) return;
         try {
-          const res = await fetch(`/api/admin/custom-orders/${activeQrOrder.id}`, {
-            headers: getAuthHeaders(),
+          const res = await fetch(`/api/admin/custom-orders/${activeQrOrder.id}?_t=${Date.now()}`, {
+            headers: {
+              ...getAuthHeaders(),
+              'Cache-Control': 'no-cache, no-store',
+              'Pragma': 'no-cache'
+            },
+            cache: 'no-store',
             credentials: 'include'
           });
           if (res.ok) {
@@ -242,7 +264,7 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
         pollIntervalRef.current = null;
       }
     };
-  }, [activeQrOrder]);
+  }, [activeQrOrder, showcaseModalOrder, isSavingShowcase]);
 
   // Handle Form Submission: Create Order & Generate Razorpay QR
   const handleCreateCustomOrder = async (e: React.FormEvent) => {
@@ -480,19 +502,30 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
         throw new Error(data.error || 'Failed to update custom order');
       }
 
-      setCustomOrders((prev) => {
-        const exists = prev.some((o) => o.id === data.customOrder.id);
-        if (exists) {
-          return prev.map((o) => (o.id === data.customOrder.id ? data.customOrder : o));
-        }
-        return [data.customOrder, ...prev];
+      const updatedOrder = data.customOrder;
+      recentlySavedRef.current.set(updatedOrder.id, {
+        order: updatedOrder,
+        timestamp: Date.now()
       });
+
+      setCustomOrders((prev) => {
+        const orderIdClean = String(updatedOrder.id || '').trim().toLowerCase();
+        const exists = prev.some((o) => String(o.id || '').trim().toLowerCase() === orderIdClean);
+        if (exists) {
+          return prev.map((o) => (String(o.id || '').trim().toLowerCase() === orderIdClean ? { ...o, ...updatedOrder } : o));
+        }
+        return [updatedOrder, ...prev];
+      });
+
+      if (activeQrOrder && String(activeQrOrder.id || '').trim().toLowerCase() === String(updatedOrder.id || '').trim().toLowerCase()) {
+        setActiveQrOrder((prev) => (prev ? { ...prev, ...updatedOrder } : updatedOrder));
+      }
+
       setShowcaseModalOrder(null);
       setActionFeedback('Custom order & showcase updated successfully! ✅');
       setTimeout(() => setActionFeedback(null), 4000);
       if (onOrdersChange) onOrdersChange();
-      // Re-fetch custom orders list to guarantee total sync across DB and UI
-      fetchCustomOrders();
+      await fetchCustomOrders();
     } catch (err: any) {
       setUploadFeedback(`Save failed: ${err.message}`);
     } finally {
@@ -517,6 +550,7 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
       });
       const data = await res.json();
       if (res.ok && data.customOrder) {
+        recentlySavedRef.current.set(data.customOrder.id, { order: data.customOrder, timestamp: Date.now() });
         setCustomOrders((prev) => prev.map((o) => (o.id === data.customOrder.id ? data.customOrder : o)));
         setActionFeedback(`Order #${order.id} ${newStatus ? 'published to' : 'hidden from'} public showcase.`);
         setTimeout(() => setActionFeedback(null), 3000);
@@ -558,6 +592,7 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
       });
       const data = await res.json();
       if (res.ok && data.customOrder) {
+        recentlySavedRef.current.set(data.customOrder.id, { order: data.customOrder, timestamp: Date.now() });
         setCustomOrders((prev) => prev.map((o) => (o.id === data.customOrder.id ? data.customOrder : o)));
         if (activeQrOrder?.id === data.customOrder.id) {
           setActiveQrOrder(data.customOrder);
@@ -594,6 +629,7 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
       });
       const data = await res.json();
       if (res.ok && data.customOrder) {
+        recentlySavedRef.current.set(data.customOrder.id, { order: data.customOrder, timestamp: Date.now() });
         setCustomOrders((prev) => prev.map((o) => (o.id === data.customOrder.id ? data.customOrder : o)));
         if (activeQrOrder?.id === data.customOrder.id) {
           setActiveQrOrder(data.customOrder);
@@ -621,6 +657,7 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
       });
       const data = await res.json();
       if (res.ok && data.customOrder) {
+        recentlySavedRef.current.set(data.customOrder.id, { order: data.customOrder, timestamp: Date.now() });
         setCustomOrders((prev) => prev.map((o) => (o.id === data.customOrder.id ? data.customOrder : o)));
         if (activeQrOrder?.id === data.customOrder.id) {
           setActiveQrOrder(data.customOrder);
@@ -651,6 +688,7 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
       });
       const data = await res.json();
       if (res.ok) {
+        recentlySavedRef.current.delete(orderId);
         setCustomOrders((prev) => prev.filter((o) => o.id !== orderId));
         if (activeQrOrder?.id === orderId) {
           setActiveQrOrder(null);

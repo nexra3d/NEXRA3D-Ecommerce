@@ -1436,7 +1436,7 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
   }
   res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-auth-token, x-admin-bypass, x-user-email');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-auth-token, x-admin-bypass, x-user-email, x-user-id, X-User-Id, X-Admin-Bypass, X-User-Email, Cache-Control, Pragma');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -7326,6 +7326,9 @@ app.post('/api/admin/orders/:id/reconcile', requireAdminMiddleware, async (req: 
 // 1. Get all custom orders (Admin)
 app.get('/api/admin/custom-orders', requireAdminMiddleware, async (_req: Request, res: Response) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
     await autoExpirePendingCustomOrders();
     const orders = await (prisma as any).customOrder.findMany({
       orderBy: { createdAt: 'desc' }
@@ -7379,6 +7382,9 @@ app.get('/api/admin/custom-orders/reviews', requireAdminMiddleware, async (_req:
 // 2. Get single custom order (Admin)
 app.get('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Request, res: Response, next: NextFunction) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
     const { id } = req.params;
     if (id === 'reviews' || id === 'upload-image') {
       return next();
@@ -7623,6 +7629,9 @@ app.delete('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: R
 // 8. Update Custom Order Showcase Details & Order Info (Admin)
 app.patch('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Request, res: Response) => {
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
     const { id } = req.params;
     const {
       customOrderName,
@@ -7651,43 +7660,78 @@ app.patch('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Re
       });
     }
 
+    const nowIso = new Date().toISOString();
     const updateData: any = {
-      updatedAt: new Date().toISOString()
+      updatedAt: nowIso,
+      updated_at: nowIso
     };
     if (customOrderName !== undefined) {
-      updateData.customOrderName = customOrderName ? String(customOrderName).trim() : null;
+      const v = customOrderName ? String(customOrderName).trim() : null;
+      updateData.customOrderName = v;
+      updateData.custom_order_name = v;
     }
     if (imageUrl !== undefined) {
-      updateData.imageUrl = imageUrl ? String(imageUrl).trim() : null;
+      const v = imageUrl ? String(imageUrl).trim() : null;
+      updateData.imageUrl = v;
+      updateData.image_url = v;
     }
     if (isPublic !== undefined) {
-      updateData.isPublic = Boolean(isPublic);
+      const v = Boolean(isPublic);
+      updateData.isPublic = v;
+      updateData.is_public = v;
     }
     if (customerName !== undefined && String(customerName).trim()) {
-      updateData.customerName = String(customerName).trim();
+      const v = String(customerName).trim();
+      updateData.customerName = v;
+      updateData.customer_name = v;
     }
     if (phone !== undefined && String(phone).trim()) {
-      updateData.phone = String(phone).trim();
+      const v = String(phone).trim();
+      updateData.phone = v;
+      updateData.phoneNumber = v;
+      updateData.phone_number = v;
     }
     if (email !== undefined) {
-      updateData.email = email ? String(email).trim() : null;
+      const v = email ? String(email).trim() : null;
+      updateData.email = v;
+      updateData.customerEmail = v;
+      updateData.customer_email = v;
     }
     if (description !== undefined) {
-      updateData.description = description ? String(description).trim() : null;
+      const v = description ? String(description).trim() : null;
+      updateData.description = v;
+      updateData.desc = v;
     }
     if (amount !== undefined && !isNaN(Number(amount)) && Number(amount) >= 0) {
-      updateData.amount = Number(amount);
+      const v = Number(amount);
+      updateData.amount = v;
+      updateData.totalAmount = v;
+      updateData.total_amount = v;
     }
     if (deliveryType !== undefined && (deliveryType === 'STORE_PICKUP' || deliveryType === 'HOME_DELIVERY')) {
       updateData.deliveryType = deliveryType;
+      updateData.delivery_type = deliveryType;
     }
     if (notes !== undefined) {
-      updateData.notes = notes ? String(notes).trim() : null;
+      const v = notes ? String(notes).trim() : null;
+      updateData.notes = v;
+      updateData.note = v;
     }
     if (paymentStatus !== undefined && typeof paymentStatus === 'string' && paymentStatus.trim()) {
-      updateData.paymentStatus = paymentStatus.trim().toUpperCase();
-      if (updateData.paymentStatus === 'PAID') {
-        updateData.paidAt = existing?.paidAt || new Date().toISOString();
+      const statusUpper = paymentStatus.trim().toUpperCase();
+      updateData.paymentStatus = statusUpper;
+      updateData.payment_status = statusUpper;
+      if (statusUpper === 'PAID') {
+        const paidAtTime = existing?.paidAt || nowIso;
+        updateData.paidAt = paidAtTime;
+        updateData.paid_at = paidAtTime;
+      } else if (statusUpper === 'AWAITING_PAYMENT') {
+        // Protect from autoExpirePendingCustomOrders immediately flipping it back to EXPIRED
+        if (!existing?.expiresAt || new Date(existing.expiresAt).getTime() <= Date.now()) {
+          const futureExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+          updateData.expiresAt = futureExpiry;
+          updateData.expires_at = futureExpiry;
+        }
       }
     }
 
@@ -7700,24 +7744,39 @@ app.patch('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Re
       });
     } else {
       const initialStatus = paymentStatus ? String(paymentStatus).toUpperCase() : 'PAID';
+      const futureExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
       updated = await (prisma as any).customOrder.upsert({
         where: { id: cleanId },
         create: {
           id: cleanId,
           customerName: customerName || 'Valued Customer',
+          customer_name: customerName || 'Valued Customer',
           phone: phone || '',
+          phoneNumber: phone || '',
           email: email || null,
+          customerEmail: email || null,
           description: description || customOrderName || 'Custom Order',
+          desc: description || customOrderName || 'Custom Order',
           customOrderName: customOrderName || null,
+          custom_order_name: customOrderName || null,
           imageUrl: imageUrl || null,
+          image_url: imageUrl || null,
           isPublic: isPublic !== undefined ? Boolean(isPublic) : false,
+          is_public: isPublic !== undefined ? Boolean(isPublic) : false,
           amount: amount !== undefined ? Number(amount) : 0,
           deliveryType: deliveryType || 'STORE_PICKUP',
+          delivery_type: deliveryType || 'STORE_PICKUP',
           notes: notes || null,
           paymentStatus: initialStatus,
-          paidAt: initialStatus === 'PAID' ? new Date().toISOString() : null,
-          createdAt: req.body.createdAt || new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          payment_status: initialStatus,
+          expiresAt: initialStatus === 'AWAITING_PAYMENT' ? futureExpiry : null,
+          expires_at: initialStatus === 'AWAITING_PAYMENT' ? futureExpiry : null,
+          paidAt: initialStatus === 'PAID' ? nowIso : null,
+          paid_at: initialStatus === 'PAID' ? nowIso : null,
+          createdAt: req.body.createdAt || nowIso,
+          created_at: req.body.createdAt || nowIso,
+          updatedAt: nowIso,
+          updated_at: nowIso
         },
         update: updateData
       });
