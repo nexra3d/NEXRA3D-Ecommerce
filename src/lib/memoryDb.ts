@@ -65,7 +65,22 @@ class MemoryStore {
         if (parsed && typeof parsed === 'object') {
           for (const [key, val] of Object.entries(parsed)) {
             if (Array.isArray(val) && val.length > 0) {
-              this.collections[key] = val;
+              if (!this.collections[key] || this.collections[key].length === 0) {
+                this.collections[key] = val;
+              } else {
+                // Merge snapshot items over seeded items by ID to preserve user edits across refreshes and restarts
+                const mergedList = [...this.collections[key]];
+                for (const snapItem of val) {
+                  const snapId = String(snapItem.id || '').trim().toLowerCase();
+                  const idx = mergedList.findIndex((item) => String(item.id || '').trim().toLowerCase() === snapId);
+                  if (idx !== -1) {
+                    mergedList[idx] = { ...mergedList[idx], ...snapItem };
+                  } else {
+                    mergedList.unshift(snapItem);
+                  }
+                }
+                this.collections[key] = mergedList;
+              }
             }
           }
         }
@@ -423,6 +438,29 @@ class MemoryStore {
         updatedAt: new Date(Date.now() - 86400000 * 1)
       },
       {
+        id: 'N3D-CO-0002-09092026',
+        customerName: 'Praneeth',
+        phone: '8919117638',
+        email: 'praneeth@example.com',
+        description: 'Ghost Rider Moto Sign',
+        customOrderName: 'Ghost Rider Moto Sign',
+        imageUrl: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?auto=format&fit=crop&w=800&q=80',
+        isPublic: true,
+        amount: 3500.00,
+        deliveryType: 'HOME_DELIVERY',
+        notes: 'Custom LED moto plate backlit logo',
+        paymentStatus: 'PAID',
+        razorpayOrderId: 'order_co_0002_praneeth',
+        razorpayQrId: 'qr_co_0002_praneeth',
+        qrImageUrl: '',
+        paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=3500.00&cu=INR',
+        isSimulated: true,
+        expiresAt: new Date(Date.now() + 86400000 * 30),
+        paidAt: new Date('2026-09-09T13:13:00.000Z'),
+        createdAt: new Date('2026-09-09T13:13:00.000Z'),
+        updatedAt: new Date('2026-09-09T13:13:00.000Z')
+      },
+      {
         id: 'N3D-CO-0002-10092026',
         customerName: 'Megha Kapoor',
         phone: '9920145678',
@@ -645,7 +683,13 @@ class MemoryStore {
         continue;
       }
 
-      const itemVal = item[key];
+      let itemVal = item[key];
+      if (itemVal === undefined) {
+        const snakeKey = key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+        if (item[snakeKey] !== undefined) {
+          itemVal = item[snakeKey];
+        }
+      }
 
       if (val === undefined) continue;
 
@@ -674,6 +718,10 @@ class MemoryStore {
           itemVal.trim().toLowerCase() === val.trim().toLowerCase()
         ) {
           continue;
+        }
+        if (typeof val === 'boolean') {
+          const boolItem = Boolean(itemVal === true || itemVal === 'true' || itemVal === 1);
+          if (boolItem === val) continue;
         }
         return false;
       }
@@ -1064,12 +1112,29 @@ class MemoryStore {
     sorted.sort((a, b) => {
       const valA = a[orderKey];
       const valB = b[orderKey];
-      if (valA < valB) return -1 * direction;
-      if (valA > valB) return 1 * direction;
+      const compA =
+        valA instanceof Date
+          ? valA.getTime()
+          : typeof valA === 'string' && !isNaN(Date.parse(valA))
+          ? new Date(valA).getTime()
+          : valA;
+      const compB =
+        valB instanceof Date
+          ? valB.getTime()
+          : typeof valB === 'string' && !isNaN(Date.parse(valB))
+          ? new Date(valB).getTime()
+          : valB;
+      if (compA < compB) return -1 * direction;
+      if (compA > compB) return 1 * direction;
       return 0;
     });
     return sorted;
   }
 }
 
-export const memoryStore = new MemoryStore();
+const globalForMemory = globalThis as unknown as {
+  __nexraMemoryStore?: MemoryStore;
+};
+
+export const memoryStore =
+  globalForMemory.__nexraMemoryStore || (globalForMemory.__nexraMemoryStore = new MemoryStore());

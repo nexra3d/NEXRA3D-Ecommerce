@@ -7638,7 +7638,18 @@ app.patch('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Re
       paymentStatus
     } = req.body;
 
-    const existing = await (prisma as any).customOrder.findUnique({ where: { id } });
+    const cleanId = String(id || '').trim();
+    let existing = await (prisma as any).customOrder.findUnique({ where: { id: cleanId } });
+    if (!existing) {
+      existing = await (prisma as any).customOrder.findFirst({
+        where: {
+          id: {
+            equals: cleanId,
+            mode: 'insensitive'
+          }
+        }
+      });
+    }
 
     const updateData: any = {
       updatedAt: new Date().toISOString()
@@ -7673,21 +7684,26 @@ app.patch('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Re
     if (notes !== undefined) {
       updateData.notes = notes ? String(notes).trim() : null;
     }
-    if (paymentStatus !== undefined && typeof paymentStatus === 'string') {
-      updateData.paymentStatus = paymentStatus.toUpperCase();
+    if (paymentStatus !== undefined && typeof paymentStatus === 'string' && paymentStatus.trim()) {
+      updateData.paymentStatus = paymentStatus.trim().toUpperCase();
+      if (updateData.paymentStatus === 'PAID') {
+        updateData.paidAt = existing?.paidAt || new Date().toISOString();
+      }
     }
 
+    const targetId = existing?.id || cleanId;
     let updated;
     if (existing) {
       updated = await (prisma as any).customOrder.update({
-        where: { id },
+        where: { id: targetId },
         data: updateData
       });
     } else {
+      const initialStatus = paymentStatus ? String(paymentStatus).toUpperCase() : 'PAID';
       updated = await (prisma as any).customOrder.upsert({
-        where: { id },
+        where: { id: cleanId },
         create: {
-          id,
+          id: cleanId,
           customerName: customerName || 'Valued Customer',
           phone: phone || '',
           email: email || null,
@@ -7698,8 +7714,9 @@ app.patch('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Re
           amount: amount !== undefined ? Number(amount) : 0,
           deliveryType: deliveryType || 'STORE_PICKUP',
           notes: notes || null,
-          paymentStatus: paymentStatus || 'AWAITING_PAYMENT',
-          createdAt: new Date().toISOString(),
+          paymentStatus: initialStatus,
+          paidAt: initialStatus === 'PAID' ? new Date().toISOString() : null,
+          createdAt: req.body.createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString()
         },
         update: updateData

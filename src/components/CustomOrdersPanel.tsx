@@ -89,6 +89,7 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
   const [editDescription, setEditDescription] = useState('');
   const [editAmount, setEditAmount] = useState('');
   const [editDeliveryType, setEditDeliveryType] = useState<CustomOrderDeliveryType>('STORE_PICKUP');
+  const [editPaymentStatus, setEditPaymentStatus] = useState<CustomOrderPaymentStatus>('PAID');
   const [editNotes, setEditNotes] = useState('');
   const [editModalTab, setEditModalTab] = useState<'showcase' | 'details'>('showcase');
   const [isSavingShowcase, setIsSavingShowcase] = useState(false);
@@ -424,6 +425,8 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
     setEditDescription(order.description || '');
     setEditAmount(order.amount != null ? String(order.amount) : '');
     setEditDeliveryType(order.deliveryType || 'STORE_PICKUP');
+    const resolvedStatus = (order.paymentStatus || (order as any).payment_status || 'PAID') as CustomOrderPaymentStatus;
+    setEditPaymentStatus(resolvedStatus);
     setEditNotes(order.notes || '');
     setEditModalTab('showcase');
     setUploadFeedback(null);
@@ -445,7 +448,9 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
         email: editEmail.trim() || undefined,
         description: editDescription.trim() || undefined,
         deliveryType: editDeliveryType,
-        notes: editNotes.trim() || undefined
+        paymentStatus: editPaymentStatus || showcaseModalOrder.paymentStatus || 'PAID',
+        notes: editNotes.trim() || undefined,
+        createdAt: showcaseModalOrder.createdAt
       };
 
       if (editAmount && !isNaN(Number(editAmount))) {
@@ -486,6 +491,8 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
       setActionFeedback('Custom order & showcase updated successfully! ✅');
       setTimeout(() => setActionFeedback(null), 4000);
       if (onOrdersChange) onOrdersChange();
+      // Re-fetch custom orders list to guarantee total sync across DB and UI
+      fetchCustomOrders();
     } catch (err: any) {
       setUploadFeedback(`Save failed: ${err.message}`);
     } finally {
@@ -1853,7 +1860,18 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
                   <Pencil className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Edit Custom Order</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-white">Edit Custom Order</h3>
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                      editPaymentStatus === 'PAID'
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        : editPaymentStatus === 'AWAITING_PAYMENT'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        : 'bg-slate-700/50 text-slate-300 border border-slate-600'
+                    }`}>
+                      {editPaymentStatus === 'PAID' ? 'Paid' : editPaymentStatus === 'AWAITING_PAYMENT' ? 'Awaiting Payment' : editPaymentStatus}
+                    </span>
+                  </div>
                   <p className="text-xs text-slate-400">
                     Order <span className="font-mono text-amber-400 font-bold">{showcaseModalOrder.id}</span> • {showcaseModalOrder.customerName || 'Customer'}
                   </p>
@@ -2047,8 +2065,8 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
                     </div>
                   </div>
 
-                  {/* Amount & Delivery Type */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Amount, Payment Status & Delivery Type */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-slate-300 mb-1">
                         Amount (₹)
@@ -2058,9 +2076,32 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
                         step="0.01"
                         value={editAmount}
                         onChange={(e) => setEditAmount(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-500"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-500 font-mono font-bold"
                         placeholder="e.g. 1500"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Payment Status
+                      </label>
+                      <select
+                        value={editPaymentStatus}
+                        onChange={(e) => setEditPaymentStatus(e.target.value as CustomOrderPaymentStatus)}
+                        className={`w-full bg-slate-950 border rounded-xl p-2.5 text-xs font-bold focus:outline-none cursor-pointer ${
+                          editPaymentStatus === 'PAID'
+                            ? 'border-emerald-500/50 text-emerald-400 bg-emerald-950/20'
+                            : editPaymentStatus === 'AWAITING_PAYMENT'
+                            ? 'border-amber-500/50 text-amber-400 bg-amber-950/20'
+                            : editPaymentStatus === 'CANCELLED'
+                            ? 'border-rose-500/50 text-rose-400 bg-rose-950/20'
+                            : 'border-slate-700 text-slate-300'
+                        }`}
+                      >
+                        <option value="PAID">✅ Paid (Settled)</option>
+                        <option value="AWAITING_PAYMENT">⏳ Awaiting Payment</option>
+                        <option value="EXPIRED">⚠️ Expired</option>
+                        <option value="CANCELLED">❌ Cancelled</option>
+                      </select>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-300 mb-1">
