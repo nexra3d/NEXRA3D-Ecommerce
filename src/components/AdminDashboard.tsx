@@ -1687,6 +1687,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {activeTab === 'custom-orders' && (
             <CustomOrdersPanel
               getAuthHeaders={getAuthHeaders}
+              getAuthHeadersForFormData={getAuthHeadersForFormData}
               onOrdersChange={() => {
                 fetchAnalytics();
                 onRefreshData();

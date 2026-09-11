@@ -29,12 +29,15 @@ import {
   Image as ImageIcon,
   Eye,
   EyeOff,
-  Star
+  Star,
+  Pencil,
+  User
 } from 'lucide-react';
 import { CustomOrder, CustomOrderDeliveryType, CustomOrderPaymentStatus, AdminCustomOrderReview } from '../types';
 
 interface CustomOrdersPanelProps {
   getAuthHeaders: (extra?: Record<string, string>) => Record<string, string>;
+  getAuthHeadersForFormData?: (extra?: Record<string, string>) => Record<string, string>;
   onOrderPaid?: () => void;
   onOrdersChange?: () => void;
   initialCreateOpen?: boolean;
@@ -42,6 +45,7 @@ interface CustomOrdersPanelProps {
 
 export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
   getAuthHeaders,
+  getAuthHeadersForFormData,
   onOrderPaid,
   onOrdersChange,
   initialCreateOpen = false
@@ -74,11 +78,19 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Showcase Edit Modal State
+  // Edit & Showcase Modal State
   const [showcaseModalOrder, setShowcaseModalOrder] = useState<CustomOrder | null>(null);
   const [showcaseName, setShowcaseName] = useState('');
   const [showcaseImageUrl, setShowcaseImageUrl] = useState('');
   const [showcaseIsPublic, setShowcaseIsPublic] = useState(false);
+  const [editCustomerName, setEditCustomerName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editDeliveryType, setEditDeliveryType] = useState<CustomOrderDeliveryType>('STORE_PICKUP');
+  const [editNotes, setEditNotes] = useState('');
+  const [editModalTab, setEditModalTab] = useState<'showcase' | 'details'>('showcase');
   const [isSavingShowcase, setIsSavingShowcase] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [uploadFeedback, setUploadFeedback] = useState<string | null>(null);
@@ -316,77 +328,160 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
     if (!file) return;
     setIsUploadingImage(true);
     setUploadFeedback(null);
+
+    // Read local file as base64 for instant preview or offline fallback
+    const readLocalFile = (): Promise<string> => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+      });
+    };
+
     try {
       const formData = new FormData();
       formData.append('image', file);
 
+      // Prepare headers without Content-Type so the browser sets multipart boundary
+      let uploadHeaders: Record<string, string> = {};
+      if (getAuthHeadersForFormData) {
+        uploadHeaders = getAuthHeadersForFormData();
+      } else {
+        const base = getAuthHeaders ? getAuthHeaders() : {};
+        for (const [k, v] of Object.entries(base)) {
+          if (k.toLowerCase() !== 'content-type') {
+            uploadHeaders[k] = v;
+          }
+        }
+      }
+
       const res = await fetch('/api/admin/custom-orders/upload-image', {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: uploadHeaders,
         credentials: 'include',
         body: formData
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.url) {
-        throw new Error(data.error || 'Failed to upload image');
+      let finalUrl = '';
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('application/json')) {
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.url) {
+          finalUrl = data.url;
+        } else if (data.error) {
+          throw new Error(data.error);
+        }
+      }
+
+      if (!finalUrl) {
+        // Fall back to local data URI so user is never blocked
+        const localData = await readLocalFile();
+        if (localData) {
+          finalUrl = localData;
+        } else {
+          throw new Error(`Server returned HTTP ${res.status}`);
+        }
       }
 
       if (target === 'create') {
-        setCreateImageUrl(data.url);
+        setCreateImageUrl(finalUrl);
       } else {
-        setShowcaseImageUrl(data.url);
+        setShowcaseImageUrl(finalUrl);
       }
-      setUploadFeedback('Image uploaded successfully! ✅');
+      setUploadFeedback('Image attached and preview ready! ✅');
       setTimeout(() => setUploadFeedback(null), 4000);
     } catch (err: any) {
+      console.warn('Image upload error, checking local fallback:', err);
+      try {
+        const localData = await readLocalFile();
+        if (localData) {
+          if (target === 'create') {
+            setCreateImageUrl(localData);
+          } else {
+            setShowcaseImageUrl(localData);
+          }
+          setUploadFeedback('Image loaded locally and attached! ✅');
+          setTimeout(() => setUploadFeedback(null), 4000);
+          return;
+        }
+      } catch (_) {}
       setUploadFeedback(`Upload failed: ${err.message}`);
     } finally {
       setIsUploadingImage(false);
     }
   };
 
-  // Open Showcase Settings modal for an order
+  // Open Edit & Showcase modal for an order
   const handleOpenShowcaseModal = (order: CustomOrder) => {
     setShowcaseModalOrder(order);
-    setShowcaseName(order.customOrderName || '');
+    setShowcaseName(order.customOrderName || order.description || '');
     setShowcaseImageUrl(order.imageUrl || '');
     setShowcaseIsPublic(Boolean(order.isPublic));
+    setEditCustomerName(order.customerName || '');
+    setEditPhone(order.phone || '');
+    setEditEmail(order.email || '');
+    setEditDescription(order.description || '');
+    setEditAmount(order.amount != null ? String(order.amount) : '');
+    setEditDeliveryType(order.deliveryType || 'STORE_PICKUP');
+    setEditNotes(order.notes || '');
+    setEditModalTab('showcase');
     setUploadFeedback(null);
   };
 
-  // Save Showcase Settings (PATCH)
+  // Save Custom Order & Showcase Settings (PATCH)
   const handleSaveShowcaseSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!showcaseModalOrder) return;
     setIsSavingShowcase(true);
+    setUploadFeedback(null);
     try {
-      const res = await fetch(`/api/admin/custom-orders/${showcaseModalOrder.id}`, {
+      const payload: any = {
+        customOrderName: showcaseName.trim() || null,
+        imageUrl: showcaseImageUrl.trim() || null,
+        isPublic: Boolean(showcaseIsPublic),
+        customerName: editCustomerName.trim() || undefined,
+        phone: editPhone.trim() || undefined,
+        email: editEmail.trim() || undefined,
+        description: editDescription.trim() || undefined,
+        deliveryType: editDeliveryType,
+        notes: editNotes.trim() || undefined
+      };
+
+      if (editAmount && !isNaN(Number(editAmount))) {
+        payload.amount = Number(editAmount);
+      }
+
+      const res = await fetch(`/api/admin/custom-orders/${encodeURIComponent(showcaseModalOrder.id)}`, {
         method: 'PATCH',
         headers: {
           ...getAuthHeaders(),
           'Content-Type': 'application/json'
         },
         credentials: 'include',
-        body: JSON.stringify({
-          customOrderName: showcaseName.trim() || undefined,
-          imageUrl: showcaseImageUrl.trim() || undefined,
-          isPublic: showcaseIsPublic
-        })
+        body: JSON.stringify(payload)
       });
 
-      const data = await res.json();
+      const ct = res.headers.get('content-type') || '';
+      let data: any = {};
+      if (ct.includes('application/json')) {
+        data = await res.json().catch(() => ({}));
+      } else {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `Server responded with HTTP ${res.status}`);
+      }
+
       if (!res.ok || !data.customOrder) {
-        throw new Error(data.error || 'Failed to update showcase settings');
+        throw new Error(data.error || 'Failed to update custom order');
       }
 
       setCustomOrders((prev) => prev.map((o) => (o.id === data.customOrder.id ? data.customOrder : o)));
       setShowcaseModalOrder(null);
-      setActionFeedback('Showcase settings saved successfully! ✅');
+      setActionFeedback('Custom order & showcase updated successfully! ✅');
       setTimeout(() => setActionFeedback(null), 4000);
       if (onOrdersChange) onOrdersChange();
     } catch (err: any) {
-      alert('Error saving showcase settings: ' + err.message);
+      setUploadFeedback(`Save failed: ${err.message}`);
     } finally {
       setIsSavingShowcase(false);
     }
@@ -976,6 +1071,16 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
                       {/* Actions */}
                       <td className="p-3.5 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* Edit Custom Order & Showcase button */}
+                          <button
+                            onClick={() => handleOpenShowcaseModal(order)}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 rounded-lg transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
+                            title="Edit Order Details & Public Showcase"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>Edit</span>
+                          </button>
+
                           {/* View QR Code button */}
                           <button
                             onClick={() => setActiveQrOrder(order)}
@@ -1739,20 +1844,20 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
         </div>
       )}
 
-      {/* Showcase & Photo Settings Modal */}
+      {/* Edit Custom Order & Showcase Modal */}
       {showcaseModalOrder && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
             {/* Modal Header */}
             <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-cyan-500/10 border border-cyan-500/20 rounded-xl text-cyan-400">
-                  <Sparkles className="w-5 h-5" />
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-cyan-500/10 border border-cyan-500/20 rounded-xl text-cyan-400">
+                  <Pencil className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Public Showcase Settings</h3>
+                  <h3 className="text-base font-bold text-white">Edit Custom Order</h3>
                   <p className="text-xs text-slate-400">
-                    Order <span className="font-mono text-amber-400 font-bold">{showcaseModalOrder.id}</span> • {showcaseModalOrder.customerName}
+                    Order <span className="font-mono text-amber-400 font-bold">{showcaseModalOrder.id}</span> • {showcaseModalOrder.customerName || 'Customer'}
                   </p>
                 </div>
               </div>
@@ -1761,6 +1866,35 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
                 className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Navigation Tabs */}
+            <div className="flex border-b border-slate-800 bg-slate-950/40 px-5 pt-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setEditModalTab('showcase')}
+                className={`pb-2.5 px-3 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  editModalTab === 'showcase'
+                    ? 'border-cyan-400 text-cyan-400'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Showcase & Photo</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setEditModalTab('details')}
+                className={`pb-2.5 px-3 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  editModalTab === 'details'
+                    ? 'border-cyan-400 text-cyan-400'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <User className="w-3.5 h-3.5" />
+                <span>Order & Customer Details</span>
               </button>
             </div>
 
@@ -1774,100 +1908,206 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
                 </div>
               )}
 
-              {/* Public Visibility Toggle */}
-              <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                    <Eye className="w-4 h-4 text-cyan-400" />
-                    <span>Display on Public Showcase Gallery</span>
+              {editModalTab === 'showcase' && (
+                <div className="space-y-4">
+                  {/* Public Visibility Toggle */}
+                  <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Eye className="w-4 h-4 text-cyan-400" />
+                        <span>Display on Public Showcase Gallery</span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        Visible to all visitors at <span className="font-mono text-cyan-300">/custom-orders</span>
+                      </div>
+                    </div>
+
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={showcaseIsPublic}
+                        onChange={(e) => setShowcaseIsPublic(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
+                    </label>
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">
-                    Visible to all website visitors at <span className="font-mono text-cyan-300">/custom-orders</span>
-                  </div>
-                </div>
 
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showcaseIsPublic}
-                    onChange={(e) => setShowcaseIsPublic(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
-                </label>
-              </div>
-
-              {/* Showcase Title */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Custom Order Name / Title <span className="text-cyan-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Lithophane Moon Lamp with Wooden Base"
-                  value={showcaseName}
-                  onChange={(e) => setShowcaseName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-500"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">
-                  Public title displayed on the showcase card.
-                </span>
-              </div>
-
-              {/* Finished Product Photo */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Showcase Photo
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="Image URL (Cloudinary, web, or upload)"
-                    value={showcaseImageUrl}
-                    onChange={(e) => setShowcaseImageUrl(e.target.value)}
-                    className="flex-1 bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-500"
-                  />
-                  <label className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3 py-2.5 rounded-xl cursor-pointer border border-slate-600 flex items-center gap-1.5 shrink-0 transition-colors">
-                    <Upload className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>{isUploadingImage ? 'Uploading...' : 'Upload File'}</span>
+                  {/* Showcase Title */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Custom Order Name / Title <span className="text-cyan-400">*</span>
+                    </label>
                     <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleUploadImageFile(file, 'modal');
-                      }}
+                      type="text"
+                      placeholder="e.g. Lithophane Moon Lamp with Wooden Base"
+                      value={showcaseName}
+                      onChange={(e) => setShowcaseName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-500"
                     />
-                  </label>
-                </div>
+                    <span className="text-[10px] text-slate-500 mt-1 block">
+                      Public title displayed on the showcase gallery card.
+                    </span>
+                  </div>
 
-                {/* Preview */}
-                {showcaseImageUrl ? (
-                  <div className="mt-3 relative rounded-xl overflow-hidden border border-slate-700 bg-slate-950 aspect-video max-h-48 flex items-center justify-center group">
-                    <img
-                      src={showcaseImageUrl}
-                      alt="Showcase Preview"
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover"
+                  {/* Finished Product Photo */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Showcase Photo
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Image URL or upload a file"
+                        value={showcaseImageUrl}
+                        onChange={(e) => setShowcaseImageUrl(e.target.value)}
+                        className="flex-1 bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-500"
+                      />
+                      <label className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3 py-2.5 rounded-xl cursor-pointer border border-slate-600 flex items-center gap-1.5 shrink-0 transition-colors">
+                        <Upload className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>{isUploadingImage ? 'Uploading...' : 'Upload File'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleUploadImageFile(file, 'modal');
+                          }}
+                        />
+                      </label>
+                    </div>
+
+                    {/* Preview */}
+                    {showcaseImageUrl ? (
+                      <div className="mt-3 relative rounded-xl overflow-hidden border border-slate-700 bg-slate-950 aspect-video max-h-48 flex items-center justify-center group">
+                        <img
+                          src={showcaseImageUrl}
+                          alt="Showcase Preview"
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowcaseImageUrl('')}
+                          className="absolute top-2 right-2 p-1.5 bg-black/70 hover:bg-rose-600 text-white rounded-lg text-xs cursor-pointer transition-colors"
+                          title="Remove image"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-3 border border-dashed border-slate-700 rounded-xl p-6 text-center text-slate-500">
+                        <ImageIcon className="w-8 h-8 mx-auto mb-1 text-slate-600" />
+                        <p className="text-xs">No image uploaded yet</p>
+                        <p className="text-[10px] text-slate-600">Upload high-res photo of the finished 3D print or paste URL</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {editModalTab === 'details' && (
+                <div className="space-y-4">
+                  {/* Customer Info */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Customer Name
+                      </label>
+                      <input
+                        type="text"
+                        value={editCustomerName}
+                        onChange={(e) => setEditCustomerName(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-500"
+                        placeholder="Customer Name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Phone Number
+                      </label>
+                      <input
+                        type="text"
+                        value={editPhone}
+                        onChange={(e) => setEditPhone(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-500"
+                        placeholder="+91 98765 43210"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Email Address
+                      </label>
+                      <input
+                        type="email"
+                        value={editEmail}
+                        onChange={(e) => setEditEmail(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-500"
+                        placeholder="client@example.com"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Amount & Delivery Type */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Amount (₹)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editAmount}
+                        onChange={(e) => setEditAmount(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-500"
+                        placeholder="e.g. 1500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Fulfillment / Delivery
+                      </label>
+                      <select
+                        value={editDeliveryType}
+                        onChange={(e) => setEditDeliveryType(e.target.value as CustomOrderDeliveryType)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white text-xs focus:outline-none focus:border-cyan-500"
+                      >
+                        <option value="STORE_PICKUP">Store Pickup (In-person)</option>
+                        <option value="HOME_DELIVERY">Home Delivery / Shipping</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Order Description / Specifications
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={editDescription}
+                      onChange={(e) => setEditDescription(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-500"
+                      placeholder="e.g. 3D printed mechanical enclosure in PETG Black, 0.2mm layer height"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowcaseImageUrl('')}
-                      className="absolute top-2 right-2 p-1.5 bg-black/70 hover:bg-rose-600 text-white rounded-lg text-xs cursor-pointer transition-colors"
-                      title="Remove image"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
                   </div>
-                ) : (
-                  <div className="mt-3 border border-dashed border-slate-700 rounded-xl p-6 text-center text-slate-500">
-                    <ImageIcon className="w-8 h-8 mx-auto mb-1 text-slate-600" />
-                    <p className="text-xs">No image uploaded yet</p>
-                    <p className="text-[10px] text-slate-600">Upload high-res photo of the 3D printed model</p>
+
+                  {/* Notes */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Internal Notes / Print Settings
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-cyan-500"
+                      placeholder="Special instructions, slicer profile, or client notes..."
+                    />
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* Modal Actions */}
               <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
@@ -1891,7 +2131,7 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
                   ) : (
                     <>
                       <Check className="w-3.5 h-3.5" />
-                      <span>Save Showcase Settings</span>
+                      <span>Save Changes</span>
                     </>
                   )}
                 </button>

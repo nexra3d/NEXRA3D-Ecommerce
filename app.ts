@@ -57,13 +57,24 @@ const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-jwt-key-change-in-pro
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB limit
   fileFilter: (_req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    if (allowed.includes(file.mimetype)) {
+    const allowed = [
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+      'image/svg+xml',
+      'image/avif',
+      'image/heic',
+      'image/heif'
+    ];
+    const mime = (file.mimetype || '').toLowerCase();
+    if (allowed.includes(mime) || file.originalname.match(/\.(jpe?g|png|webp|gif|svg|avif|heic|heif)$/i)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only JPG, JPEG, PNG, and WEBP are allowed.'));
+      cb(new Error('Invalid file type. Supported formats: JPG, PNG, WEBP, GIF, SVG, AVIF, HEIC.'));
     }
   }
 });
@@ -7609,11 +7620,23 @@ app.delete('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: R
   }
 });
 
-// 8. Update Custom Order Showcase Details (Admin)
+// 8. Update Custom Order Showcase Details & Order Info (Admin)
 app.patch('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { customOrderName, imageUrl, isPublic } = req.body;
+    const {
+      customOrderName,
+      imageUrl,
+      isPublic,
+      customerName,
+      phone,
+      email,
+      description,
+      amount,
+      deliveryType,
+      notes,
+      paymentStatus
+    } = req.body;
 
     const existing = await (prisma as any).customOrder.findUnique({ where: { id } });
     if (!existing) {
@@ -7632,6 +7655,30 @@ app.patch('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Re
     if (isPublic !== undefined) {
       updateData.isPublic = Boolean(isPublic);
     }
+    if (customerName !== undefined && String(customerName).trim()) {
+      updateData.customerName = String(customerName).trim();
+    }
+    if (phone !== undefined && String(phone).trim()) {
+      updateData.phone = String(phone).trim();
+    }
+    if (email !== undefined) {
+      updateData.email = email ? String(email).trim() : null;
+    }
+    if (description !== undefined) {
+      updateData.description = description ? String(description).trim() : null;
+    }
+    if (amount !== undefined && !isNaN(Number(amount)) && Number(amount) >= 0) {
+      updateData.amount = Number(amount);
+    }
+    if (deliveryType !== undefined && (deliveryType === 'STORE_PICKUP' || deliveryType === 'HOME_DELIVERY')) {
+      updateData.deliveryType = deliveryType;
+    }
+    if (notes !== undefined) {
+      updateData.notes = notes ? String(notes).trim() : null;
+    }
+    if (paymentStatus !== undefined && typeof paymentStatus === 'string') {
+      updateData.paymentStatus = paymentStatus.toUpperCase();
+    }
 
     const updated = await (prisma as any).customOrder.update({
       where: { id },
@@ -7640,40 +7687,53 @@ app.patch('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Re
 
     return res.json({
       customOrder: updated,
-      message: 'Showcase settings updated successfully.'
+      message: 'Custom order updated successfully.'
     });
   } catch (err: any) {
-    console.error('Error updating custom order showcase settings:', err);
+    console.error('Error updating custom order:', err);
     return res.status(500).json({ error: err.message || 'Failed to update custom order' });
   }
 });
 
 // 9. Upload Custom Order Image (Admin)
-app.post('/api/admin/custom-orders/upload-image', requireAdminMiddleware, upload.single('image') as any, async (req: Request, res: Response) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'Please choose an image file to upload.' });
-    }
-
-    // Try Cloudinary upload first
-    try {
-      const cloudResult = await uploadImageToCloudinary(req.file.buffer, req.file.mimetype || 'image/jpeg', 'custom-orders');
-      if (cloudResult && cloudResult.url) {
-        return res.json({ success: true, url: cloudResult.url });
+app.post(
+  '/api/admin/custom-orders/upload-image',
+  requireAdminMiddleware,
+  (req: Request, res: Response, next: NextFunction) => {
+    (upload.single('image') as any)(req, res, (err: any) => {
+      if (err) {
+        console.warn('[Custom Order Image Multer Warning]', err.message);
+        return res.status(400).json({ error: err.message || 'Image upload validation failed' });
       }
-    } catch (cErr) {
-      console.warn('Cloudinary upload warning for custom order image, falling back to base64 data URI:', cErr);
-    }
+      next();
+    });
+  },
+  async (req: Request, res: Response) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'Please choose an image file to upload.' });
+      }
 
-    // High fidelity data URI fallback
-    const mime = req.file.mimetype || 'image/jpeg';
-    const base64Uri = `data:${mime};base64,${req.file.buffer.toString('base64')}`;
-    return res.json({ success: true, url: base64Uri });
-  } catch (err: any) {
-    console.error('Error uploading custom order image:', err);
-    return res.status(500).json({ error: err.message || 'Failed to upload image' });
+      // Try Cloudinary upload first
+      try {
+        const cloudResult = await uploadImageToCloudinary(req.file.buffer, req.file.mimetype || 'image/jpeg', 'custom-orders');
+        if (cloudResult && cloudResult.url) {
+          return res.json({ success: true, url: cloudResult.url });
+        }
+      } catch (cErr) {
+        console.warn('Cloudinary upload warning for custom order image, falling back to base64 data URI:', cErr);
+      }
+
+      // High fidelity data URI fallback
+      const mime = req.file.mimetype || 'image/jpeg';
+      const base64Uri = `data:${mime};base64,${req.file.buffer.toString('base64')}`;
+      return res.json({ success: true, url: base64Uri });
+    } catch (err: any) {
+      console.error('Error uploading custom order image:', err);
+      return res.status(500).json({ error: err.message || 'Failed to upload image' });
+    }
   }
-});
+);
 
 // In-memory rate limiting map for unauthenticated public review submissions
 const customOrderReviewRateLimits = new Map<string, number[]>();
@@ -9078,6 +9138,16 @@ app.post('/api/shipping/cancel', requireAuthMiddleware, async (req: Authenticate
 // Fallback 404 handler for any unmatched API route
 app.use('/api', (req: Request, res: Response) => {
   return res.status(404).json({ error: `API endpoint ${req.originalUrl} not found` });
+});
+
+// Global JSON error handler for all /api endpoints to guarantee JSON responses (never HTML)
+app.use('/api', (err: any, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('[API Error Caught]', err);
+  const status = typeof err?.status === 'number' ? err.status : (typeof err?.statusCode === 'number' ? err.statusCode : 500);
+  return res.status(status).json({
+    error: err?.message || 'A server error occurred while processing the API request',
+    code: err?.code || undefined
+  });
 });
 
 // Periodic background poller for active Delhivery shipments (runs every 5 minutes)
