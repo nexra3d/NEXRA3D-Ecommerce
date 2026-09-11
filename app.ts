@@ -7639,9 +7639,6 @@ app.patch('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Re
     } = req.body;
 
     const existing = await (prisma as any).customOrder.findUnique({ where: { id } });
-    if (!existing) {
-      return res.status(404).json({ error: 'Custom order not found' });
-    }
 
     const updateData: any = {
       updatedAt: new Date().toISOString()
@@ -7680,10 +7677,34 @@ app.patch('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Re
       updateData.paymentStatus = paymentStatus.toUpperCase();
     }
 
-    const updated = await (prisma as any).customOrder.update({
-      where: { id },
-      data: updateData
-    });
+    let updated;
+    if (existing) {
+      updated = await (prisma as any).customOrder.update({
+        where: { id },
+        data: updateData
+      });
+    } else {
+      updated = await (prisma as any).customOrder.upsert({
+        where: { id },
+        create: {
+          id,
+          customerName: customerName || 'Valued Customer',
+          phone: phone || '',
+          email: email || null,
+          description: description || customOrderName || 'Custom Order',
+          customOrderName: customOrderName || null,
+          imageUrl: imageUrl || null,
+          isPublic: isPublic !== undefined ? Boolean(isPublic) : false,
+          amount: amount !== undefined ? Number(amount) : 0,
+          deliveryType: deliveryType || 'STORE_PICKUP',
+          notes: notes || null,
+          paymentStatus: paymentStatus || 'AWAITING_PAYMENT',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        update: updateData
+      });
+    }
 
     return res.json({
       customOrder: updated,

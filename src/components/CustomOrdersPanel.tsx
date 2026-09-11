@@ -475,7 +475,13 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
         throw new Error(data.error || 'Failed to update custom order');
       }
 
-      setCustomOrders((prev) => prev.map((o) => (o.id === data.customOrder.id ? data.customOrder : o)));
+      setCustomOrders((prev) => {
+        const exists = prev.some((o) => o.id === data.customOrder.id);
+        if (exists) {
+          return prev.map((o) => (o.id === data.customOrder.id ? data.customOrder : o));
+        }
+        return [data.customOrder, ...prev];
+      });
       setShowcaseModalOrder(null);
       setActionFeedback('Custom order & showcase updated successfully! ✅');
       setTimeout(() => setActionFeedback(null), 4000);
@@ -1054,14 +1060,6 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
                                     <span>Hidden</span>
                                   </>
                                 )}
-                              </button>
-
-                              <button
-                                onClick={() => handleOpenShowcaseModal(order)}
-                                className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
-                                title="Edit photo and title for public showcase"
-                              >
-                                Edit
                               </button>
                             </div>
                           </div>

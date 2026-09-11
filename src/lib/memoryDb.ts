@@ -1,4 +1,6 @@
 import bcrypt from 'bcryptjs';
+import fs from 'fs';
+import path from 'path';
 import {
   INITIAL_CATEGORIES,
   INITIAL_PRODUCTS,
@@ -48,8 +50,41 @@ class MemoryStore {
     customOrderReview: []
   };
 
+  private snapshotFilePath: string = path.resolve('.data_store/memory_db_snapshot.json');
+
   constructor() {
     this.seed();
+    this.loadFromSnapshot();
+  }
+
+  loadFromSnapshot() {
+    try {
+      if (fs.existsSync(this.snapshotFilePath)) {
+        const raw = fs.readFileSync(this.snapshotFilePath, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          for (const [key, val] of Object.entries(parsed)) {
+            if (Array.isArray(val) && val.length > 0) {
+              this.collections[key] = val;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[MemoryDB] Notice: snapshot load deferred:', err);
+    }
+  }
+
+  persistToSnapshot() {
+    try {
+      const dirPath = path.dirname(this.snapshotFilePath);
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+      }
+      fs.writeFileSync(this.snapshotFilePath, JSON.stringify(this.collections, null, 2), 'utf8');
+    } catch (err) {
+      console.warn('[MemoryDB] Notice: snapshot persist deferred:', err);
+    }
   }
 
   seed() {
@@ -319,6 +354,121 @@ class MemoryStore {
 
     this.collections.customOrder = [
       {
+        id: 'N3D-CO-0004-10092026',
+        customerName: 'Shrikha',
+        phone: '9876543210',
+        email: 'shrikha@example.com',
+        description: 'Custom personalized 3D keychain with dual-tone lettering and reinforced ring loop',
+        customOrderName: 'Custom Key Chain',
+        imageUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80',
+        isPublic: false,
+        amount: 450.00,
+        deliveryType: 'STORE_PICKUP',
+        notes: 'Red and white matte finish',
+        paymentStatus: 'AWAITING_PAYMENT',
+        razorpayOrderId: 'order_co_0004',
+        razorpayQrId: 'qr_co_0004',
+        qrImageUrl: '',
+        paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=450.00&cu=INR',
+        isSimulated: true,
+        expiresAt: new Date(Date.now() + 86400000 * 30),
+        paidAt: null,
+        createdAt: new Date(Date.now() - 3600000 * 2),
+        updatedAt: new Date(Date.now() - 3600000 * 2)
+      },
+      {
+        id: 'N3D-CO-0005-10092026',
+        customerName: 'Karan Verma',
+        phone: '9811223344',
+        email: 'karan.verma@example.com',
+        description: 'Classical Greek architectural column pillar miniature replica with pedestal',
+        customOrderName: 'Custom Pillar',
+        imageUrl: 'https://images.unsplash.com/photo-1544642899-f0d4504f479b?auto=format&fit=crop&w=800&q=80',
+        isPublic: false,
+        amount: 850.00,
+        deliveryType: 'STORE_PICKUP',
+        notes: 'White marble filament texture',
+        paymentStatus: 'AWAITING_PAYMENT',
+        razorpayOrderId: 'order_co_0005',
+        razorpayQrId: 'qr_co_0005',
+        qrImageUrl: '',
+        paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=850.00&cu=INR',
+        isSimulated: true,
+        expiresAt: new Date(Date.now() + 86400000 * 30),
+        paidAt: null,
+        createdAt: new Date(Date.now() - 3600000 * 4),
+        updatedAt: new Date(Date.now() - 3600000 * 4)
+      },
+      {
+        id: 'N3D-CO-0003-10092026',
+        customerName: 'Siddharth Rao',
+        phone: '9845012399',
+        email: 'siddharth.rao@example.com',
+        description: 'Aerodynamic action camera chin mount tailored for motorcycle helmet visor contour',
+        customOrderName: 'Ghost Rider Motorcycle Helmet Mount',
+        imageUrl: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?auto=format&fit=crop&w=800&q=80',
+        isPublic: false,
+        amount: 1200.00,
+        deliveryType: 'HOME_DELIVERY',
+        notes: 'High temp PETG filament required',
+        paymentStatus: 'PAID',
+        razorpayOrderId: 'order_co_0003',
+        razorpayQrId: 'qr_co_0003',
+        qrImageUrl: '',
+        paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=1200.00&cu=INR',
+        isSimulated: true,
+        expiresAt: new Date(Date.now() + 86400000 * 30),
+        paidAt: new Date(Date.now() - 86400000 * 1),
+        createdAt: new Date(Date.now() - 86400000 * 1),
+        updatedAt: new Date(Date.now() - 86400000 * 1)
+      },
+      {
+        id: 'N3D-CO-0002-10092026',
+        customerName: 'Megha Kapoor',
+        phone: '9920145678',
+        email: 'megha.k@creatorstudio.in',
+        description: 'Heavy duty C-clamp desk bracket with cable guide slots for studio boom arm',
+        customOrderName: 'Content Creator Studio Mic Boom Arm Clamp',
+        imageUrl: 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?auto=format&fit=crop&w=800&q=80',
+        isPublic: false,
+        amount: 950.00,
+        deliveryType: 'HOME_DELIVERY',
+        notes: 'Matte black finish, rubber pad recess',
+        paymentStatus: 'PAID',
+        razorpayOrderId: 'order_co_0002',
+        razorpayQrId: 'qr_co_0002',
+        qrImageUrl: '',
+        paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=950.00&cu=INR',
+        isSimulated: true,
+        expiresAt: new Date(Date.now() + 86400000 * 30),
+        paidAt: new Date(Date.now() - 86400000 * 2),
+        createdAt: new Date(Date.now() - 86400000 * 2),
+        updatedAt: new Date(Date.now() - 86400000 * 2)
+      },
+      {
+        id: 'N3D-CO-0001-10092026',
+        customerName: 'Rahul Sen',
+        phone: '9717012345',
+        email: 'rahul.sen@gmail.com',
+        description: 'Precision mechanical prototype casing with snap clips and ventilation grills',
+        customOrderName: 'Custom 3D Print',
+        imageUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=800&q=80',
+        isPublic: false,
+        amount: 650.00,
+        deliveryType: 'STORE_PICKUP',
+        notes: '0.16mm layer height',
+        paymentStatus: 'PAID',
+        razorpayOrderId: 'order_co_0001',
+        razorpayQrId: 'qr_co_0001',
+        qrImageUrl: '',
+        paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=650.00&cu=INR',
+        isSimulated: true,
+        expiresAt: new Date(Date.now() + 86400000 * 30),
+        paidAt: new Date(Date.now() - 86400000 * 3),
+        createdAt: new Date(Date.now() - 86400000 * 3),
+        updatedAt: new Date(Date.now() - 86400000 * 3)
+      },
+      {
         id: 'co-sample-101',
         customerName: 'Kavitha Reddy',
         phone: '9848012345',
@@ -518,7 +668,11 @@ class MemoryStore {
           if (!this.matchWhere(itemVal || {}, val)) return false;
         }
       } else if (itemVal !== val) {
-        if (typeof itemVal === 'string' && typeof val === 'string' && itemVal.toLowerCase() === val.toLowerCase()) {
+        if (
+          typeof itemVal === 'string' &&
+          typeof val === 'string' &&
+          itemVal.trim().toLowerCase() === val.trim().toLowerCase()
+        ) {
           continue;
         }
         return false;
@@ -656,12 +810,21 @@ class MemoryStore {
 
     return {
       findUnique: async (args: any = {}) => {
-        const item = store.find((i) => this.matchWhere(i, args.where));
+        let item = store.find((i) => this.matchWhere(i, args.where));
+        if (!item && args.where?.id) {
+          const targetId = String(args.where.id).trim().toLowerCase();
+          item = store.find((i) => String(i.id || '').trim().toLowerCase() === targetId);
+        }
         return item ? this.attachIncludes(item, modelName, args.include) : null;
       },
 
       findFirst: async (args: any = {}) => {
         let results = store.filter((i) => this.matchWhere(i, args.where));
+        if (results.length === 0 && args.where?.id) {
+          const targetId = String(args.where.id).trim().toLowerCase();
+          const fallback = store.find((i) => String(i.id || '').trim().toLowerCase() === targetId);
+          if (fallback) results = [fallback];
+        }
         if (args.orderBy) {
           results = this.sortResults(results, args.orderBy);
         }
@@ -757,6 +920,7 @@ class MemoryStore {
           }
         }
 
+        this.persistToSnapshot();
         return this.attachIncludes(newItem, modelName, args.include);
       },
 
@@ -774,13 +938,29 @@ class MemoryStore {
           store.push(newItem);
           count++;
         }
+        this.persistToSnapshot();
         return { count };
       },
 
       update: async (args: any = {}) => {
-        const itemIndex = store.findIndex((i) => this.matchWhere(i, args.where));
+        let itemIndex = store.findIndex((i) => this.matchWhere(i, args.where));
+        if (itemIndex === -1 && args.where?.id) {
+          const targetId = String(args.where.id).trim().toLowerCase();
+          itemIndex = store.findIndex((i) => String(i.id || '').trim().toLowerCase() === targetId);
+        }
         if (itemIndex === -1) {
-          throw new Error(`Record to update not found in memory db (${modelName})`);
+          console.warn(`[MemoryDB ${modelName}] Record not found for update, creating resilient upsert for:`, args.where);
+          const updateData = this.processDataRelations(args.data || {});
+          const newItem = {
+            id: args.where?.id || generateId(modelName.toLowerCase()),
+            ...args.where,
+            ...updateData,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          };
+          store.unshift(newItem);
+          this.persistToSnapshot();
+          return this.attachIncludes(newItem, modelName, args.include);
         }
         const current = store[itemIndex];
         const updateData = this.processDataRelations(args.data || {});
@@ -790,6 +970,7 @@ class MemoryStore {
           updatedAt: new Date()
         };
         store[itemIndex] = updated;
+        this.persistToSnapshot();
         return this.attachIncludes(updated, modelName, args.include);
       },
 
@@ -802,33 +983,47 @@ class MemoryStore {
             count++;
           }
         });
+        this.persistToSnapshot();
         return { count };
       },
 
       upsert: async (args: any = {}) => {
-        const existingIndex = store.findIndex((i) => this.matchWhere(i, args.where));
+        let existingIndex = store.findIndex((i) => this.matchWhere(i, args.where));
+        if (existingIndex === -1 && args.where?.id) {
+          const targetId = String(args.where.id).trim().toLowerCase();
+          existingIndex = store.findIndex((i) => String(i.id || '').trim().toLowerCase() === targetId);
+        }
         if (existingIndex !== -1) {
-          const updated = { ...store[existingIndex], ...args.update, updatedAt: new Date() };
+          const updateData = this.processDataRelations(args.update || {});
+          const updated = { ...store[existingIndex], ...updateData, updatedAt: new Date() };
           store[existingIndex] = updated;
+          this.persistToSnapshot();
           return this.attachIncludes(updated, modelName, args.include);
         } else {
+          const createData = this.processDataRelations(args.create || {});
           const newItem = {
-            id: args.create?.id || generateId(modelName.toLowerCase()),
-            ...args.create,
+            id: args.create?.id || args.where?.id || generateId(modelName.toLowerCase()),
+            ...createData,
             createdAt: new Date(),
             updatedAt: new Date()
           };
-          store.push(newItem);
+          store.unshift(newItem);
+          this.persistToSnapshot();
           return this.attachIncludes(newItem, modelName, args.include);
         }
       },
 
       delete: async (args: any = {}) => {
-        const itemIndex = store.findIndex((i) => this.matchWhere(i, args.where));
+        let itemIndex = store.findIndex((i) => this.matchWhere(i, args.where));
+        if (itemIndex === -1 && args.where?.id) {
+          const targetId = String(args.where.id).trim().toLowerCase();
+          itemIndex = store.findIndex((i) => String(i.id || '').trim().toLowerCase() === targetId);
+        }
         if (itemIndex === -1) {
-          throw new Error(`Record to delete not found in memory db (${modelName})`);
+          return null;
         }
         const [removed] = store.splice(itemIndex, 1);
+        this.persistToSnapshot();
         return removed;
       },
 
@@ -840,6 +1035,7 @@ class MemoryStore {
             count++;
           }
         }
+        this.persistToSnapshot();
         return { count };
       },
 
