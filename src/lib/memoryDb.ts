@@ -317,8 +317,142 @@ class MemoryStore {
       }
     ];
 
-    this.collections.customOrder = [];
-    this.collections.customOrderReview = [];
+    this.collections.customOrder = [
+      {
+        id: 'co-sample-101',
+        customerName: 'Kavitha Reddy',
+        phone: '9848012345',
+        email: 'kavitha.reddy@gmail.com',
+        description: 'Bespoke cylindrical lithophane lamp with warm LED timber base, featuring family portrait',
+        customOrderName: 'Golden Anniversary Lithophane Lamp',
+        imageUrl: 'https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?auto=format&fit=crop&w=800&q=80',
+        isPublic: true,
+        amount: 2450.00,
+        deliveryType: 'HOME_DELIVERY',
+        notes: 'Requested expedited assembly and gift wrapping',
+        paymentStatus: 'PAID',
+        razorpayOrderId: 'order_samp_98231',
+        razorpayQrId: 'qr_samp_98231',
+        qrImageUrl: '',
+        paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=2450.00&cu=INR',
+        isSimulated: true,
+        expiresAt: new Date(Date.now() + 86400000 * 30),
+        paidAt: new Date(Date.now() - 86400000 * 3),
+        createdAt: new Date(Date.now() - 86400000 * 4),
+        updatedAt: new Date(Date.now() - 86400000 * 3)
+      },
+      {
+        id: 'co-sample-102',
+        customerName: 'Vikram Malhotra',
+        phone: '9885123456',
+        email: 'v.malhotra@aerotech.in',
+        description: 'High-tensile carbon fiber infused nylon quadcopter arm bracket & gimbal mount',
+        customOrderName: 'Carbon Fiber Quadcopter Drone Bracket',
+        imageUrl: 'https://images.unsplash.com/photo-1527977966376-1c8408f9f108?auto=format&fit=crop&w=800&q=80',
+        isPublic: true,
+        amount: 4800.00,
+        deliveryType: 'STORE_PICKUP',
+        notes: '0.12mm layer height, 100% infill for flight stress tolerance',
+        paymentStatus: 'PAID',
+        razorpayOrderId: 'order_samp_98232',
+        razorpayQrId: 'qr_samp_98232',
+        qrImageUrl: '',
+        paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=4800.00&cu=INR',
+        isSimulated: true,
+        expiresAt: new Date(Date.now() + 86400000 * 30),
+        paidAt: new Date(Date.now() - 86400000 * 2),
+        createdAt: new Date(Date.now() - 86400000 * 3),
+        updatedAt: new Date(Date.now() - 86400000 * 2)
+      },
+      {
+        id: 'co-sample-103',
+        customerName: 'Ananya Sharma',
+        phone: '9949098765',
+        email: 'ananya.sharma@outlook.com',
+        description: 'Lord Venkateswara Balaji 18cm idol with intricate jewelry in metallic antique copper finish',
+        customOrderName: 'Tirupati Balaji Antique Copper Idol',
+        imageUrl: 'https://images.unsplash.com/photo-1582738411706-bfc8e691d1c2?auto=format&fit=crop&w=800&q=80',
+        isPublic: true,
+        amount: 1850.00,
+        deliveryType: 'HOME_DELIVERY',
+        notes: 'Please ensure bubble wrapped packaging with fragile stickers',
+        paymentStatus: 'AWAITING_PAYMENT',
+        razorpayOrderId: 'order_samp_98233',
+        razorpayQrId: 'qr_samp_98233',
+        qrImageUrl: '',
+        paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=1850.00&cu=INR',
+        isSimulated: true,
+        expiresAt: new Date(Date.now() + 3600000 * 2), // 2 hours from now
+        paidAt: null,
+        createdAt: new Date(Date.now() - 1800000), // 30 mins ago
+        updatedAt: new Date(Date.now() - 1800000)
+      },
+      {
+        id: 'co-sample-104',
+        customerName: 'Rajesh Naidu',
+        phone: '8886149998',
+        email: 'rajesh.naidu@gmail.com',
+        description: 'Architectural scale model (1:200) of gated community luxury villa layout',
+        customOrderName: 'Gated Villa Architectural Model (1:200)',
+        imageUrl: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80',
+        isPublic: true,
+        amount: 7200.00,
+        deliveryType: 'STORE_PICKUP',
+        notes: 'Multi-part snap fit assembly with acrylic display case',
+        paymentStatus: 'PAID',
+        razorpayOrderId: 'order_samp_98234',
+        razorpayQrId: 'qr_samp_98234',
+        qrImageUrl: '',
+        paymentLink: 'upi://pay?pa=nexra3d@icici&pn=NEXRA%203D&am=7200.00&cu=INR',
+        isSimulated: true,
+        expiresAt: new Date(Date.now() + 86400000 * 30),
+        paidAt: new Date(Date.now() - 86400000 * 1),
+        createdAt: new Date(Date.now() - 86400000 * 2),
+        updatedAt: new Date(Date.now() - 86400000 * 1)
+      }
+    ];
+
+    this.collections.customOrderReview = [
+      {
+        id: 'cor-sample-201',
+        customOrderId: 'co-sample-101',
+        userId: null,
+        userName: 'Srinivas R.',
+        reviewerName: 'Srinivas R.',
+        rating: 5,
+        title: 'Breathtaking Anniversary Gift!',
+        comment: 'The lithophane resolution is unbelievably clear when backlit. My parents were completely moved by the detail. Thank you NEXRA 3D!',
+        isApproved: true,
+        status: 'APPROVED',
+        createdAt: new Date(Date.now() - 86400000 * 2)
+      },
+      {
+        id: 'cor-sample-202',
+        customOrderId: 'co-sample-102',
+        userId: null,
+        userName: 'Vikram M.',
+        reviewerName: 'Vikram M.',
+        rating: 5,
+        title: 'Outstanding Mechanical Rigidity',
+        comment: 'Printed in carbon-filled nylon with flawless dimensional accuracy. Fits our drone arms with zero play. Highly recommended.',
+        isApproved: true,
+        status: 'APPROVED',
+        createdAt: new Date(Date.now() - 86400000 * 1)
+      },
+      {
+        id: 'cor-sample-203',
+        customOrderId: 'co-sample-104',
+        userId: null,
+        userName: 'Priya K.',
+        reviewerName: 'Priya K.',
+        rating: 5,
+        title: 'Perfect Architectural Detailing',
+        comment: 'The villa model scale was spot on for our client presentation. Every balcony and window frame was crisp.',
+        isApproved: true,
+        status: 'APPROVED',
+        createdAt: new Date(Date.now() - 43200000)
+      }
+    ];
   }
 
   snapshot(): string {

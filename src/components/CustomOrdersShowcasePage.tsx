@@ -17,11 +17,13 @@ import { PublicCustomOrder, PublicCustomOrderReview } from '../types';
 interface CustomOrdersShowcasePageProps {
   onRequestQuoteClick: () => void;
   onNavigateHome: () => void;
+  initialOrderId?: string | null;
 }
 
 export const CustomOrdersShowcasePage: React.FC<CustomOrdersShowcasePageProps> = ({
   onRequestQuoteClick,
-  onNavigateHome
+  onNavigateHome,
+  initialOrderId
 }) => {
   const [orders, setOrders] = useState<PublicCustomOrder[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -30,6 +32,17 @@ export const CustomOrdersShowcasePage: React.FC<CustomOrdersShowcasePageProps> =
 
   // Selected order for Lightbox / Details
   const [selectedOrder, setSelectedOrder] = useState<PublicCustomOrder | null>(null);
+
+  const handleSelectOrder = (order: PublicCustomOrder | null) => {
+    setSelectedOrder(order);
+    if (typeof window !== 'undefined') {
+      if (order?.id) {
+        window.history.pushState(null, '', `/custom-orders/${order.id}`);
+      } else {
+        window.history.pushState(null, '', '/custom-orders');
+      }
+    }
+  };
 
   // Review submission modal state
   const [showReviewModal, setShowReviewModal] = useState<boolean>(false);
@@ -63,6 +76,15 @@ export const CustomOrdersShowcasePage: React.FC<CustomOrdersShowcasePageProps> =
   useEffect(() => {
     fetchPublicShowcase();
   }, []);
+
+  useEffect(() => {
+    if (initialOrderId && orders.length > 0) {
+      const match = orders.find((o) => o.id === initialOrderId);
+      if (match) {
+        setSelectedOrder(match);
+      }
+    }
+  }, [initialOrderId, orders]);
 
   const filteredOrders = orders.filter((order) => {
     if (!searchQuery.trim()) return true;
@@ -316,7 +338,7 @@ export const CustomOrdersShowcasePage: React.FC<CustomOrdersShowcasePageProps> =
 
                     {/* Quick Lightbox Preview Button */}
                     <button
-                      onClick={() => setSelectedOrder(order)}
+                      onClick={() => handleSelectOrder(order)}
                       className="absolute bottom-3 right-3 p-2 rounded-xl bg-slate-900/80 hover:bg-slate-900 text-white backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-md"
                       title="Inspect Creation"
                     >
@@ -328,7 +350,7 @@ export const CustomOrdersShowcasePage: React.FC<CustomOrdersShowcasePageProps> =
                   <div className="p-5 flex-1 flex flex-col">
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <h3
-                        onClick={() => setSelectedOrder(order)}
+                        onClick={() => handleSelectOrder(order)}
                         className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white leading-snug group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors cursor-pointer line-clamp-1"
                         title={order.customOrderName}
                       >
@@ -446,7 +468,7 @@ export const CustomOrdersShowcasePage: React.FC<CustomOrdersShowcasePageProps> =
                 </h3>
               </div>
               <button
-                onClick={() => setSelectedOrder(null)}
+                onClick={() => handleSelectOrder(null)}
                 className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -507,7 +529,7 @@ export const CustomOrdersShowcasePage: React.FC<CustomOrdersShowcasePageProps> =
               <button
                 onClick={() => {
                   handleOpenReviewModal(selectedOrder.id);
-                  setSelectedOrder(null);
+                  handleSelectOrder(null);
                 }}
                 className="text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1 cursor-pointer"
               >
@@ -517,7 +539,7 @@ export const CustomOrdersShowcasePage: React.FC<CustomOrdersShowcasePageProps> =
 
               <button
                 onClick={() => {
-                  setSelectedOrder(null);
+                  handleSelectOrder(null);
                   onRequestQuoteClick();
                 }}
                 className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs rounded-xl transition-colors cursor-pointer"

@@ -453,21 +453,27 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Request Quote Button */}
             <button
+              id="nav-get-quote-btn"
               onClick={onRequestQuoteClick}
-              className="hidden lg:flex items-center space-x-1.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs px-3 py-2 rounded-xl transition-all shadow-xs cursor-pointer shrink-0"
+              className="hidden sm:flex items-center space-x-1.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl transition-all shadow-xs cursor-pointer shrink-0"
+              title="Request Custom 3D Printing Quote"
             >
               <Send className="w-3.5 h-3.5" />
               <span>Get Quote</span>
             </button>
 
-            {/* Custom Orders Icon (Public Showcase - NO login required) */}
+            {/* Custom Orders Icon (Public Showcase - Visible for ALL users, logged-out & logged-in) */}
             <button
+              id="nav-custom-orders-icon-btn"
               onClick={onNavigateCustomOrders}
-              className="relative p-1.5 sm:p-2 text-slate-600 hover:text-cyan-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer shrink-0"
-              title="Custom Orders"
+              className="relative p-1.5 sm:p-2 text-slate-700 hover:text-cyan-600 hover:bg-slate-100 rounded-xl transition-all cursor-pointer shrink-0 flex items-center gap-1.5 group border border-transparent hover:border-slate-200"
+              title="Custom Orders Showcase & Reviews (/custom-orders)"
               aria-label="Custom Orders"
             >
-              <Layers className="w-4 h-4 sm:w-5 sm:h-5" />
+              <Layers className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-600 group-hover:scale-110 transition-transform" />
+              <span className="hidden xl:inline text-xs font-extrabold text-slate-800 group-hover:text-cyan-600">
+                Custom Orders
+              </span>
             </button>
 
             {/* Wishlist Icon */}

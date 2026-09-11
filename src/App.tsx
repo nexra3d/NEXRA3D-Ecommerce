@@ -180,7 +180,7 @@ const getViewFromPath = (pathname: string, hash: string = ''): ViewType => {
 
   if (cleanPath === '/admin') return 'admin';
   if (cleanPath === '/shop') return 'shop';
-  if (cleanPath === '/custom-orders' || cleanPath === '/customorders') return 'custom-orders';
+  if (cleanPath === '/custom-orders' || cleanPath === '/customorders' || cleanPath.startsWith('/custom-orders/')) return 'custom-orders';
   if (cleanPath === '/aerospace') return 'aerospace';
   if (cleanPath === '/services') return 'services';
   if (cleanPath === '/about') return 'about';
@@ -676,7 +676,11 @@ export default function App() {
     localStorage.setItem('nexra_current_view', currentView);
     const targetPath = getPathForView(currentView);
     const search = window.location.search;
-    if (window.location.pathname !== targetPath && currentView !== 'service-detail') {
+    if (
+      window.location.pathname !== targetPath &&
+      currentView !== 'service-detail' &&
+      !(currentView === 'custom-orders' && window.location.pathname.startsWith('/custom-orders/'))
+    ) {
       window.history.pushState(null, '', targetPath + search);
     }
   }, [currentView]);
@@ -1480,6 +1484,11 @@ export default function App() {
 
       {currentView === 'custom-orders' && (
         <CustomOrdersShowcasePage
+          initialOrderId={
+            window.location.pathname.startsWith('/custom-orders/')
+              ? decodeURIComponent(window.location.pathname.replace('/custom-orders/', '').replace(/\/$/, ''))
+              : null
+          }
           onRequestQuoteClick={() => {
             setQuoteService(null);
             setIsQuoteModalOpen(true);

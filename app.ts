@@ -7326,10 +7326,52 @@ app.get('/api/admin/custom-orders', requireAdminMiddleware, async (_req: Request
   }
 });
 
+// 1.1 Get all custom order reviews for moderation (Admin only - registered BEFORE /:id)
+app.get('/api/admin/custom-orders/reviews', requireAdminMiddleware, async (_req: Request, res: Response) => {
+  try {
+    const reviews = await (prisma as any).customOrderReview.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const orderIds = Array.from(new Set(reviews.map((r: any) => r.customOrderId)));
+    let orderMap = new Map<string, any>();
+    if (orderIds.length > 0) {
+      const orders = await (prisma as any).customOrder.findMany({
+        where: { id: { in: orderIds } }
+      });
+      orderMap = new Map((orders || []).map((o: any) => [o.id, o]));
+    }
+
+    const formatted = (reviews || []).map((r: any) => {
+      const ord = orderMap.get(r.customOrderId);
+      const currentStatus = r.status || (r.isApproved ? 'APPROVED' : 'PENDING');
+      return {
+        id: r.id,
+        customOrderId: r.customOrderId,
+        customOrderName: r.customOrderId === 'general' ? '⭐ General Review / NEXRA 3D' : (ord?.customOrderName || ord?.description || r.customOrderId),
+        reviewerName: r.userName || r.reviewerName || 'Anonymous',
+        rating: r.rating,
+        comment: r.comment,
+        status: currentStatus,
+        isApproved: Boolean(r.isApproved),
+        createdAt: r.createdAt
+      };
+    });
+
+    return res.json(formatted);
+  } catch (err: any) {
+    console.error('Error fetching reviews for moderation:', err);
+    return res.status(500).json({ error: 'Failed to fetch reviews for moderation' });
+  }
+});
+
 // 2. Get single custom order (Admin)
-app.get('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Request, res: Response) => {
+app.get('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
+    if (id === 'reviews' || id === 'upload-image') {
+      return next();
+    }
     const order = await (prisma as any).customOrder.findUnique({
       where: { id }
     });

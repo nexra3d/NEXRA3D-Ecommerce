@@ -88,12 +88,14 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch Custom Orders from server
   const fetchCustomOrders = async () => {
     setIsLoading(true);
+    setFetchError(null);
     try {
       const res = await fetch('/api/admin/custom-orders', {
         headers: getAuthHeaders(),
@@ -104,9 +106,13 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
         if (Array.isArray(data)) {
           setCustomOrders(data);
         }
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        setFetchError(errJson.error || `Server responded with status ${res.status}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load custom orders from database:', err);
+      setFetchError(err.message || 'Error connecting to database');
     } finally {
       setIsLoading(false);
     }
@@ -557,22 +563,32 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
 
   // Filtered list
   const filteredOrders = customOrders.filter((ord) => {
-    const matchesStatus = statusFilter === 'ALL' || ord.paymentStatus === statusFilter;
+    const paymentStatus = (ord.paymentStatus || (ord as any).payment_status || 'AWAITING_PAYMENT').toUpperCase();
+    const matchesStatus = statusFilter === 'ALL' || paymentStatus === statusFilter;
     const query = searchQuery.toLowerCase().trim();
+    const customerName = String(ord.customerName || (ord as any).customer_name || '');
+    const phone = String(ord.phone || (ord as any).phone_number || '');
+    const email = String(ord.email || (ord as any).customer_email || '');
+    const id = String(ord.id || (ord as any).order_id || '');
+    const customOrderName = String(ord.customOrderName || (ord as any).custom_order_name || '');
+    const description = String(ord.description || '');
+
     const matchesSearch =
       !query ||
-      ord.customerName.toLowerCase().includes(query) ||
-      ord.phone.includes(query) ||
-      (ord.email && ord.email.toLowerCase().includes(query)) ||
-      ord.id.toLowerCase().includes(query);
+      customerName.toLowerCase().includes(query) ||
+      phone.includes(query) ||
+      email.toLowerCase().includes(query) ||
+      id.toLowerCase().includes(query) ||
+      customOrderName.toLowerCase().includes(query) ||
+      description.toLowerCase().includes(query);
 
     return matchesStatus && matchesSearch;
   });
 
   // Calculate quick metrics
   const totalOrders = customOrders.length;
-  const awaitingCount = customOrders.filter((o) => o.paymentStatus === 'AWAITING_PAYMENT').length;
-  const paidOrders = customOrders.filter((o) => o.paymentStatus === 'PAID');
+  const awaitingCount = customOrders.filter((o) => (o.paymentStatus || (o as any).payment_status) === 'AWAITING_PAYMENT').length;
+  const paidOrders = customOrders.filter((o) => (o.paymentStatus || (o as any).payment_status) === 'PAID');
   const paidCount = paidOrders.length;
   const totalSettled = paidOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
 
@@ -585,8 +601,28 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span className="font-semibold">{actionFeedback}</span>
           </div>
-          <button onClick={() => setActionFeedback(null)} className="text-slate-400 hover:text-white">
+          <button onClick={() => setActionFeedback(null)} className="text-slate-400 hover:text-white cursor-pointer">
             <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Fetch Error Banner */}
+      {fetchError && (
+        <div className="bg-rose-950/80 border border-rose-500/50 text-rose-200 p-3.5 rounded-xl flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <div>
+              <p className="font-bold text-xs text-rose-200">Unable to load orders from database</p>
+              <p className="text-[11px] text-rose-300/80">{fetchError}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => fetchCustomOrders()}
+            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1"
+          >
+            <RefreshCw className="w-3 h-3 animate-spin" />
+            <span>Retry</span>
           </button>
         </div>
       )}
