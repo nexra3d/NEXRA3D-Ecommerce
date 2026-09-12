@@ -808,6 +808,7 @@ model CustomOrderReview {
   title         String?
   comment       String
   isApproved    Boolean     @default(true)
+  status        String      @default("PENDING")
   createdAt     DateTime    @default(now())
 
   @@index([customOrderId])

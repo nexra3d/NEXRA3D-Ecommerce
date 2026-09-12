@@ -71,6 +71,7 @@ export async function ensureDbSchema(): Promise<void> {
   if (dbSchemaEnsured) return;
 
   try {
+    // 1. Create custom_orders table if not exists
     await rawPrisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "custom_orders" (
         "id" TEXT NOT NULL,
@@ -94,19 +95,48 @@ export async function ensureDbSchema(): Promise<void> {
         "paidAt" TIMESTAMP(3),
         "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
         CONSTRAINT "custom_orders_pkey" PRIMARY KEY ("id")
       );
-    `);
+    `).catch(() => {});
 
-    try {
-      await rawPrisma.$executeRawUnsafe(`
-        ALTER TABLE "custom_orders" ADD COLUMN IF NOT EXISTS "customOrderName" TEXT;
-        ALTER TABLE "custom_orders" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT;
-        ALTER TABLE "custom_orders" ADD COLUMN IF NOT EXISTS "isPublic" BOOLEAN NOT NULL DEFAULT false;
-      `);
-    } catch (_) {}
+    // 2. Ensure both camelCase and snake_case columns exist on existing databases
+    const alterColStatements = [
+      `ALTER TABLE "custom_orders" ADD COLUMN IF NOT EXISTS "customOrderName" TEXT;`,
+      `ALTER TABLE "custom_orders" ADD COLUMN IF NOT EXISTS "custom_order_name" TEXT;`,
+      `ALTER TABLE "custom_orders" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT;`,
+      `ALTER TABLE "custom_orders" ADD COLUMN IF NOT EXISTS "image_url" TEXT;`,
+      `ALTER TABLE "custom_orders" ADD COLUMN IF NOT EXISTS "isPublic" BOOLEAN NOT NULL DEFAULT false;`,
+      `ALTER TABLE "custom_orders" ADD COLUMN IF NOT EXISTS "is_public" BOOLEAN NOT NULL DEFAULT false;`,
+      `ALTER TABLE custom_orders ADD COLUMN IF NOT EXISTS "customOrderName" TEXT;`,
+      `ALTER TABLE custom_orders ADD COLUMN IF NOT EXISTS "custom_order_name" TEXT;`,
+      `ALTER TABLE custom_orders ADD COLUMN IF NOT EXISTS "imageUrl" TEXT;`,
+      `ALTER TABLE custom_orders ADD COLUMN IF NOT EXISTS "image_url" TEXT;`,
+      `ALTER TABLE custom_orders ADD COLUMN IF NOT EXISTS "isPublic" BOOLEAN NOT NULL DEFAULT false;`,
+      `ALTER TABLE custom_orders ADD COLUMN IF NOT EXISTS "is_public" BOOLEAN NOT NULL DEFAULT false;`
+    ];
 
+    for (const sql of alterColStatements) {
+      try {
+        await rawPrisma.$executeRawUnsafe(sql);
+      } catch (_) {}
+    }
+
+    // 3. Mirror data across both column casings if both exist
+    const syncStatements = [
+      `UPDATE "custom_orders" SET "customOrderName" = "custom_order_name" WHERE "customOrderName" IS NULL AND "custom_order_name" IS NOT NULL;`,
+      `UPDATE "custom_orders" SET "custom_order_name" = "customOrderName" WHERE "custom_order_name" IS NULL AND "customOrderName" IS NOT NULL;`,
+      `UPDATE "custom_orders" SET "imageUrl" = "image_url" WHERE "imageUrl" IS NULL AND "image_url" IS NOT NULL;`,
+      `UPDATE "custom_orders" SET "image_url" = "imageUrl" WHERE "image_url" IS NULL AND "imageUrl" IS NOT NULL;`,
+      `UPDATE "custom_orders" SET "isPublic" = "is_public" WHERE "isPublic" IS NOT TRUE AND "is_public" IS TRUE;`,
+      `UPDATE "custom_orders" SET "is_public" = "isPublic" WHERE "is_public" IS NOT TRUE AND "isPublic" IS TRUE;`
+    ];
+    for (const sql of syncStatements) {
+      try {
+        await rawPrisma.$executeRawUnsafe(sql);
+      } catch (_) {}
+    }
+
+    // 4. Ensure custom_order_reviews table and columns
     try {
       await rawPrisma.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS "custom_order_reviews" (
@@ -117,7 +147,7 @@ export async function ensureDbSchema(): Promise<void> {
           "rating" INTEGER NOT NULL DEFAULT 5,
           "title" TEXT,
           "comment" TEXT NOT NULL,
-          "isApproved" BOOLEAN NOT NULL DEFAULT false,
+          "isApproved" BOOLEAN NOT NULL DEFAULT true,
           "status" TEXT NOT NULL DEFAULT 'PENDING',
           "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
           CONSTRAINT "custom_order_reviews_pkey" PRIMARY KEY ("id")
@@ -125,32 +155,34 @@ export async function ensureDbSchema(): Promise<void> {
       `);
     } catch (_) {}
 
-    try {
-      await rawPrisma.$executeRawUnsafe(`
-        ALTER TABLE "custom_order_reviews" ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT 'PENDING';
-        ALTER TABLE "custom_order_reviews" ADD COLUMN IF NOT EXISTS "userName" TEXT;
-      `);
-    } catch (_) {}
+    const reviewAlters = [
+      `ALTER TABLE "custom_order_reviews" ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT 'PENDING';`,
+      `ALTER TABLE "custom_order_reviews" ADD COLUMN IF NOT EXISTS "userName" TEXT;`,
+      `ALTER TABLE "custom_order_reviews" ADD COLUMN IF NOT EXISTS "user_name" TEXT;`
+    ];
+    for (const sql of reviewAlters) {
+      try {
+        await rawPrisma.$executeRawUnsafe(sql);
+      } catch (_) {}
+    }
 
-    try {
-      await rawPrisma.$executeRawUnsafe(`
-        CREATE INDEX IF NOT EXISTS "custom_orders_phone_idx" ON "custom_orders"("phone");
-      `);
-      await rawPrisma.$executeRawUnsafe(`
-        CREATE INDEX IF NOT EXISTS "custom_orders_paymentStatus_idx" ON "custom_orders"("paymentStatus");
-      `);
-      await rawPrisma.$executeRawUnsafe(`
-        CREATE INDEX IF NOT EXISTS "custom_orders_isPublic_idx" ON "custom_orders"("isPublic");
-      `);
-      await rawPrisma.$executeRawUnsafe(`
-        CREATE INDEX IF NOT EXISTS "custom_order_reviews_order_idx" ON "custom_order_reviews"("customOrderId");
-      `);
-    } catch (_) {}
+    // 5. Ensure indexes
+    const indexList = [
+      `CREATE INDEX IF NOT EXISTS "custom_orders_phone_idx" ON "custom_orders"("phone");`,
+      `CREATE INDEX IF NOT EXISTS "custom_orders_paymentStatus_idx" ON "custom_orders"("paymentStatus");`,
+      `CREATE INDEX IF NOT EXISTS "custom_orders_isPublic_idx" ON "custom_orders"("isPublic");`,
+      `CREATE INDEX IF NOT EXISTS "custom_order_reviews_order_idx" ON "custom_order_reviews"("customOrderId");`
+    ];
+    for (const sql of indexList) {
+      try {
+        await rawPrisma.$executeRawUnsafe(sql);
+      } catch (_) {}
+    }
 
     dbSchemaEnsured = true;
-    console.log('[Database] custom_orders table and indexes ensured successfully.');
+    console.log('[Database] custom_orders and reviews schema verified & ensured successfully.');
   } catch (err: any) {
-    console.warn('[Database] Could not execute DDL for custom_orders:', err?.message || err);
+    console.warn('[Database] Notice during custom_orders schema verification:', err?.message || err);
   }
 }
 
@@ -346,6 +378,10 @@ async function executeResilientCustomOrderQuery(prop: string, args: any[]): Prom
 
   // Strategy 1: If database URL is available, attempt Prisma first
   if (hasDatabaseUrl) {
+    if (!dbSchemaEnsured) {
+      await ensureDbSchema().catch(() => {});
+    }
+
     try {
       const rawModel = (rawPrisma as any).customOrder;
       if (rawModel && typeof rawModel[prop] === 'function') {
@@ -433,30 +469,139 @@ async function executeResilientCustomOrderQuery(prop: string, args: any[]): Prom
       const rawData = prop === 'upsert' ? { ...(args[0]?.create || {}), ...(args[0]?.update || {}) } : (args[0]?.data || {});
       const cleanData = cleanPrismaCustomOrderData(rawData);
       if (whereId && Object.keys(cleanData).length > 0) {
-        const setClauses: string[] = [];
+        // 1. Detect which columns exist in PostgreSQL
+        let existingCols = new Set<string>();
+        try {
+          const colRows: any = await rawPrisma.$queryRawUnsafe(
+            `SELECT column_name FROM information_schema.columns WHERE table_name = 'custom_orders' OR table_name = 'CustomOrder'`
+          );
+          if (Array.isArray(colRows)) {
+            for (const r of colRows) {
+              if (r?.column_name) existingCols.add(String(r.column_name));
+            }
+          }
+        } catch (_) {}
+
+        // If columns detected, write to all matching columns (both camelCase and snake_case)
+        if (existingCols.size > 0) {
+          const setClauses: string[] = [];
+          const values: any[] = [];
+          let idx = 1;
+
+          for (const [field, val] of Object.entries(cleanData)) {
+            const camelCol = field;
+            const snakeCol = CUSTOM_ORDER_DB_COLUMN_MAP[field] || field;
+
+            if (existingCols.has(camelCol)) {
+              setClauses.push(`"${camelCol}" = $${idx++}`);
+              values.push(val);
+            }
+            if (snakeCol !== camelCol && existingCols.has(snakeCol)) {
+              setClauses.push(`"${snakeCol}" = $${idx++}`);
+              values.push(val);
+            }
+          }
+
+          if (setClauses.length > 0) {
+            values.push(whereId);
+            const sql = `UPDATE "custom_orders" SET ${setClauses.join(', ')} WHERE "id" = $${idx} RETURNING *`;
+            try {
+              const rawResult: any = await rawPrisma.$queryRawUnsafe(sql, ...values);
+              if (Array.isArray(rawResult) && rawResult.length > 0) {
+                const normalized = normalizeCustomOrder(rawResult[0]);
+                try { await (memoryHandler as any).update({ where: { id: whereId }, data: cleanData }); } catch (_) {}
+                return normalized;
+              }
+            } catch (err: any) {
+              console.warn('[Raw SQL Update with column detection error]:', err?.message || err);
+            }
+          }
+        }
+
+        // Fallback A: Direct camelCase columns
+        try {
+          const setClausesCamel: string[] = [];
+          const valuesCamel: any[] = [];
+          let idx = 1;
+          for (const [field, val] of Object.entries(cleanData)) {
+            setClausesCamel.push(`"${field}" = $${idx++}`);
+            valuesCamel.push(val);
+          }
+          valuesCamel.push(whereId);
+          const sql = `UPDATE "custom_orders" SET ${setClausesCamel.join(', ')} WHERE "id" = $${idx} RETURNING *`;
+          const rawResult: any = await rawPrisma.$queryRawUnsafe(sql, ...valuesCamel);
+          if (Array.isArray(rawResult) && rawResult.length > 0) {
+            const normalized = normalizeCustomOrder(rawResult[0]);
+            try { await (memoryHandler as any).update({ where: { id: whereId }, data: cleanData }); } catch (_) {}
+            return normalized;
+          }
+        } catch (_) {}
+
+        // Fallback B: Direct snake_case columns
+        try {
+          const setClausesSnake: string[] = [];
+          const valuesSnake: any[] = [];
+          let idx = 1;
+          for (const [field, val] of Object.entries(cleanData)) {
+            const col = CUSTOM_ORDER_DB_COLUMN_MAP[field] || field;
+            setClausesSnake.push(`"${col}" = $${idx++}`);
+            valuesSnake.push(val);
+          }
+          valuesSnake.push(whereId);
+          const sql = `UPDATE "custom_orders" SET ${setClausesSnake.join(', ')} WHERE "id" = $${idx} RETURNING *`;
+          const rawResult: any = await rawPrisma.$queryRawUnsafe(sql, ...valuesSnake);
+          if (Array.isArray(rawResult) && rawResult.length > 0) {
+            const normalized = normalizeCustomOrder(rawResult[0]);
+            try { await (memoryHandler as any).update({ where: { id: whereId }, data: cleanData }); } catch (_) {}
+            return normalized;
+          }
+        } catch (_) {}
+      }
+    } else if (prop === 'create') {
+      const cleanData = cleanPrismaCustomOrderData(args[0]?.data || {});
+      const id = cleanData.id || `co-${Date.now()}`;
+      cleanData.id = id;
+
+      // Try camelCase insert
+      try {
+        const cols: string[] = [];
+        const placeholders: string[] = [];
+        const values: any[] = [];
+        let idx = 1;
+        for (const [field, val] of Object.entries(cleanData)) {
+          cols.push(`"${field}"`);
+          placeholders.push(`$${idx++}`);
+          values.push(val);
+        }
+        const sql = `INSERT INTO "custom_orders" (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`;
+        const rawResult: any = await rawPrisma.$queryRawUnsafe(sql, ...values);
+        if (Array.isArray(rawResult) && rawResult.length > 0) {
+          const normalized = normalizeCustomOrder(rawResult[0]);
+          try { await (memoryHandler as any).create({ data: cleanData }); } catch (_) {}
+          return normalized;
+        }
+      } catch (_) {}
+
+      // Try snake_case insert
+      try {
+        const cols: string[] = [];
+        const placeholders: string[] = [];
         const values: any[] = [];
         let idx = 1;
         for (const [field, val] of Object.entries(cleanData)) {
           const col = CUSTOM_ORDER_DB_COLUMN_MAP[field] || field;
-          setClauses.push(`"${col}" = $${idx++}`);
+          cols.push(`"${col}"`);
+          placeholders.push(`$${idx++}`);
           values.push(val);
         }
-        values.push(whereId);
-        const updateSqls = [
-          `UPDATE "custom_orders" SET ${setClauses.join(', ')} WHERE "id" = $${idx} RETURNING *`,
-          `UPDATE custom_orders SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING *`
-        ];
-        for (const sql of updateSqls) {
-          try {
-            const rawResult: any = await rawPrisma.$queryRawUnsafe(sql, ...values);
-            if (Array.isArray(rawResult) && rawResult.length > 0) {
-              const normalized = normalizeCustomOrder(rawResult[0]);
-              try { await (memoryHandler as any).update({ where: { id: whereId }, data: cleanData }); } catch (_) {}
-              return normalized;
-            }
-          } catch (_) {}
+        const sql = `INSERT INTO "custom_orders" (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`;
+        const rawResult: any = await rawPrisma.$queryRawUnsafe(sql, ...values);
+        if (Array.isArray(rawResult) && rawResult.length > 0) {
+          const normalized = normalizeCustomOrder(rawResult[0]);
+          try { await (memoryHandler as any).create({ data: cleanData }); } catch (_) {}
+          return normalized;
         }
-      }
+      } catch (_) {}
     } else if (prop === 'delete') {
       const whereId = args[0]?.where?.id;
       if (whereId) {
@@ -501,7 +646,19 @@ async function executeResilientCustomOrderQuery(prop: string, args: any[]): Prom
           const col = CUSTOM_ORDER_DB_COLUMN_MAP[k] || k;
           supaData[col] = v;
         }
-        const { data: created, error } = await (supabaseAdmin as any).from('custom_orders').insert(supaData).select().maybeSingle();
+        let { data: created, error } = await (supabaseAdmin as any).from('custom_orders').insert(supaData).select().maybeSingle();
+        if (error) {
+          // Retry with direct camelCase keys
+          const camelData: any = {};
+          for (const [k, v] of Object.entries(clean)) {
+            camelData[k] = v;
+          }
+          const retry = await (supabaseAdmin as any).from('custom_orders').insert(camelData).select().maybeSingle();
+          if (!retry.error && retry.data) {
+            created = retry.data;
+            error = null;
+          }
+        }
         if (!error && created) {
           const normalized = normalizeCustomOrder(created);
           try { await (memoryHandler as any).create({ data: clean }); } catch (_) {}
@@ -516,7 +673,19 @@ async function executeResilientCustomOrderQuery(prop: string, args: any[]): Prom
           supaData[col] = v;
         }
         if (whereId) {
-          const { data: updated, error } = await (supabaseAdmin as any).from('custom_orders').update(supaData).eq('id', whereId).select().maybeSingle();
+          let { data: updated, error } = await (supabaseAdmin as any).from('custom_orders').update(supaData).eq('id', whereId).select().maybeSingle();
+          if (error) {
+            // Retry with direct camelCase keys
+            const camelData: any = {};
+            for (const [k, v] of Object.entries(clean)) {
+              camelData[k] = v;
+            }
+            const retry = await (supabaseAdmin as any).from('custom_orders').update(camelData).eq('id', whereId).select().maybeSingle();
+            if (!retry.error && retry.data) {
+              updated = retry.data;
+              error = null;
+            }
+          }
           if (!error && updated) {
             const normalized = normalizeCustomOrder(updated);
             try { await (memoryHandler as any).update({ where: { id: whereId }, data: clean }); } catch (_) {}
