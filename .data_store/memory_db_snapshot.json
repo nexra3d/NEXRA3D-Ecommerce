@@ -875,15 +875,18 @@
       "phone": "",
       "email": null,
       "description": "Brand New Custom Item",
-      "customOrderName": "Brand New Custom Item",
-      "imageUrl": null,
-      "isPublic": false,
+      "customOrderName": "Custom Precision Drone Arm V3 - Showcase Persist",
+      "imageUrl": "https://res.cloudinary.com/nexra3d/image/upload/v1720000000/custom-orders/hero_showcase.jpg",
+      "isPublic": true,
       "amount": 500,
       "deliveryType": "STORE_PICKUP",
       "notes": null,
       "paymentStatus": "AWAITING_PAYMENT",
       "createdAt": "2026-09-11T08:17:46.315Z",
-      "updatedAt": "2026-09-11T08:17:46.315Z"
+      "updatedAt": "2026-09-12T16:24:33.181Z",
+      "custom_order_name": "Custom Precision Drone Arm V3 - Showcase Persist",
+      "image_url": "https://res.cloudinary.com/nexra3d/image/upload/v1720000000/custom-orders/hero_showcase.jpg",
+      "is_public": true
     },
     {
       "id": "N3D-CO-0004-10092026",
@@ -891,7 +894,7 @@
       "phone": "9876543210",
       "email": "shrikha@example.com",
       "description": "Custom personalized 3D keychain with dual-tone lettering and reinforced ring loop",
-      "customOrderName": "Custom Key Chain Updated",
+      "customOrderName": "Custom Key Chain Updated Via API",
       "imageUrl": "https://res.cloudinary.com/vyxpteov/image/upload/v1789113976/custom-orders/co_test.jpg",
       "isPublic": true,
       "amount": 450,
@@ -906,7 +909,10 @@
       "expiresAt": "2026-10-11T08:17:29.123Z",
       "paidAt": null,
       "createdAt": "2026-09-11T06:17:29.123Z",
-      "updatedAt": "2026-09-11T08:17:38.164Z"
+      "updatedAt": "2026-09-11T13:38:31.179Z",
+      "updated_at": "2026-09-11T13:38:31.179Z",
+      "custom_order_name": "Custom Key Chain Updated Via API",
+      "is_public": true
     },
     {
       "id": "N3D-CO-0005-10092026",
@@ -960,12 +966,12 @@
       "phone": "8919117638",
       "email": null,
       "description": "Ghost Rider Moto Sign",
-      "customOrderName": "Test Name 123",
-      "imageUrl": "https://images.unsplash.com/photo-1558981403-c5f9899a28bc?auto=format&fit=crop&w=800&q=80",
+      "customOrderName": "Aerospace Bracket Titanium Prototype",
+      "imageUrl": "https://res.cloudinary.com/nexra3d/image/upload/v1726666666/parts/bracket.jpg",
       "isPublic": true,
       "amount": 3500,
       "deliveryType": "HOME_DELIVERY",
-      "notes": null,
+      "notes": "Updated showcase test note",
       "paymentStatus": "PAID",
       "razorpayOrderId": "order_co_0002_praneeth",
       "razorpayQrId": "qr_co_0002_praneeth",
@@ -975,7 +981,11 @@
       "expiresAt": "2026-10-11T08:52:17.820Z",
       "paidAt": "2026-09-09T13:13:00.000Z",
       "createdAt": "2026-09-11T08:39:53.331Z",
-      "updatedAt": "2026-09-11T09:22:14.099Z"
+      "updatedAt": "2026-09-12T16:27:51.834Z",
+      "updated_at": "2026-09-12T16:27:51.833Z",
+      "custom_order_name": "Aerospace Bracket Titanium Prototype",
+      "image_url": "https://res.cloudinary.com/nexra3d/image/upload/v1726666666/parts/bracket.jpg",
+      "is_public": true
     },
     {
       "id": "N3D-CO-0002-10092026",
@@ -1081,7 +1091,7 @@
       "amount": 1850,
       "deliveryType": "HOME_DELIVERY",
       "notes": "Please ensure bubble wrapped packaging with fragile stickers",
-      "paymentStatus": "AWAITING_PAYMENT",
+      "paymentStatus": "EXPIRED",
       "razorpayOrderId": "order_samp_98233",
       "razorpayQrId": "qr_samp_98233",
       "qrImageUrl": "",
@@ -1090,7 +1100,9 @@
       "expiresAt": "2026-09-11T10:17:29.123Z",
       "paidAt": null,
       "createdAt": "2026-09-11T07:47:29.123Z",
-      "updatedAt": "2026-09-11T07:47:29.123Z"
+      "updatedAt": "2026-09-11T13:38:36.936Z",
+      "payment_status": "EXPIRED",
+      "updated_at": "2026-09-11T13:38:36.936Z"
     },
     {
       "id": "co-sample-104",
@@ -1156,6 +1168,5 @@
       "status": "APPROVED",
       "createdAt": "2026-09-10T20:17:29.123Z"
     }
-  ],
-  "coupon": []
+  ]
 }

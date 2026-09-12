@@ -256,6 +256,91 @@ export function normalizeCustomOrderReview(row: any): any {
   };
 }
 
+const VALID_PRISMA_CUSTOM_ORDER_KEYS = new Set([
+  'id',
+  'customerName',
+  'phone',
+  'email',
+  'description',
+  'customOrderName',
+  'imageUrl',
+  'isPublic',
+  'amount',
+  'deliveryType',
+  'notes',
+  'paymentStatus',
+  'razorpayOrderId',
+  'razorpayQrId',
+  'qrImageUrl',
+  'paymentLink',
+  'isSimulated',
+  'expiresAt',
+  'paidAt',
+  'createdAt',
+  'updatedAt'
+]);
+
+export function cleanPrismaCustomOrderData(data: any): any {
+  if (!data || typeof data !== 'object') return data;
+  const clean: any = {};
+  const source = {
+    ...data,
+    customerName: data.customerName ?? data.customer_name,
+    customOrderName: data.customOrderName ?? data.custom_order_name,
+    imageUrl: data.imageUrl ?? data.image_url,
+    isPublic: data.isPublic !== undefined ? Boolean(data.isPublic) : (data.is_public !== undefined ? Boolean(data.is_public) : undefined),
+    deliveryType: data.deliveryType ?? data.delivery_type,
+    paymentStatus: data.paymentStatus ?? data.payment_status,
+    razorpayOrderId: data.razorpayOrderId ?? data.razorpay_order_id,
+    razorpayQrId: data.razorpayQrId ?? data.razorpay_qr_id,
+    qrImageUrl: data.qrImageUrl ?? data.qr_image_url,
+    paymentLink: data.paymentLink ?? data.payment_link,
+    isSimulated: data.isSimulated !== undefined ? Boolean(data.isSimulated) : (data.is_simulated !== undefined ? Boolean(data.is_simulated) : undefined),
+    expiresAt: data.expiresAt ?? data.expires_at,
+    paidAt: data.paidAt ?? data.paid_at,
+    createdAt: data.createdAt ?? data.created_at,
+    updatedAt: data.updatedAt ?? data.updated_at
+  };
+
+  for (const k of Object.keys(source)) {
+    if (VALID_PRISMA_CUSTOM_ORDER_KEYS.has(k) && source[k] !== undefined) {
+      let v = source[k];
+      if ((k === 'expiresAt' || k === 'paidAt' || k === 'createdAt' || k === 'updatedAt') && v) {
+        if (typeof v === 'string' || typeof v === 'number') {
+          const d = new Date(v);
+          if (!isNaN(d.getTime())) v = d;
+        }
+      }
+      clean[k] = v;
+    }
+  }
+  return clean;
+}
+
+const CUSTOM_ORDER_DB_COLUMN_MAP: Record<string, string> = {
+  customerName: 'customer_name',
+  customOrderName: 'custom_order_name',
+  imageUrl: 'image_url',
+  isPublic: 'is_public',
+  deliveryType: 'delivery_type',
+  paymentStatus: 'payment_status',
+  razorpayOrderId: 'razorpay_order_id',
+  razorpayQrId: 'razorpay_qr_id',
+  qrImageUrl: 'qr_image_url',
+  paymentLink: 'payment_link',
+  isSimulated: 'is_simulated',
+  expiresAt: 'expires_at',
+  paidAt: 'paid_at',
+  createdAt: 'created_at',
+  updatedAt: 'updated_at',
+  phone: 'phone',
+  email: 'email',
+  description: 'description',
+  amount: 'amount',
+  notes: 'notes',
+  id: 'id'
+};
+
 async function executeResilientCustomOrderQuery(prop: string, args: any[]): Promise<any> {
   const memoryHandler = memoryStore.createModelHandler('customOrder');
 
@@ -264,12 +349,38 @@ async function executeResilientCustomOrderQuery(prop: string, args: any[]): Prom
     try {
       const rawModel = (rawPrisma as any).customOrder;
       if (rawModel && typeof rawModel[prop] === 'function') {
-        const result = await rawModel[prop](...args);
+        const sanitizedArgs = args.map((arg: any) => {
+          if (!arg || typeof arg !== 'object') return arg;
+          const cloned = { ...arg };
+          if (cloned.data) {
+            cloned.data = cleanPrismaCustomOrderData(cloned.data);
+          }
+          if (cloned.create) {
+            cloned.create = cleanPrismaCustomOrderData(cloned.create);
+          }
+          if (cloned.update) {
+            cloned.update = cleanPrismaCustomOrderData(cloned.update);
+          }
+          return cloned;
+        });
+
+        const result = await rawModel[prop](...sanitizedArgs);
         if (Array.isArray(result) && result.length > 0) {
           return result.map(normalizeCustomOrder);
         }
         if (result && typeof result === 'object' && !Array.isArray(result) && prop !== 'findMany') {
-          return normalizeCustomOrder(result);
+          const normalized = normalizeCustomOrder(result);
+          // Keep in-memory cache synchronized with PostgreSQL
+          try {
+            if (prop === 'update') {
+              await (memoryHandler as any).update({ where: args[0]?.where, data: sanitizedArgs[0]?.data || args[0]?.data });
+            } else if (prop === 'create' || prop === 'upsert') {
+              await (memoryHandler as any).upsert({ where: { id: normalized.id }, update: normalized, create: normalized });
+            } else if (prop === 'delete') {
+              await (memoryHandler as any).delete({ where: args[0]?.where });
+            }
+          } catch (_) {}
+          return normalized;
         }
       }
     } catch (prismaErr: any) {
@@ -279,6 +390,7 @@ async function executeResilientCustomOrderQuery(prop: string, args: any[]): Prom
     // Raw SQL fallback directly targeting PostgreSQL
     if (prop === 'findMany') {
       const queries = [
+        'SELECT * FROM "custom_orders" ORDER BY "created_at" DESC',
         'SELECT * FROM "custom_orders" ORDER BY "createdAt" DESC',
         'SELECT * FROM custom_orders ORDER BY created_at DESC',
         'SELECT * FROM "custom_orders"',
@@ -316,6 +428,44 @@ async function executeResilientCustomOrderQuery(prop: string, args: any[]): Prom
           } catch (_) {}
         }
       }
+    } else if (prop === 'update' || prop === 'upsert') {
+      const whereId = args[0]?.where?.id;
+      const rawData = prop === 'upsert' ? { ...(args[0]?.create || {}), ...(args[0]?.update || {}) } : (args[0]?.data || {});
+      const cleanData = cleanPrismaCustomOrderData(rawData);
+      if (whereId && Object.keys(cleanData).length > 0) {
+        const setClauses: string[] = [];
+        const values: any[] = [];
+        let idx = 1;
+        for (const [field, val] of Object.entries(cleanData)) {
+          const col = CUSTOM_ORDER_DB_COLUMN_MAP[field] || field;
+          setClauses.push(`"${col}" = $${idx++}`);
+          values.push(val);
+        }
+        values.push(whereId);
+        const updateSqls = [
+          `UPDATE "custom_orders" SET ${setClauses.join(', ')} WHERE "id" = $${idx} RETURNING *`,
+          `UPDATE custom_orders SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING *`
+        ];
+        for (const sql of updateSqls) {
+          try {
+            const rawResult: any = await rawPrisma.$queryRawUnsafe(sql, ...values);
+            if (Array.isArray(rawResult) && rawResult.length > 0) {
+              const normalized = normalizeCustomOrder(rawResult[0]);
+              try { await (memoryHandler as any).update({ where: { id: whereId }, data: cleanData }); } catch (_) {}
+              return normalized;
+            }
+          } catch (_) {}
+        }
+      }
+    } else if (prop === 'delete') {
+      const whereId = args[0]?.where?.id;
+      if (whereId) {
+        try {
+          await rawPrisma.$executeRawUnsafe('DELETE FROM "custom_orders" WHERE "id" = $1', whereId);
+          try { await (memoryHandler as any).delete({ where: { id: whereId } }); } catch (_) {}
+          return { id: whereId };
+        } catch (_) {}
+      }
     }
   }
 
@@ -345,20 +495,39 @@ async function executeResilientCustomOrderQuery(prop: string, args: any[]): Prom
           if (!error && data) return normalizeCustomOrder(data);
         }
       } else if (prop === 'create') {
-        const itemData = args[0]?.data;
-        const { data: created, error } = await (supabaseAdmin as any).from('custom_orders').insert(itemData).select().maybeSingle();
-        if (!error && created) return normalizeCustomOrder(created);
+        const clean = cleanPrismaCustomOrderData(args[0]?.data);
+        const supaData: any = {};
+        for (const [k, v] of Object.entries(clean)) {
+          const col = CUSTOM_ORDER_DB_COLUMN_MAP[k] || k;
+          supaData[col] = v;
+        }
+        const { data: created, error } = await (supabaseAdmin as any).from('custom_orders').insert(supaData).select().maybeSingle();
+        if (!error && created) {
+          const normalized = normalizeCustomOrder(created);
+          try { await (memoryHandler as any).create({ data: clean }); } catch (_) {}
+          return normalized;
+        }
       } else if (prop === 'update') {
         const whereId = args[0]?.where?.id;
-        const itemData = args[0]?.data;
+        const clean = cleanPrismaCustomOrderData(args[0]?.data);
+        const supaData: any = {};
+        for (const [k, v] of Object.entries(clean)) {
+          const col = CUSTOM_ORDER_DB_COLUMN_MAP[k] || k;
+          supaData[col] = v;
+        }
         if (whereId) {
-          const { data: updated, error } = await (supabaseAdmin as any).from('custom_orders').update(itemData).eq('id', whereId).select().maybeSingle();
-          if (!error && updated) return normalizeCustomOrder(updated);
+          const { data: updated, error } = await (supabaseAdmin as any).from('custom_orders').update(supaData).eq('id', whereId).select().maybeSingle();
+          if (!error && updated) {
+            const normalized = normalizeCustomOrder(updated);
+            try { await (memoryHandler as any).update({ where: { id: whereId }, data: clean }); } catch (_) {}
+            return normalized;
+          }
         }
       } else if (prop === 'delete') {
         const whereId = args[0]?.where?.id;
         if (whereId) {
           await (supabaseAdmin as any).from('custom_orders').delete().eq('id', whereId);
+          try { await (memoryHandler as any).delete({ where: { id: whereId } }); } catch (_) {}
           return { id: whereId };
         }
       }

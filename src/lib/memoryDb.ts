@@ -694,19 +694,24 @@ class MemoryStore {
       if (val === undefined) continue;
 
       if (val !== null && typeof val === 'object' && !Array.isArray(val) && !(val instanceof Date)) {
-        if ('equals' in val) {
-          if (itemVal !== val.equals) return false;
-        } else if ('in' in val && Array.isArray(val.in)) {
-          if (!val.in.includes(itemVal)) return false;
-        } else if ('not' in val) {
-          if (itemVal === val.not) return false;
-        } else if ('notIn' in val && Array.isArray(val.notIn)) {
-          if (val.notIn.includes(itemVal)) return false;
-        } else if ('contains' in val) {
+        const objVal = val as any;
+        if ('equals' in objVal) {
+          if (objVal.mode === 'insensitive') {
+            if (String(itemVal ?? '').trim().toLowerCase() !== String(objVal.equals ?? '').trim().toLowerCase()) return false;
+          } else {
+            if (itemVal !== objVal.equals) return false;
+          }
+        } else if ('in' in objVal && Array.isArray(objVal.in)) {
+          if (!objVal.in.includes(itemVal)) return false;
+        } else if ('not' in objVal) {
+          if (itemVal === objVal.not) return false;
+        } else if ('notIn' in objVal && Array.isArray(objVal.notIn)) {
+          if (!objVal.notIn.includes(itemVal)) return false;
+        } else if ('contains' in objVal) {
           const strVal = String(itemVal || '').toLowerCase();
-          const target = String(val.contains || '').toLowerCase();
+          const target = String(objVal.contains || '').toLowerCase();
           if (!strVal.includes(target)) return false;
-        } else if ('mode' in val) {
+        } else if ('mode' in objVal) {
           // ignore
         } else {
           if (!this.matchWhere(itemVal || {}, val)) return false;

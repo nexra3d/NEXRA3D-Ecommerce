@@ -438,18 +438,19 @@ export const CustomOrdersPanel: React.FC<CustomOrdersPanelProps> = ({
   // Open Edit & Showcase modal for an order
   const handleOpenShowcaseModal = (order: CustomOrder) => {
     setShowcaseModalOrder(order);
-    setShowcaseName(order.customOrderName || order.description || '');
-    setShowcaseImageUrl(order.imageUrl || '');
-    setShowcaseIsPublic(Boolean(order.isPublic));
-    setEditCustomerName(order.customerName || '');
-    setEditPhone(order.phone || '');
-    setEditEmail(order.email || '');
-    setEditDescription(order.description || '');
-    setEditAmount(order.amount != null ? String(order.amount) : '');
-    setEditDeliveryType(order.deliveryType || 'STORE_PICKUP');
+    setShowcaseName(order.customOrderName || (order as any).custom_order_name || order.description || '');
+    setShowcaseImageUrl(order.imageUrl || (order as any).image_url || '');
+    setShowcaseIsPublic(order.isPublic !== undefined ? Boolean(order.isPublic) : Boolean((order as any).is_public));
+    setEditCustomerName(order.customerName || (order as any).customer_name || '');
+    setEditPhone(order.phone || (order as any).phone_number || '');
+    setEditEmail(order.email || (order as any).customer_email || '');
+    setEditDescription(order.description || (order as any).desc || '');
+    const amt = order.amount ?? (order as any).total_amount;
+    setEditAmount(amt != null ? String(amt) : '');
+    setEditDeliveryType((order.deliveryType || (order as any).delivery_type || 'STORE_PICKUP') as any);
     const resolvedStatus = (order.paymentStatus || (order as any).payment_status || 'PAID') as CustomOrderPaymentStatus;
     setEditPaymentStatus(resolvedStatus);
-    setEditNotes(order.notes || '');
+    setEditNotes(order.notes || (order as any).note || '');
     setEditModalTab('showcase');
     setUploadFeedback(null);
   };

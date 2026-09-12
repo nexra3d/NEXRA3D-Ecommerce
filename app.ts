@@ -7662,75 +7662,47 @@ app.patch('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Re
 
     const nowIso = new Date().toISOString();
     const updateData: any = {
-      updatedAt: nowIso,
-      updated_at: nowIso
+      updatedAt: nowIso
     };
     if (customOrderName !== undefined) {
-      const v = customOrderName ? String(customOrderName).trim() : null;
-      updateData.customOrderName = v;
-      updateData.custom_order_name = v;
+      updateData.customOrderName = customOrderName ? String(customOrderName).trim() : null;
     }
     if (imageUrl !== undefined) {
-      const v = imageUrl ? String(imageUrl).trim() : null;
-      updateData.imageUrl = v;
-      updateData.image_url = v;
+      updateData.imageUrl = imageUrl ? String(imageUrl).trim() : null;
     }
     if (isPublic !== undefined) {
-      const v = Boolean(isPublic);
-      updateData.isPublic = v;
-      updateData.is_public = v;
+      updateData.isPublic = Boolean(isPublic);
     }
     if (customerName !== undefined && String(customerName).trim()) {
-      const v = String(customerName).trim();
-      updateData.customerName = v;
-      updateData.customer_name = v;
+      updateData.customerName = String(customerName).trim();
     }
     if (phone !== undefined && String(phone).trim()) {
-      const v = String(phone).trim();
-      updateData.phone = v;
-      updateData.phoneNumber = v;
-      updateData.phone_number = v;
+      updateData.phone = String(phone).trim();
     }
     if (email !== undefined) {
-      const v = email ? String(email).trim() : null;
-      updateData.email = v;
-      updateData.customerEmail = v;
-      updateData.customer_email = v;
+      updateData.email = email ? String(email).trim() : null;
     }
     if (description !== undefined) {
-      const v = description ? String(description).trim() : null;
-      updateData.description = v;
-      updateData.desc = v;
+      updateData.description = description ? String(description).trim() : null;
     }
     if (amount !== undefined && !isNaN(Number(amount)) && Number(amount) >= 0) {
-      const v = Number(amount);
-      updateData.amount = v;
-      updateData.totalAmount = v;
-      updateData.total_amount = v;
+      updateData.amount = Number(amount);
     }
     if (deliveryType !== undefined && (deliveryType === 'STORE_PICKUP' || deliveryType === 'HOME_DELIVERY')) {
       updateData.deliveryType = deliveryType;
-      updateData.delivery_type = deliveryType;
     }
     if (notes !== undefined) {
-      const v = notes ? String(notes).trim() : null;
-      updateData.notes = v;
-      updateData.note = v;
+      updateData.notes = notes ? String(notes).trim() : null;
     }
     if (paymentStatus !== undefined && typeof paymentStatus === 'string' && paymentStatus.trim()) {
       const statusUpper = paymentStatus.trim().toUpperCase();
       updateData.paymentStatus = statusUpper;
-      updateData.payment_status = statusUpper;
       if (statusUpper === 'PAID') {
-        const paidAtTime = existing?.paidAt || nowIso;
-        updateData.paidAt = paidAtTime;
-        updateData.paid_at = paidAtTime;
+        updateData.paidAt = existing?.paidAt || nowIso;
       } else if (statusUpper === 'AWAITING_PAYMENT') {
         // Protect from autoExpirePendingCustomOrders immediately flipping it back to EXPIRED
         if (!existing?.expiresAt || new Date(existing.expiresAt).getTime() <= Date.now()) {
-          const futureExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-          updateData.expiresAt = futureExpiry;
-          updateData.expires_at = futureExpiry;
+          updateData.expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
         }
       }
     }
@@ -7750,33 +7722,20 @@ app.patch('/api/admin/custom-orders/:id', requireAdminMiddleware, async (req: Re
         create: {
           id: cleanId,
           customerName: customerName || 'Valued Customer',
-          customer_name: customerName || 'Valued Customer',
           phone: phone || '',
-          phoneNumber: phone || '',
           email: email || null,
-          customerEmail: email || null,
           description: description || customOrderName || 'Custom Order',
-          desc: description || customOrderName || 'Custom Order',
           customOrderName: customOrderName || null,
-          custom_order_name: customOrderName || null,
           imageUrl: imageUrl || null,
-          image_url: imageUrl || null,
           isPublic: isPublic !== undefined ? Boolean(isPublic) : false,
-          is_public: isPublic !== undefined ? Boolean(isPublic) : false,
           amount: amount !== undefined ? Number(amount) : 0,
           deliveryType: deliveryType || 'STORE_PICKUP',
-          delivery_type: deliveryType || 'STORE_PICKUP',
           notes: notes || null,
           paymentStatus: initialStatus,
-          payment_status: initialStatus,
           expiresAt: initialStatus === 'AWAITING_PAYMENT' ? futureExpiry : null,
-          expires_at: initialStatus === 'AWAITING_PAYMENT' ? futureExpiry : null,
           paidAt: initialStatus === 'PAID' ? nowIso : null,
-          paid_at: initialStatus === 'PAID' ? nowIso : null,
           createdAt: req.body.createdAt || nowIso,
-          created_at: req.body.createdAt || nowIso,
-          updatedAt: nowIso,
-          updated_at: nowIso
+          updatedAt: nowIso
         },
         update: updateData
       });
