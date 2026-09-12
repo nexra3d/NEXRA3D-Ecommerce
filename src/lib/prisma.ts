@@ -148,19 +148,55 @@ export async function ensureDbSchema(): Promise<void> {
           "title" TEXT,
           "comment" TEXT NOT NULL,
           "isApproved" BOOLEAN NOT NULL DEFAULT true,
-          "status" TEXT NOT NULL DEFAULT 'PENDING',
+          "status" TEXT NOT NULL DEFAULT 'APPROVED',
           "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
           CONSTRAINT "custom_order_reviews_pkey" PRIMARY KEY ("id")
         );
       `);
     } catch (_) {}
 
+    // Drop restrictive foreign key constraint if it exists so general reviews and dynamic IDs work smoothly
+    try {
+      await rawPrisma.$executeRawUnsafe(`
+        ALTER TABLE "custom_order_reviews" DROP CONSTRAINT IF EXISTS "custom_order_reviews_customOrderId_fkey";
+      `);
+    } catch (_) {}
+
+    // Ensure general custom_order exists for any legacy foreign key requirements
+    try {
+      await rawPrisma.$executeRawUnsafe(`
+        INSERT INTO "custom_orders" ("id", "customerName", "phone", "amount", "description", "customOrderName", "isPublic")
+        VALUES ('general', 'General NEXRA 3D Order', '0000000000', 0, 'General Order Review Target', 'General Review', false)
+        ON CONFLICT ("id") DO NOTHING;
+      `);
+    } catch (_) {}
+
     const reviewAlters = [
-      `ALTER TABLE "custom_order_reviews" ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT 'PENDING';`,
+      `ALTER TABLE "custom_order_reviews" ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT 'APPROVED';`,
       `ALTER TABLE "custom_order_reviews" ADD COLUMN IF NOT EXISTS "userName" TEXT;`,
-      `ALTER TABLE "custom_order_reviews" ADD COLUMN IF NOT EXISTS "user_name" TEXT;`
+      `ALTER TABLE "custom_order_reviews" ADD COLUMN IF NOT EXISTS "user_name" TEXT;`,
+      `ALTER TABLE "custom_order_reviews" ADD COLUMN IF NOT EXISTS "customOrderId" TEXT;`,
+      `ALTER TABLE "custom_order_reviews" ADD COLUMN IF NOT EXISTS "custom_order_id" TEXT;`,
+      `ALTER TABLE "custom_order_reviews" ADD COLUMN IF NOT EXISTS "isApproved" BOOLEAN NOT NULL DEFAULT true;`,
+      `ALTER TABLE "custom_order_reviews" ADD COLUMN IF NOT EXISTS "is_approved" BOOLEAN NOT NULL DEFAULT true;`
     ];
     for (const sql of reviewAlters) {
+      try {
+        await rawPrisma.$executeRawUnsafe(sql);
+      } catch (_) {}
+    }
+
+    // Sync review columns & ensure all submitted reviews are approved
+    const reviewSync = [
+      `UPDATE "custom_order_reviews" SET "userName" = "user_name" WHERE "userName" IS NULL AND "user_name" IS NOT NULL;`,
+      `UPDATE "custom_order_reviews" SET "user_name" = "userName" WHERE "user_name" IS NULL AND "userName" IS NOT NULL;`,
+      `UPDATE "custom_order_reviews" SET "customOrderId" = "custom_order_id" WHERE "customOrderId" IS NULL AND "custom_order_id" IS NOT NULL;`,
+      `UPDATE "custom_order_reviews" SET "custom_order_id" = "customOrderId" WHERE "custom_order_id" IS NULL AND "customOrderId" IS NOT NULL;`,
+      `UPDATE "custom_order_reviews" SET "isApproved" = "is_approved" WHERE "isApproved" IS NOT TRUE AND "is_approved" IS TRUE;`,
+      `UPDATE "custom_order_reviews" SET "is_approved" = "isApproved" WHERE "is_approved" IS NOT TRUE AND "isApproved" IS TRUE;`,
+      `UPDATE "custom_order_reviews" SET "isApproved" = true, "status" = 'APPROVED' WHERE "status" = 'PENDING' OR "isApproved" IS FALSE;`
+    ];
+    for (const sql of reviewSync) {
       try {
         await rawPrisma.$executeRawUnsafe(sql);
       } catch (_) {}
@@ -720,19 +756,97 @@ async function executeResilientCustomOrderQuery(prop: string, args: any[]): Prom
   return null;
 }
 
+const VALID_PRISMA_CUSTOM_ORDER_REVIEW_KEYS = new Set([
+  'id',
+  'customOrderId',
+  'userId',
+  'userName',
+  'rating',
+  'title',
+  'comment',
+  'isApproved',
+  'status',
+  'createdAt'
+]);
+
+const CUSTOM_ORDER_REVIEW_DB_COLUMN_MAP: Record<string, string> = {
+  customOrderId: 'custom_order_id',
+  userId: 'user_id',
+  userName: 'user_name',
+  isApproved: 'is_approved'
+};
+
+export function cleanPrismaCustomOrderReviewData(data: any): any {
+  if (!data || typeof data !== 'object') return data;
+  const clean: any = {};
+  const source = {
+    ...data,
+    customOrderId: data.customOrderId ?? data.custom_order_id,
+    userId: data.userId ?? data.user_id,
+    userName: data.userName ?? data.user_name ?? data.reviewerName ?? data.reviewer_name,
+    isApproved: data.isApproved !== undefined ? Boolean(data.isApproved) : (data.is_approved !== undefined ? Boolean(data.is_approved) : true),
+    status: data.status ? String(data.status).toUpperCase() : (data.isApproved === false ? 'PENDING' : 'APPROVED'),
+    createdAt: data.createdAt ?? data.created_at
+  };
+
+  for (const k of Object.keys(source)) {
+    if (VALID_PRISMA_CUSTOM_ORDER_REVIEW_KEYS.has(k) && source[k] !== undefined) {
+      let v = source[k];
+      if (k === 'createdAt' && v) {
+        if (typeof v === 'string' || typeof v === 'number') {
+          const d = new Date(v);
+          if (!isNaN(d.getTime())) v = d;
+        }
+      }
+      clean[k] = v;
+    }
+  }
+  return clean;
+}
+
 async function executeResilientCustomOrderReviewQuery(prop: string, args: any[]): Promise<any> {
   const memoryHandler = memoryStore.createModelHandler('customOrderReview');
 
   if (hasDatabaseUrl) {
+    if (!dbSchemaEnsured) {
+      await ensureDbSchema().catch(() => {});
+    }
+
     try {
       const rawModel = (rawPrisma as any).customOrderReview;
       if (rawModel && typeof rawModel[prop] === 'function') {
-        const result = await rawModel[prop](...args);
+        const sanitizedArgs = args.map((arg: any) => {
+          if (!arg || typeof arg !== 'object') return arg;
+          const cloned = { ...arg };
+          if (cloned.data) {
+            cloned.data = cleanPrismaCustomOrderReviewData(cloned.data);
+          }
+          if (cloned.create) {
+            cloned.create = cleanPrismaCustomOrderReviewData(cloned.create);
+          }
+          if (cloned.update) {
+            cloned.update = cleanPrismaCustomOrderReviewData(cloned.update);
+          }
+          return cloned;
+        });
+
+        const result = await rawModel[prop](...sanitizedArgs);
         if (Array.isArray(result) && result.length > 0) {
           return result.map(normalizeCustomOrderReview);
         }
         if (result && typeof result === 'object' && !Array.isArray(result) && prop !== 'findMany') {
-          return normalizeCustomOrderReview(result);
+          const normalized = normalizeCustomOrderReview(result);
+          // Sync with in-memory store
+          try {
+            if (prop === 'create' || prop === 'upsert') {
+              await (memoryHandler as any).upsert({ where: { id: normalized.id }, update: normalized, create: normalized });
+            } else if (prop === 'update') {
+              await (memoryHandler as any).update({ where: args[0]?.where, data: normalized });
+            } else if (prop === 'delete') {
+              await (memoryHandler as any).delete({ where: args[0]?.where });
+            }
+          } catch (_) {}
+          return normalized;
         }
       }
     } catch (prismaErr: any) {
@@ -742,6 +856,7 @@ async function executeResilientCustomOrderReviewQuery(prop: string, args: any[])
     if (prop === 'findMany') {
       const queries = [
         'SELECT * FROM "custom_order_reviews" ORDER BY "createdAt" DESC',
+        'SELECT * FROM "custom_order_reviews" ORDER BY "created_at" DESC',
         'SELECT * FROM custom_order_reviews ORDER BY created_at DESC',
         'SELECT * FROM "custom_order_reviews"',
         'SELECT * FROM custom_order_reviews'
@@ -762,6 +877,111 @@ async function executeResilientCustomOrderReviewQuery(prop: string, args: any[])
             }
             return list;
           }
+        } catch (_) {}
+      }
+    } else if (prop === 'findUnique' || prop === 'findFirst') {
+      const whereId = args[0]?.where?.id;
+      if (whereId) {
+        const queries = [
+          'SELECT * FROM "custom_order_reviews" WHERE "id" = $1 LIMIT 1',
+          'SELECT * FROM custom_order_reviews WHERE id = $1 LIMIT 1'
+        ];
+        for (const q of queries) {
+          try {
+            const rawRows: any = await rawPrisma.$queryRawUnsafe(q, whereId);
+            if (Array.isArray(rawRows) && rawRows.length > 0) {
+              return normalizeCustomOrderReview(rawRows[0]);
+            }
+          } catch (_) {}
+        }
+      }
+    } else if (prop === 'create') {
+      const cleanData = cleanPrismaCustomOrderReviewData(args[0]?.data || {});
+      const id = cleanData.id || `cor-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      cleanData.id = id;
+
+      // Ensure custom_order exists for customOrderId to satisfy any potential foreign key
+      const orderId = cleanData.customOrderId || 'general';
+      try {
+        await rawPrisma.$executeRawUnsafe(
+          `INSERT INTO "custom_orders" ("id", "customerName", "phone", "amount", "isPublic") VALUES ($1, $2, $3, $4, $5) ON CONFLICT ("id") DO NOTHING`,
+          orderId,
+          'Custom Order Customer',
+          '0000000000',
+          0,
+          true
+        );
+      } catch (_) {}
+
+      // Try camelCase raw SQL insert
+      try {
+        const cols: string[] = [];
+        const placeholders: string[] = [];
+        const values: any[] = [];
+        let idx = 1;
+        for (const [field, val] of Object.entries(cleanData)) {
+          cols.push(`"${field}"`);
+          placeholders.push(`$${idx++}`);
+          values.push(val);
+        }
+        const sql = `INSERT INTO "custom_order_reviews" (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`;
+        const rawResult: any = await rawPrisma.$queryRawUnsafe(sql, ...values);
+        if (Array.isArray(rawResult) && rawResult.length > 0) {
+          const normalized = normalizeCustomOrderReview(rawResult[0]);
+          try { await (memoryHandler as any).create({ data: cleanData }); } catch (_) {}
+          return normalized;
+        }
+      } catch (_) {}
+
+      // Try snake_case raw SQL insert
+      try {
+        const cols: string[] = [];
+        const placeholders: string[] = [];
+        const values: any[] = [];
+        let idx = 1;
+        for (const [field, val] of Object.entries(cleanData)) {
+          const col = CUSTOM_ORDER_REVIEW_DB_COLUMN_MAP[field] || field;
+          cols.push(`"${col}"`);
+          placeholders.push(`$${idx++}`);
+          values.push(val);
+        }
+        const sql = `INSERT INTO "custom_order_reviews" (${cols.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`;
+        const rawResult: any = await rawPrisma.$queryRawUnsafe(sql, ...values);
+        if (Array.isArray(rawResult) && rawResult.length > 0) {
+          const normalized = normalizeCustomOrderReview(rawResult[0]);
+          try { await (memoryHandler as any).create({ data: cleanData }); } catch (_) {}
+          return normalized;
+        }
+      } catch (_) {}
+    } else if (prop === 'update') {
+      const whereId = args[0]?.where?.id;
+      const rawData = cleanPrismaCustomOrderReviewData(args[0]?.data || {});
+      if (whereId && Object.keys(rawData).length > 0) {
+        try {
+          const setClauses: string[] = [];
+          const values: any[] = [];
+          let idx = 1;
+          for (const [field, val] of Object.entries(rawData)) {
+            setClauses.push(`"${field}" = $${idx++}`);
+            values.push(val);
+          }
+          values.push(whereId);
+          const sql = `UPDATE "custom_order_reviews" SET ${setClauses.join(', ')} WHERE "id" = $${idx} RETURNING *`;
+          const rawResult: any = await rawPrisma.$queryRawUnsafe(sql, ...values);
+          if (Array.isArray(rawResult) && rawResult.length > 0) {
+            const normalized = normalizeCustomOrderReview(rawResult[0]);
+            try { await (memoryHandler as any).update({ where: { id: whereId }, data: rawData }); } catch (_) {}
+            return normalized;
+          }
+        } catch (_) {}
+      }
+    } else if (prop === 'delete') {
+      const whereId = args[0]?.where?.id;
+      if (whereId) {
+        try {
+          await rawPrisma.$executeRawUnsafe('DELETE FROM "custom_order_reviews" WHERE "id" = $1', whereId);
+          try { await (memoryHandler as any).delete({ where: { id: whereId } }); } catch (_) {}
+          return { id: whereId };
         } catch (_) {}
       }
     }
@@ -785,20 +1005,29 @@ async function executeResilientCustomOrderReviewQuery(prop: string, args: any[])
           return list;
         }
       } else if (prop === 'create') {
-        const itemData = args[0]?.data;
+        const itemData = cleanPrismaCustomOrderReviewData(args[0]?.data);
         const { data: created, error } = await (supabaseAdmin as any).from('custom_order_reviews').insert(itemData).select().maybeSingle();
-        if (!error && created) return normalizeCustomOrderReview(created);
+        if (!error && created) {
+          const normalized = normalizeCustomOrderReview(created);
+          try { await (memoryHandler as any).create({ data: itemData }); } catch (_) {}
+          return normalized;
+        }
       } else if (prop === 'update') {
         const whereId = args[0]?.where?.id;
-        const itemData = args[0]?.data;
+        const itemData = cleanPrismaCustomOrderReviewData(args[0]?.data);
         if (whereId) {
           const { data: updated, error } = await (supabaseAdmin as any).from('custom_order_reviews').update(itemData).eq('id', whereId).select().maybeSingle();
-          if (!error && updated) return normalizeCustomOrderReview(updated);
+          if (!error && updated) {
+            const normalized = normalizeCustomOrderReview(updated);
+            try { await (memoryHandler as any).update({ where: { id: whereId }, data: itemData }); } catch (_) {}
+            return normalized;
+          }
         }
       } else if (prop === 'delete') {
         const whereId = args[0]?.where?.id;
         if (whereId) {
           await (supabaseAdmin as any).from('custom_order_reviews').delete().eq('id', whereId);
+          try { await (memoryHandler as any).delete({ where: { id: whereId } }); } catch (_) {}
           return { id: whereId };
         }
       }

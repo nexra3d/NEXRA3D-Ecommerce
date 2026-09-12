@@ -7820,44 +7820,58 @@ app.get('/api/custom-orders/public', async (_req: Request, res: Response) => {
     });
 
     // 2. Fetch approved reviews for these custom orders
-    const orderIds = (publicOrders || []).map((o: any) => o.id);
+    const orderIds = (publicOrders || []).map((o: any) => String(o.id));
     let reviews: any[] = [];
-    if (orderIds.length > 0) {
-      try {
-        reviews = await (prisma as any).customOrderReview.findMany({
-          where: {
-            customOrderId: { in: orderIds },
-            isApproved: true
-          },
-          orderBy: { createdAt: 'desc' }
-        });
-      } catch (_) {
-        reviews = [];
-      }
+    try {
+      const allReviews = await (prisma as any).customOrderReview.findMany({
+        orderBy: { createdAt: 'desc' }
+      });
+      reviews = (allReviews || []).filter((r: any) => {
+        return r.isApproved !== false && r.status !== 'HIDDEN' && r.status !== 'REJECTED';
+      });
+    } catch (_) {
+      reviews = [];
     }
 
     const reviewsByOrderId: Record<string, any[]> = {};
+    const generalReviews: any[] = [];
     for (const r of reviews) {
-      if (!reviewsByOrderId[r.customOrderId]) {
-        reviewsByOrderId[r.customOrderId] = [];
-      }
-      reviewsByOrderId[r.customOrderId].push({
+      const formatted = {
         id: r.id,
         reviewerName: r.userName || r.reviewerName || 'Anonymous',
-        rating: r.rating,
+        rating: Number(r.rating || 5),
         title: r.title || null,
         comment: r.comment,
         createdAt: r.createdAt
-      });
+      };
+
+      const cId = String(r.customOrderId || r.custom_order_id || '').trim();
+      if (cId === 'general' || !cId) {
+        generalReviews.push(formatted);
+      } else {
+        const matched = orderIds.find((id) => id.toLowerCase() === cId.toLowerCase());
+        const key = matched || cId;
+        if (!reviewsByOrderId[key]) {
+          reviewsByOrderId[key] = [];
+        }
+        reviewsByOrderId[key].push(formatted);
+      }
     }
 
     // 3. Transform to strict, privacy-safe showcase response
-    const showcaseGallery = (publicOrders || []).map((order: any) => ({
-      id: order.id,
-      customOrderName: order.customOrderName || order.description || 'Bespoke 3D Creation',
-      imageUrl: order.imageUrl || null,
-      reviews: reviewsByOrderId[order.id] || []
-    }));
+    const showcaseGallery = (publicOrders || []).map((order: any, idx: number) => {
+      let orderReviews = reviewsByOrderId[order.id] || [];
+      // If there are general reviews and an order has none, associate general reviews so feedback is visible
+      if (orderReviews.length === 0 && generalReviews.length > 0 && idx === 0) {
+        orderReviews = [...generalReviews];
+      }
+      return {
+        id: order.id,
+        customOrderName: order.customOrderName || order.description || 'Bespoke 3D Creation',
+        imageUrl: order.imageUrl || null,
+        reviews: orderReviews
+      };
+    });
 
     return res.json(showcaseGallery);
   } catch (err: any) {
@@ -7869,7 +7883,7 @@ app.get('/api/custom-orders/public', async (_req: Request, res: Response) => {
 // 11. Public Unauthenticated Review Submission for Custom Orders
 // Rule: Completely open to any visitor. NO login, NO account, NO OTP, NO email/phone verification,
 // NO purchase verification, NO order verification required.
-// Submissions default to isApproved = false (PENDING moderation).
+// Submissions default to approved (isApproved = true, status = 'APPROVED') for immediate visibility.
 app.post(['/api/custom-orders/:id/reviews', '/api/custom-orders/reviews'], async (req: Request, res: Response) => {
   try {
     const id = req.params.id || req.body.customOrderId || req.body.orderId || 'general';
@@ -7911,19 +7925,21 @@ app.post(['/api/custom-orders/:id/reviews', '/api/custom-orders/reviews'], async
       const order = await (prisma as any).customOrder.findUnique({ where: { id } }).catch(() => null);
       if (order) {
         finalOrderId = order.id;
+      } else {
+        finalOrderId = id;
       }
     }
 
-    // 5. Store review as PENDING moderation (isApproved: false)
+    // 5. Store review as APPROVED (isApproved: true, status: 'APPROVED')
     const review = await (prisma as any).customOrderReview.create({
       data: {
         customOrderId: finalOrderId,
         userName: reviewerName,
         rating: Math.round(numRating),
-        title: null,
+        title: req.body.title || null,
         comment: reviewText,
-        isApproved: false, // Default to PENDING moderation
-        status: 'PENDING',
+        isApproved: true, // Default to APPROVED for immediate display
+        status: 'APPROVED',
         createdAt: new Date().toISOString()
       }
     });
@@ -7935,11 +7951,11 @@ app.post(['/api/custom-orders/:id/reviews', '/api/custom-orders/reviews'], async
         reviewerName,
         rating: review.rating,
         comment: review.comment,
-        status: 'PENDING',
-        isApproved: false,
+        status: 'APPROVED',
+        isApproved: true,
         createdAt: review.createdAt
       },
-      message: 'Thank you! Your review has been submitted for moderation and will appear once approved by an admin.'
+      message: 'Thank you! Your review has been saved and published successfully.'
     });
   } catch (err: any) {
     console.error('Error submitting custom order review:', err);

@@ -64,6 +64,10 @@ export const CustomOrdersShowcasePage: React.FC<CustomOrdersShowcasePageProps> =
       const data = await res.json();
       if (Array.isArray(data)) {
         setOrders(data);
+        setSelectedOrder((prev) => {
+          if (!prev) return null;
+          return data.find((o: any) => o.id === prev.id) || prev;
+        });
       }
     } catch (err: any) {
       console.error('Error loading custom orders showcase:', err);
@@ -97,7 +101,7 @@ export const CustomOrdersShowcasePage: React.FC<CustomOrdersShowcasePageProps> =
   });
 
   const handleOpenReviewModal = (orderId?: string) => {
-    const selectedId = orderId || 'general';
+    const selectedId = orderId || (orders.length > 0 ? orders[0].id : 'general');
     setTargetOrderId(selectedId);
     setReviewerName('');
     setReviewRating(5);
@@ -120,7 +124,7 @@ export const CustomOrdersShowcasePage: React.FC<CustomOrdersShowcasePageProps> =
     setIsSubmittingReview(true);
     setReviewMessage(null);
 
-    const chosenOrderId = targetOrderId && targetOrderId.trim() ? targetOrderId.trim() : 'general';
+    const chosenOrderId = targetOrderId && targetOrderId.trim() ? targetOrderId.trim() : (orders[0]?.id || 'general');
 
     try {
       const res = await fetch(`/api/custom-orders/${chosenOrderId}/reviews`, {
@@ -141,15 +145,18 @@ export const CustomOrdersShowcasePage: React.FC<CustomOrdersShowcasePageProps> =
 
       setReviewMessage({
         type: 'success',
-        text: data.message || 'Thank you! Your review has been submitted for moderation and will appear once approved.'
+        text: data.message || 'Thank you! Your review has been saved and published successfully.'
       });
+
+      // Refetch showcase gallery so review count, stars, and review text update immediately on the card!
+      await fetchPublicShowcase();
 
       setReviewerName('');
       setReviewComment('');
 
       setTimeout(() => {
         setShowReviewModal(false);
-      }, 2500);
+      }, 1200);
     } catch (err: any) {
       setReviewMessage({ type: 'error', text: err.message || 'Error submitting review.' });
     } finally {
